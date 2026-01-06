@@ -23,7 +23,7 @@ help:
 
 # Install dependencies
 install:
-	uv sync --no-dev
+	uv sync
 
 # Install with dev dependencies
 install-dev:
