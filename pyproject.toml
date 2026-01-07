@@ -1,6 +1,6 @@
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
 
 [project]
 name = "tdfpy"
@@ -37,28 +37,14 @@ dev = [
     "pytest>=7.0",
     "mypy>=1.0",
     "pylint>=2.0",
+    "maturin>=1.0",
 ]
 
-[tool.hatch.version]
-path = "src/tdfpy/__init__.py"
-
-[tool.hatch.build.targets.wheel]
-packages = ["src/tdfpy"]
-artifacts = [
-    "*.dll",
-    "*.so",
-]
-force-include = { "src/tdfpy/libtimsdata.so" = "tdfpy/libtimsdata.so" }
-
-[tool.hatch.build.targets.sdist]
-include = [
-    "src/",
-    "tests/",
-    "README.md",
-    "LICENSE",
-    "CHANGLOG.md",
-]
-force-include = { "src/tdfpy/libtimsdata.so" = "src/tdfpy/libtimsdata.so" }
+[tool.maturin]
+python-source = "src"
+module-name = "tdfpy._tdfpy_rust"
+features = ["pyo3/extension-module"]
+include = ["src/tdfpy/libtimsdata.so"]
 
 [tool.pylint]
 max-line-length = 120

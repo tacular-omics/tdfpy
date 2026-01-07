@@ -26,7 +26,7 @@ TDFpy provides efficient access to mass spectrometry data from Bruker timsTOF in
 - **Memory-efficient**: Generator-based API for processing large datasets
 - **Type-safe**: Full type hints throughout (Python 3.8+)
 - **Cross-platform**: Supports Windows (`.dll`) and Linux (`.so`)
-- **Peak centroiding**: Advanced peak merging with m/z and ion mobility tolerances
+- **Peak centroiding**: 2D Peak merging with m/z and ion mobility tolerances (Rust-backend)
 
 ## Installation
 

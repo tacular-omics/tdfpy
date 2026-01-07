@@ -8,10 +8,17 @@ for reading centroided MS1 spectra with peak clustering/centroiding algorithms.
 from typing import Generator, List, Literal, NamedTuple, Optional, Union
 import logging
 
-import numpy as np
+import numpy as np # type: ignore
 
 from .timsdata import TimsData, oneOverK0ToCCSforMz
 from .noise import estimate_noise_level
+
+# Try to import Rust extension, fallback to Python implementation
+try:
+    from tdfpy._tdfpy_rust import merge_peaks as _merge_peaks_rust
+    _HAS_RUST = True
+except ImportError:
+    _HAS_RUST = False
 
 
 logger = logging.getLogger(__name__)
@@ -74,6 +81,7 @@ def merge_peaks(
     im_tolerance_type: Literal["relative", "absolute"] = "relative",
     min_peaks: int = 3,
     max_peaks: Optional[int] = None,
+    use_rust: bool = True,
 ) -> List[Peak]:
     """Centroid profile-like peaks using m/z and ion mobility tolerances.
 
@@ -103,6 +111,51 @@ def merge_peaks(
         >>> im = np.array([0.8, 0.8, 0.9])
         >>> peaks = merge_peaks(mz, intensity, im, mz_tolerance=10, mz_tolerance_type="ppm")
     """
+    # Use Rust implementation if available
+    if _HAS_RUST and use_rust:
+        merged_mz, merged_intensity, merged_mobility = _merge_peaks_rust(
+            mz_array,
+            intensity_array,
+            ion_mobility_array,
+            mz_tolerance,
+            mz_tolerance_type,
+            im_tolerance,
+            im_tolerance_type,
+            min_peaks,
+            max_peaks,
+        )
+        # Convert numpy arrays to Peak list
+        return [
+            Peak(mz=float(mz), intensity=float(intensity), ion_mobility=float(mobility))
+            for mz, intensity, mobility in zip(merged_mz, merged_intensity, merged_mobility)
+        ]
+
+    # Fallback to Python implementation
+    return _merge_peaks_python(
+        mz_array,
+        intensity_array,
+        ion_mobility_array,
+        mz_tolerance,
+        mz_tolerance_type,
+        im_tolerance,
+        im_tolerance_type,
+        min_peaks,
+        max_peaks,
+    )
+
+
+def _merge_peaks_python(
+    mz_array: np.ndarray,
+    intensity_array: np.ndarray,
+    ion_mobility_array: np.ndarray,
+    mz_tolerance: float = 8.0,
+    mz_tolerance_type: Literal["ppm", "da"] = "ppm",
+    im_tolerance: float = 0.05,
+    im_tolerance_type: Literal["relative", "absolute"] = "relative",
+    min_peaks: int = 3,
+    max_peaks: Optional[int] = None,
+) -> List[Peak]:
+    """Python implementation of merge_peaks (fallback when Rust extension unavailable)."""
     logger.debug(
         "Centroiding %d raw peaks with mz_tol=%s %s, im_tol=%s %s, min_peaks=%d, max_peaks=%s",
         len(mz_array), mz_tolerance, mz_tolerance_type, im_tolerance, im_tolerance_type, min_peaks, max_peaks
@@ -146,9 +199,10 @@ def merge_peaks(
         if used_mask[peak_idx]:
             continue
 
-        mz_peak = float(mz_array[peak_idx])
-        intensity_peak = float(intensity_array[peak_idx])
-        mobility_peak = float(ion_mobility_array[peak_idx])
+        # Extract values (avoid redundant float conversions)
+        mz_peak = mz_array[peak_idx]
+        intensity_peak = intensity_array[peak_idx]
+        mobility_peak = ion_mobility_array[peak_idx]
 
         # Calculate tolerances
         mz_tol = mz_peak * mz_tol_factor if mz_tolerance_type == "ppm" else mz_tol_abs
@@ -165,42 +219,42 @@ def merge_peaks(
         right_idx = int(np.searchsorted(mz_array, right_mz, side="right"))
 
         # Only check mobility in the mz window
-        mz_window_slice = slice(left_idx, right_idx)
-        mobility_window = ion_mobility_array[mz_window_slice]
-        intensity_window = intensity_array[mz_window_slice]
-        mz_window = mz_array[mz_window_slice]
-        used_window = used_mask[mz_window_slice]
+        mobility_window = ion_mobility_array[left_idx:right_idx]
+        intensity_window = intensity_array[left_idx:right_idx]
+        mz_window = mz_array[left_idx:right_idx]
+        used_window = used_mask[left_idx:right_idx]
 
-        # Find nearby peaks in mobility dimension
-        mobility_diff = np.abs(mobility_window - mobility_peak)
-        nearby_mask = (mobility_diff <= mobility_tol) & ~used_window
+        # Find nearby peaks in mobility dimension (combined operation)
+        nearby_mask = (np.abs(mobility_window - mobility_peak) <= mobility_tol) & ~used_window
 
+        # Get nearby intensities (need this for multiple operations)
+        nearby_intensities = intensity_window[nearby_mask]
+        num_nearby = len(nearby_intensities)
+        
         # Check minimum peaks requirement
-        if min_peaks > 0 and np.sum(nearby_mask) < min_peaks:
+        if min_peaks > 0 and num_nearby < min_peaks:
             # Not enough nearby raw peaks to form a centroid, skip
             used_mask[peak_idx] = True
             continue
 
-        if not np.any(nearby_mask):
+        if num_nearby == 0:
             # Edge case: no nearby raw peaks (shouldn't happen but be safe)
             merged_peaks.append(
-                Peak(mz=mz_peak, intensity=intensity_peak, ion_mobility=mobility_peak)
+                Peak(mz=float(mz_peak), intensity=float(intensity_peak), ion_mobility=float(mobility_peak))
             )
             used_mask[peak_idx] = True
             continue
 
         # Centroid peaks using intensity-weighted average
-        nearby_intensities = intensity_window[nearby_mask]
-        merged_intensity = float(np.sum(nearby_intensities))
-        merged_mz = float(
-            np.average(mz_window[nearby_mask], weights=nearby_intensities)
-        )
-        merged_mobility = float(
-            np.average(mobility_window[nearby_mask], weights=nearby_intensities)
-        )
+        # Reuse already-sliced arrays to avoid re-indexing
+        nearby_mz = mz_window[nearby_mask]
+        nearby_mobility = mobility_window[nearby_mask]
+        total_intensity = np.sum(nearby_intensities)
+        merged_mz = np.dot(nearby_mz, nearby_intensities) / total_intensity
+        merged_mobility = np.dot(nearby_mobility, nearby_intensities) / total_intensity
 
         merged_peaks.append(
-            Peak(mz=merged_mz, intensity=merged_intensity, ion_mobility=merged_mobility)
+            Peak(mz=float(merged_mz), intensity=float(total_intensity), ion_mobility=float(merged_mobility))
         )
 
         # Mark as used (convert local indices to global)
@@ -240,6 +294,7 @@ def get_centroided_ms1_spectrum(
             int,
         ]
     ] = None,
+    use_rust: bool = True,
 ) -> Ms1Spectrum:
     """Extract a centroided MS1 spectrum for a single frame.
 
@@ -437,6 +492,7 @@ def get_centroided_ms1_spectrum(
         im_tolerance_type=im_tolerance_type,
         min_peaks=min_peaks,
         max_peaks=max_peaks,
+        use_rust=use_rust,
     )
 
     # Apply max_peaks limit if specified
@@ -475,6 +531,7 @@ def get_centroided_ms1_spectra(
             float,
         ]
     ] = None,
+    use_rust: bool = True,
 ) -> Generator[Ms1Spectrum, None, None]:
     """Extract centroided MS1 spectra for multiple frames.
 
@@ -564,6 +621,7 @@ def get_centroided_ms1_spectra(
                 min_peaks=min_peaks,
                 max_peaks=max_peaks,
                 noise_filter=noise_filter,
+                use_rust=use_rust,
             )
             successful_count += 1
             logger.debug(
