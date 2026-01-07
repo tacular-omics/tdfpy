@@ -2,7 +2,7 @@
 Noise estimation utilities for TDF data processing.
 """
 
-from typing import Literal, Union
+from typing import Literal
 
 import numpy as np
 
@@ -58,7 +58,7 @@ def _estimate_noise_iterative_median(intensity_array: np.ndarray) -> float:
 
 def estimate_noise_level(
     intensity_array: np.ndarray,
-    method: Union[Literal["mad", "percentile", "histogram", "baseline", "iterative_median"], float] = "mad",
+    method: Literal["mad", "percentile", "histogram", "baseline", "iterative_median"] | float = "mad",
 ) -> float:
     """
     Estimate noise level using various methods.

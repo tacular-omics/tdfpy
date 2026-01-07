@@ -6,11 +6,10 @@ file in the format of pandas dataframes
 import sqlite3
 import logging
 from dataclasses import dataclass
-from typing import List
 
 import pandas as pd
 
-from tdfpy.constants import TableNames
+from .constants import TableNames
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +27,7 @@ def convert_table_to_df(db_path: str, table_name: str) -> pd.DataFrame:
     """
     logger.debug("Fetching " + table_name + " from " + db_path)
     with sqlite3.connect(str(db_path)) as conn:
-        df = pd.read_sql_query(f"SELECT * FROM {table_name}", conn)
+        df = pd.read_sql_query(f"SELECT * FROM {table_name}", conn) # type: ignore[arg-type]
         return df
 
 
@@ -214,7 +213,7 @@ class PandasTdf:
         """
         return convert_table_to_df(self.db_path, TableNames.PRM_TARGETS.value)
 
-    def get_table_names(self) -> List[str]:
+    def get_table_names(self) -> list[str]:
         """
         Retrieves the names of all tables in the SQLite database.
 

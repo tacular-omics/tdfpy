@@ -16,8 +16,8 @@ from ctypes import (
     create_string_buffer,
     CFUNCTYPE,
 )
-from typing import Dict, Tuple, List, Optional, Callable, Any, Iterator
-from typing import Union as UnionType
+from typing import Any
+from collections.abc import Callable, Iterator
 
 import numpy as np
 import numpy.typing as npt
@@ -170,7 +170,7 @@ dll.tims_extract_chromatograms.argtypes = [
 ]
 dll.tims_extract_chromatograms.restype = c_uint32
 
-convfunc_argtypes: List[Any] = [
+convfunc_argtypes: list[Any] = [
     c_uint64,
     c_int64,
     POINTER(c_double),
@@ -202,7 +202,7 @@ dll.tims_ccs_to_oneoverk0_for_mz.restype = c_double
 
 @contextmanager
 def timsdata_connect(analysis_dir: str) -> Iterator["TimsData"]:
-    td: Optional[TimsData] = None
+    td: TimsData | None = None
     try:
         td = TimsData(analysis_dir)
         yield td
@@ -243,12 +243,12 @@ class TimsData:
         use_recalibrated_state: bool = False,
         pressure_compensation_strategy: PressureCompensationStrategy = PressureCompensationStrategy.NoPressureCompensation,
     ) -> None:
-        if not isinstance(analysis_directory, str):
+        if not isinstance(analysis_directory, str): # type: ignore[type-var]
             raise ValueError("analysis_directory must be a string.")
 
         self.dll: CDLL = dll
-        self.handle: Optional[int]
-        self.conn: Optional[sqlite3.Connection]
+        self.handle: int | None
+        self.conn: sqlite3.Connection | None
         self.initial_frame_buffer_size: float
 
         self.handle = self.dll.tims_open_v2(
@@ -283,7 +283,7 @@ class TimsData:
     def __callConversionFunc(
         self,
         frame_id: int,
-        input_data: UnionType[npt.NDArray[np.float64], List[float]],
+        input_data: npt.NDArray[np.float64] | npt.NDArray[np.uint32] | list[float],
         func: Callable[..., int],
     ) -> npt.NDArray[np.float64]:
         if type(input_data) is np.ndarray and input_data.dtype == np.float64:
@@ -309,38 +309,38 @@ class TimsData:
         return out
 
     def indexToMz(
-        self, frame_id: int, indices: UnionType[npt.NDArray[np.float64], List[float]]
+        self, frame_id: int, indices: npt.NDArray[np.float64] | npt.NDArray[np.uint32] | list[float]
     ) -> npt.NDArray[np.float64]:
         return self.__callConversionFunc(frame_id, indices, self.dll.tims_index_to_mz)
 
     def mzToIndex(
-        self, frame_id: int, mzs: UnionType[npt.NDArray[np.float64], List[float]]
+        self, frame_id: int, mzs: npt.NDArray[np.float64] | npt.NDArray[np.uint32] | list[float]
     ) -> npt.NDArray[np.float64]:
         return self.__callConversionFunc(frame_id, mzs, self.dll.tims_mz_to_index)
 
     def scanNumToOneOverK0(
-        self, frame_id: int, scan_nums: UnionType[npt.NDArray[np.float64], List[float]]
+        self, frame_id: int, scan_nums: npt.NDArray[np.float64] | npt.NDArray[np.uint32] | list[float]
     ) -> npt.NDArray[np.float64]:
         return self.__callConversionFunc(
             frame_id, scan_nums, self.dll.tims_scannum_to_oneoverk0
         )
 
     def oneOverK0ToScanNum(
-        self, frame_id: int, mobilities: UnionType[npt.NDArray[np.float64], List[float]]
+        self, frame_id: int, mobilities: npt.NDArray[np.float64] | npt.NDArray[np.uint32] | list[float]
     ) -> npt.NDArray[np.float64]:
         return self.__callConversionFunc(
             frame_id, mobilities, self.dll.tims_oneoverk0_to_scannum
         )
 
     def scanNumToVoltage(
-        self, frame_id: int, scan_nums: UnionType[npt.NDArray[np.float64], List[float]]
+        self, frame_id: int, scan_nums: npt.NDArray[np.float64] | npt.NDArray[np.uint32] | list[float]
     ) -> npt.NDArray[np.float64]:
         return self.__callConversionFunc(
             frame_id, scan_nums, self.dll.tims_scannum_to_voltage
         )
 
     def voltageToScanNum(
-        self, frame_id: int, voltages: UnionType[npt.NDArray[np.float64], List[float]]
+        self, frame_id: int, voltages: npt.NDArray[np.float64] | npt.NDArray[np.uint32] | list[float]
     ) -> npt.NDArray[np.float64]:
         return self.__callConversionFunc(
             frame_id, voltages, self.dll.tims_voltage_to_scannum
@@ -385,7 +385,7 @@ class TimsData:
 
     def readScans(
         self, frame_id: int, scan_begin: int, scan_end: int
-    ) -> List[Tuple[npt.NDArray[np.uint32], npt.NDArray[np.uint32]]]:
+    ) -> list[tuple[npt.NDArray[np.uint32], npt.NDArray[np.uint32]]]:
         """Read a range of scans from a frame, returning a list of scans, each scan being represented as a
         tuple (index_array, intensity_array).
 
@@ -393,7 +393,7 @@ class TimsData:
 
         buf = self.readScansDllBuffer(frame_id, scan_begin, scan_end)
 
-        result: List[Tuple[npt.NDArray[np.uint32], npt.NDArray[np.uint32]]] = []
+        result: list[tuple[npt.NDArray[np.uint32], npt.NDArray[np.uint32]]] = []
         d = scan_end - scan_begin
         for i in range(scan_begin, scan_end):
             npeaks = buf[i - scan_begin]
@@ -407,10 +407,10 @@ class TimsData:
 
     # read some peak-picked MS/MS spectra for a given list of precursors; returns a dict mapping
     # 'precursor_id' to a pair of arrays (mz_values, area_values).
-    def readPasefMsMs(self, precursor_list: List[int]) -> Dict[int, Tuple[Any, Any]]:
+    def readPasefMsMs(self, precursor_list: list[int]) -> dict[int, tuple[Any, Any]]:
         precursors_for_dll = np.array(precursor_list, dtype=np.int64)
 
-        result: Dict[int, Tuple[Any, Any]] = {}
+        result: dict[int, tuple[Any, Any]] = {}
 
         @MSMS_SPECTRUM_FUNCTOR
         def callback_for_dll(
@@ -432,8 +432,8 @@ class TimsData:
 
     # read peak-picked MS/MS spectra for a given frame; returns a dict mapping
     # 'precursor_id' to a pair of arrays (mz_values, area_values).
-    def readPasefMsMsForFrame(self, frame_id: int) -> Dict[int, Tuple[Any, Any]]:
-        result: Dict[int, Tuple[Any, Any]] = {}
+    def readPasefMsMsForFrame(self, frame_id: int) -> dict[int, tuple[Any, Any]]:
+        result: dict[int, tuple[Any, Any]] = {}
 
         @MSMS_SPECTRUM_FUNCTOR
         def callback_for_dll(
@@ -452,10 +452,10 @@ class TimsData:
 
     # read some "quasi profile" MS/MS spectra for a given list of precursors; returns a dict mapping
     # 'precursor_id' to the profile arrays (intensity_values).
-    def readPasefProfileMsMs(self, precursor_list: List[int]) -> Dict[int, Any]:
+    def readPasefProfileMsMs(self, precursor_list: list[int]) -> dict[int, Any]:
         precursors_for_dll = np.array(precursor_list, dtype=np.int64)
 
-        result: Dict[int, Any] = {}
+        result: dict[int, Any] = {}
 
         @MSMS_PROFILE_SPECTRUM_FUNCTOR
         def callback_for_dll(
@@ -477,8 +477,8 @@ class TimsData:
 
     # read "quasi profile" MS/MS spectra for a given frame; returns a dict mapping
     # 'precursor_id' to the profile arrays (intensity_values).
-    def readPasefProfileMsMsForFrame(self, frame_id: int) -> Dict[int, Any]:
-        result: Dict[int, Any] = {}
+    def readPasefProfileMsMsForFrame(self, frame_id: int) -> dict[int, Any]:
+        result: dict[int, Any] = {}
 
         @MSMS_PROFILE_SPECTRUM_FUNCTOR
         def callback_for_dll(
@@ -502,9 +502,9 @@ class TimsData:
         frame_id: int,
         scan_begin: int,
         scan_end: int,
-        peak_picker_resolution: Optional[float] = None,
-    ) -> Optional[Tuple[Any, Any]]:
-        result: Optional[Tuple[Any, Any]] = None
+        peak_picker_resolution: float | None = None,
+    ) -> tuple[Any, Any] | None:
+        result: tuple[Any, Any] | None = None
 
         @MSMS_SPECTRUM_FUNCTOR
         def callback_for_dll(
@@ -537,8 +537,8 @@ class TimsData:
     # returns the profile array (intensity_values).
     def extractProfileForFrame(
         self, frame_id: int, scan_begin: int, scan_end: int
-    ) -> Optional[Any]:
-        result: Optional[Any] = None
+    ) -> Any | None:
+        result: Any | None = None
 
         @MSMS_PROFILE_SPECTRUM_FUNCTOR
         def callback_for_dll(

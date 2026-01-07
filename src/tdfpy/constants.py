@@ -2,12 +2,12 @@
 This module defines constants and an enumeration related to the 'tdfpy' package.
 """
 
-from enum import Enum
+from enum import StrEnum
 
 PROTON_MASS = 1.007276466
 
 
-class TableNames(Enum):
+class TableNames(StrEnum):
     """
     Enum to store all possible analysis.tdf table names
     """

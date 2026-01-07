@@ -5,7 +5,8 @@ This module provides a cleaner interface using NamedTuples and convenience funct
 for reading centroided MS1 spectra with peak clustering/centroiding algorithms.
 """
 
-from typing import Generator, List, Literal, NamedTuple, Optional, Union
+from typing import Literal, NamedTuple
+from collections.abc import Generator
 import logging
 
 import numpy as np # type: ignore
@@ -15,10 +16,10 @@ from .noise import estimate_noise_level
 
 # Try to import Rust extension, fallback to Python implementation
 try:
-    from tdfpy._tdfpy_rust import merge_peaks as _merge_peaks_rust
+    from tdfpy._tdfpy_rust import merge_peaks as _merge_peaks_rust # type: ignore[import]
     _HAS_RUST = True
 except ImportError:
-    _HAS_RUST = False
+    _HAS_RUST = False # type: ignore[assignment]
 
 
 logger = logging.getLogger(__name__)
@@ -55,7 +56,7 @@ class Ms1Spectrum(NamedTuple):
     spectrum_index: int
     frame_id: int
     retention_time: float
-    peaks: List[Peak]
+    peaks: list[Peak]
     ion_mobility_type: Literal["ook0", "ccs"]
 
     @property
@@ -80,9 +81,9 @@ def merge_peaks(
     im_tolerance: float = 0.05,
     im_tolerance_type: Literal["relative", "absolute"] = "relative",
     min_peaks: int = 3,
-    max_peaks: Optional[int] = None,
+    max_peaks: int | None = None,
     use_rust: bool = True,
-) -> List[Peak]:
+) -> list[Peak]:
     """Centroid profile-like peaks using m/z and ion mobility tolerances.
 
     This function implements a greedy clustering algorithm that centroids raw peaks
@@ -113,7 +114,7 @@ def merge_peaks(
     """
     # Use Rust implementation if available
     if _HAS_RUST and use_rust:
-        merged_mz, merged_intensity, merged_mobility = _merge_peaks_rust(
+        merged_mz, merged_intensity, merged_mobility = _merge_peaks_rust( # type: ignore[call-arg]
             mz_array,
             intensity_array,
             ion_mobility_array,
@@ -124,10 +125,14 @@ def merge_peaks(
             min_peaks,
             max_peaks,
         )
+
+        if not isinstance(merged_mz, np.ndarray) or not isinstance(merged_intensity, np.ndarray) or not isinstance(merged_mobility, np.ndarray):
+            raise RuntimeError("Rust merge_peaks did not return numpy arrays as expected")
+
         # Convert numpy arrays to Peak list
         return [
-            Peak(mz=float(mz), intensity=float(intensity), ion_mobility=float(mobility))
-            for mz, intensity, mobility in zip(merged_mz, merged_intensity, merged_mobility)
+            Peak(mz=float(mz), intensity=float(intensity), ion_mobility=float(mobility)) # type: ignore[call-arg]
+            for mz, intensity, mobility in zip(merged_mz, merged_intensity, merged_mobility, strict=True)  # type: ignore[call-arg]
         ]
 
     # Fallback to Python implementation
@@ -153,8 +158,8 @@ def _merge_peaks_python(
     im_tolerance: float = 0.05,
     im_tolerance_type: Literal["relative", "absolute"] = "relative",
     min_peaks: int = 3,
-    max_peaks: Optional[int] = None,
-) -> List[Peak]:
+    max_peaks: int | None = None,
+) -> list[Peak]:
     """Python implementation of merge_peaks (fallback when Rust extension unavailable)."""
     logger.debug(
         "Centroiding %d raw peaks with mz_tol=%s %s, im_tol=%s %s, min_peaks=%d, max_peaks=%s",
@@ -193,7 +198,7 @@ def _merge_peaks_python(
 
     # Use boolean mask for tracking used peaks
     used_mask = np.zeros(len(mz_array), dtype=bool)
-    merged_peaks: List[Peak] = []
+    merged_peaks: list[Peak] = []
 
     for peak_idx in intensity_order:
         if used_mask[peak_idx]:
@@ -279,21 +284,19 @@ def _merge_peaks_python(
 def get_centroided_ms1_spectrum(
     td: TimsData,
     frame_id: int,
-    spectrum_index: Optional[int] = None,
+    spectrum_index: int | None = None,
     ion_mobility_type: Literal["ook0", "ccs"] = "ook0",
     mz_tolerance: float = 8.0,
     mz_tolerance_type: Literal["ppm", "da"] = "ppm",
     im_tolerance: float = 0.05,
     im_tolerance_type: Literal["relative", "absolute"] = "relative",
     min_peaks: int = 3,
-    max_peaks: Optional[int] = None,
-    noise_filter: Optional[
-        Union[
-            Literal["mad", "percentile", "histogram", "baseline", "iterative_median"],
-            float,
-            int,
-        ]
-    ] = None,
+    max_peaks: int | None = None,
+    noise_filter: None | (
+            Literal["mad", "percentile", "histogram", "baseline", "iterative_median"] |
+            float |
+            int
+    ) = None,
     use_rust: bool = True,
 ) -> Ms1Spectrum:
     """Extract a centroided MS1 spectrum for a single frame.
@@ -400,7 +403,7 @@ def get_centroided_ms1_spectrum(
     logger.debug(
         "Computing %s ion mobility values for %d scans", ion_mobility_type, num_scans
     )
-    ion_mobility = td.scanNumToOneOverK0(frame_id, np.arange(0, num_scans))
+    ion_mobility = td.scanNumToOneOverK0(frame_id, np.arange(0, num_scans)) # type: ignore[call-arg]
 
     # Read all scans at once
     logger.debug("Reading %d scans from frame %d", num_scans, frame_id)
@@ -517,20 +520,18 @@ def get_centroided_ms1_spectrum(
 
 def get_centroided_ms1_spectra(
     td: TimsData,
-    frame_ids: Optional[List[int]] = None,
+    frame_ids: list[int] | None = None,
     ion_mobility_type: Literal["ook0", "ccs"] = "ook0",
     mz_tolerance: float = 8.0,
     mz_tolerance_type: Literal["ppm", "da"] = "ppm",
     im_tolerance: float = 0.05,
     im_tolerance_type: Literal["relative", "absolute"] = "relative",
     min_peaks: int = 3,
-    max_peaks: Optional[int] = None,
-    noise_filter: Optional[
-        Union[
-            Literal["mad", "percentile", "histogram", "baseline", "iterative_median"],
-            float,
-        ]
-    ] = None,
+    max_peaks: int | None = None,
+    noise_filter: None | (
+            Literal["mad", "percentile", "histogram", "baseline", "iterative_median"] |
+            float
+    ) = None,
     use_rust: bool = True,
 ) -> Generator[Ms1Spectrum, None, None]:
     """Extract centroided MS1 spectra for multiple frames.

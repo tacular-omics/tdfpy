@@ -5,7 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.2.0] - 2024
+## [0.3.0]
+- Rust backend for centroiding (11x faster)
+- uv / ty / ruff
+- python 3.11 +
+- namesspace (import tdfpy as td)
+
+## [0.2.0]
 
 ### Added
 - High-level API with `Peak` and `Ms1Spectrum` NamedTuples
@@ -24,14 +30,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - High-level API returns retention time in minutes
 - Relaxed dependency version requirements
 
-## [0.1.7] - 2023
+## [0.1.7]
 
 ### Added
 - PRM (Parallel Reaction Monitoring) related database tables
 - `is_dda` and `is_prm` properties to distinguish acquisition modes
 - GitHub Actions workflows for pytest and pylint
 
-## [0.1.6] - 2023
+## [0.1.6]
 
 ### Changed
 - Updated numpy and pandas version requirements
@@ -39,20 +45,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 - Unicode import from numpy (deprecated)
 
-## [0.1.3] - 2022
+## [0.1.3]
 
 ### Added
 - Logging support throughout the package
 - Test data moved into repository for easier testing
 - Updated numpy and pandas dependencies
 
-## [0.1.2] - 2022
+## [0.1.2]
 
 ### Added
 - Context manager support (`timsdata_connect()`) for automatic resource cleanup
 - `with` statement support for `TimsData` class
 
-## [0.1.0] - 2021
+## [0.1.0]
 
 Initial release with basic functionality.
 

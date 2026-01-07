@@ -9,11 +9,11 @@ from tdfpy import (
     get_centroided_ms1_spectrum,
     get_centroided_ms1_spectra,
 )
-from tdfpy.spectra import _merge_peaks_python, _HAS_RUST
+from tdfpy.spectra import _merge_peaks_python, _HAS_RUST # type: ignore[import]
 
 # Try to import Rust extension for comparison tests
 if _HAS_RUST:
-    from tdfpy._tdfpy_rust import merge_peaks as _merge_peaks_rust
+    from tdfpy._tdfpy_rust import merge_peaks as _merge_peaks_rust # type: ignore[import]
 
 TDF_PATH = r"tests/data/200ngHeLaPASEF_1min.d"
 

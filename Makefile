@@ -49,15 +49,15 @@ test-rust: install-rust
 	uv run pytest tests/ -v
 
 # Run all linting
-lint: mypy pylint
+lint: ty ruff
 
-# Run mypy type checking
-mypy:
-	uv run mypy src/tdfpy
+# Run ty type checking
+ty:
+	uv run ty check src/tdfpy
 
-# Run pylint
-pylint:
-	uv run pylint src/tdfpy
+# Run ruff linting
+ruff:
+	uv run ruff check src/tdfpy
 
 # Format code (add ruff or black to dev dependencies if needed)
 format:
@@ -96,6 +96,8 @@ clean:
 publish: build
 	uv publish
 
-# Run test workflow locally (using medium ubuntu image with Python pre-installed)
-act-test:
-	act -j build -W .github/workflows/python-package.yml -P ubuntu-latest=catthehacker/ubuntu:act-latest
+
+upgrade: ## Upgrade Python syntax to 3.11+
+	@echo "🚀 Upgrading Python syntax to 3.11+..."
+	@find src/tdfpy tests -name "*.py" -type f -exec uv run pyupgrade --py311-plus {} +
+	@echo "✅ Python syntax upgraded to 3.11+"
