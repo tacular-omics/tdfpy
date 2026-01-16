@@ -45,7 +45,7 @@ class PandasTdf:
         The 'CALIBRATION_INFO' table as a pandas DataFrame.
         :return: table as a pandas DataFrame
         """
-        return convert_table_to_df(self.db_path, TableNames.CALIBRATION_INFO.value)
+        return convert_table_to_df(self.db_path, TableNames.CALIBRATION_INFO)
 
     @property
     def dia_frame_msms_info(self) -> pd.DataFrame:
@@ -53,7 +53,7 @@ class PandasTdf:
         The 'DIA_FRAME_MSMS_INFO' table as a pandas DataFrame.
         :return: table as a pandas DataFrame
         """
-        return convert_table_to_df(self.db_path, TableNames.DIA_FRAME_MSMS_INFO.value)
+        return convert_table_to_df(self.db_path, TableNames.DIA_FRAME_MSMS_INFO)
 
     @property
     def dia_frame_msms_window_groups(self) -> pd.DataFrame:
@@ -62,7 +62,7 @@ class PandasTdf:
         :return: table as a pandas DataFrame
         """
         return convert_table_to_df(
-            self.db_path, TableNames.DIA_FRAME_MSMS_WINDOW_GROUPS.value
+            self.db_path, TableNames.DIA_FRAME_MSMS_WINDOW_GROUPS
         )
 
     @property
@@ -72,7 +72,7 @@ class PandasTdf:
         :return: table as a pandas DataFrame
         """
         return convert_table_to_df(
-            self.db_path, TableNames.DIA_FRAME_MSMS_WINDOWS.value
+            self.db_path, TableNames.DIA_FRAME_MSMS_WINDOWS
         )
 
     @property
@@ -81,7 +81,7 @@ class PandasTdf:
         The 'ERROR_LOG' table as a pandas DataFrame.
         :return: table as a pandas DataFrame
         """
-        return convert_table_to_df(self.db_path, TableNames.ERROR_LOG.value)
+        return convert_table_to_df(self.db_path, TableNames.ERROR_LOG)
 
     @property
     def frame_msms_info(self) -> pd.DataFrame:
@@ -89,7 +89,7 @@ class PandasTdf:
         The 'FRAME_MSMS_WINDOW' table as a pandas DataFrame.
         :return: table as a pandas DataFrame
         """
-        return convert_table_to_df(self.db_path, TableNames.FRAME_MSMS_WINDOW.value)
+        return convert_table_to_df(self.db_path, TableNames.FRAME_MSMS_WINDOW)
 
     @property
     def frame_properties(self) -> pd.DataFrame:
@@ -97,7 +97,7 @@ class PandasTdf:
         The 'FRAME_PROPERTIES' table as a pandas DataFrame.
         :return: table as a pandas DataFrame
         """
-        return convert_table_to_df(self.db_path, TableNames.FRAME_PROPERTIES.value)
+        return convert_table_to_df(self.db_path, TableNames.FRAME_PROPERTIES)
 
     @property
     def frames(self) -> pd.DataFrame:
@@ -105,7 +105,7 @@ class PandasTdf:
         The 'FRAMES' table as a pandas DataFrame.
         :return: table as a pandas DataFrame
         """
-        return convert_table_to_df(self.db_path, TableNames.FRAMES.value)
+        return convert_table_to_df(self.db_path, TableNames.FRAMES)
 
     @property
     def global_metadata(self) -> pd.DataFrame:
@@ -113,7 +113,7 @@ class PandasTdf:
         The 'GLOBAL_METADATA' table as a pandas DataFrame.
         :return: table as a pandas DataFrame
         """
-        return convert_table_to_df(self.db_path, TableNames.GLOBAL_METADATA.value)
+        return convert_table_to_df(self.db_path, TableNames.GLOBAL_METADATA)
 
     @property
     def group_properties(self) -> pd.DataFrame:
@@ -121,7 +121,7 @@ class PandasTdf:
         The 'GROUP_PROPERTIES' table as a pandas DataFrame.
         :return: table as a pandas DataFrame
         """
-        return convert_table_to_df(self.db_path, TableNames.GROUP_PROPERTIES.value)
+        return convert_table_to_df(self.db_path, TableNames.GROUP_PROPERTIES)
 
     @property
     def mz_calibration(self) -> pd.DataFrame:
@@ -129,7 +129,7 @@ class PandasTdf:
         The 'MZ_CALIBRATION' table as a pandas DataFrame.
         :return: table as a pandas DataFrame
         """
-        return convert_table_to_df(self.db_path, TableNames.MZ_CALIBRATION.value)
+        return convert_table_to_df(self.db_path, TableNames.MZ_CALIBRATION)
 
     @property
     def pasef_frame_msms_info(self) -> pd.DataFrame:
@@ -137,7 +137,7 @@ class PandasTdf:
         The 'PASEF_FRAMES_MSMS_INFO' table as a pandas DataFrame.
         :return: table as a pandas DataFrame
         """
-        return convert_table_to_df(self.db_path, TableNames.PASEF_FRAME_MSMS_INFO.value)
+        return convert_table_to_df(self.db_path, TableNames.PASEF_FRAME_MSMS_INFO)
 
     @property
     def precursors(self) -> pd.DataFrame:
@@ -145,7 +145,7 @@ class PandasTdf:
         The 'PRECURSORS' table as a pandas DataFrame.
         :return: table as a pandas DataFrame
         """
-        return convert_table_to_df(self.db_path, TableNames.PRECURSORS.value)
+        return convert_table_to_df(self.db_path, TableNames.PRECURSORS)
 
     @property
     def properties(self) -> pd.DataFrame:
@@ -153,7 +153,7 @@ class PandasTdf:
         The 'PROPERTIES' table as a pandas DataFrame.
         :return: table as a pandas DataFrame
         """
-        return convert_table_to_df(self.db_path, TableNames.PROPERTIES.value)
+        return convert_table_to_df(self.db_path, TableNames.PROPERTIES)
 
     @property
     def property_definitions(self) -> pd.DataFrame:
@@ -161,7 +161,7 @@ class PandasTdf:
         The 'PROPERTY_DEFINITIONS' table as a pandas DataFrame.
         :return: table as a pandas DataFrame
         """
-        return convert_table_to_df(self.db_path, TableNames.PROPERTY_DEFINITIONS.value)
+        return convert_table_to_df(self.db_path, TableNames.PROPERTY_DEFINITIONS)
 
     @property
     def property_groups(self) -> pd.DataFrame:
@@ -169,7 +169,7 @@ class PandasTdf:
         The 'PROPERTY_GROUPS' table as a pandas DataFrame.
         :return: table as a pandas DataFrame
         """
-        return convert_table_to_df(self.db_path, TableNames.PROPERTY_GROUPS.value)
+        return convert_table_to_df(self.db_path, TableNames.PROPERTY_GROUPS)
 
     @property
     def segments(self) -> pd.DataFrame:
@@ -177,7 +177,7 @@ class PandasTdf:
         The 'SEGMENTS' table as a pandas DataFrame.
         :return: table as a pandas DataFrame
         """
-        return convert_table_to_df(self.db_path, TableNames.SEGMENTS.value)
+        return convert_table_to_df(self.db_path, TableNames.SEGMENTS)
 
     @property
     def tims_calibration(self) -> pd.DataFrame:
@@ -185,7 +185,7 @@ class PandasTdf:
         The 'TIMS_CALIBRATION' table as a pandas DataFrame.
         :return: table as a pandas DataFrame
         """
-        return convert_table_to_df(self.db_path, TableNames.TIMS_CALIBRATION.value)
+        return convert_table_to_df(self.db_path, TableNames.TIMS_CALIBRATION)
 
     @property
     def prm_frame_measurement_mode(self) -> pd.DataFrame:
@@ -194,7 +194,7 @@ class PandasTdf:
         :return: table as a pandas DataFrame
         """
         return convert_table_to_df(
-            self.db_path, TableNames.PRM_FRAME_MEASUREMENT_MODE.value
+            self.db_path, TableNames.PRM_FRAME_MEASUREMENT_MODE
         )
 
     @property
@@ -203,7 +203,7 @@ class PandasTdf:
         The 'PRM_FRAME_MSMS_INFO' table as a pandas DataFrame.
         :return: table as a pandas DataFrame
         """
-        return convert_table_to_df(self.db_path, TableNames.PRM_FRAME_MSMS_INFO.value)
+        return convert_table_to_df(self.db_path, TableNames.PRM_FRAME_MSMS_INFO)
 
     @property
     def prm_targets(self) -> pd.DataFrame:
@@ -211,7 +211,7 @@ class PandasTdf:
         The 'PRM_TARGETS' table as a pandas DataFrame.
         :return: table as a pandas DataFrame
         """
-        return convert_table_to_df(self.db_path, TableNames.PRM_TARGETS.value)
+        return convert_table_to_df(self.db_path, TableNames.PRM_TARGETS)
 
     def get_table_names(self) -> list[str]:
         """

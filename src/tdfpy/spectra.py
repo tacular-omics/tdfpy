@@ -4,15 +4,17 @@ Higher-level Pythonic API for working with MS1 spectrum data from Bruker timsTOF
 This module provides a cleaner interface using NamedTuples and convenience functions
 for reading centroided MS1 spectra with peak clustering/centroiding algorithms.
 """
-
-from typing import Literal, NamedTuple
+from typing import Any, Literal, NamedTuple
 from collections.abc import Generator
 import logging
 
-import numpy as np # type: ignore
+import numpy as np
+import pandas as pd # type: ignore
 
 from .timsdata import TimsData, oneOverK0ToCCSforMz
 from .noise import estimate_noise_level
+from .pandas_tdf import PandasTdf
+from .constants import PROTON_MASS
 
 # Try to import Rust extension, fallback to Python implementation
 try:
@@ -23,6 +25,12 @@ except ImportError:
 
 
 logger = logging.getLogger(__name__)
+
+
+
+def batch_iterator(input_list: list[Any], batch_size: int):
+    for i in range(0, len(input_list), batch_size):
+        yield input_list[i : i + batch_size]
 
 
 class Peak(NamedTuple):
@@ -70,7 +78,7 @@ class Ms1Spectrum(NamedTuple):
             f"retention_time={self.retention_time:.2f} min, num_peaks={self.num_peaks}, "
             f"ion_mobility_type='{self.ion_mobility_type}')"
         )
-
+    
 
 def merge_peaks(
     mz_array: np.ndarray,
@@ -641,3 +649,250 @@ def get_centroided_ms1_spectra(
         "Batch centroiding complete: %d successful, %d failed, %d total",
         successful_count, failed_count, len(frame_ids)
     )
+
+
+def get_tdf_df(td: TimsData) -> pd.DataFrame:
+
+    pd_tdf = PandasTdf(td.analysis_directory)
+
+    merged_df = pd.merge(
+        pd_tdf.precursors,
+        pd_tdf.frames,
+        left_on="Parent",
+        right_on="Id",
+        suffixes=("_Precursor", "_Frame"),
+    )
+
+    pasef_frame_msms_info_df = pd_tdf.pasef_frame_msms_info.drop(["Frame"], axis=1)
+
+    # count the number of items in each group
+    pasef_frame_msms_info_df["count"] = pasef_frame_msms_info_df.groupby("Precursor")[
+        "Precursor"
+    ].transform("count")
+
+    # keep only the row for each group
+    pasef_frame_msms_info_df = pasef_frame_msms_info_df.drop_duplicates(
+        subset="Precursor", keep="first"
+    )
+    assert len(pasef_frame_msms_info_df) == len(merged_df)
+
+    merged_df = pd.merge(
+        merged_df,
+        pasef_frame_msms_info_df,
+        left_on="Id_Precursor",
+        right_on="Precursor",
+        suffixes=("_Precursor", "_PasefFrameMsmsInfo"),
+    ).drop("Precursor", axis=1)
+
+    merged_df["NeutralMass"] = merged_df.apply(
+        lambda row: calculate_nmass(row["MonoisotopicMz"], row["Charge"]),
+        axis=1,
+    )
+
+    return merged_df
+
+
+class Ms2Spectrum(NamedTuple):
+    frame_id: int
+    peaks: list[Peak]
+
+    mz: float
+    charge: int | None
+    ce: float
+    iso_width: float
+    iso_mz: float
+
+    @property
+    def neutral_mass(self) -> float | None:
+        """Precursor neutral mass."""
+        if self.charge is None:
+            return None
+        return self.mz * self.charge - self.charge * PROTON_MASS
+    
+    @property
+    def mass(self) -> float | None:
+        """Precursor mass (with charge)."""
+        if self.charge is None:
+            return None
+        return self.mz * self.charge
+
+    @property
+    def num_peaks(self) -> int:
+        """Number of peaks in the spectrum."""
+        return len(self.peaks)
+
+
+def get_ms2_spectra(
+    td: TimsData,
+    batch_size: int = 100,
+) -> Generator[Ms2Spectrum, None, None]:
+    
+    if td.conn is None:
+        logger.error("TimsData connection is not open")
+        raise RuntimeError("TimsData connection is not open")
+
+    merged_df = get_tdf_df(td)
+    for precursor_batch in batch_iterator(
+        input_list=list(merged_df.iterrows()), batch_size=batch_size
+    ):
+        pasef_ms_ms = None
+        pasef_ms_ms = td.readPasefMsMs(
+            [
+                int(precursor_row["Id_Precursor"])
+                for _, precursor_row in precursor_batch
+            ]
+        )
+
+        for _, precursor_row in precursor_batch:
+
+            #precursor_id = int(precursor_row["Id_Precursor"])
+            #parent_id = int(precursor_row["Parent"])
+            charge = precursor_row["Charge"]
+            mz = precursor_row["MonoisotopicMz"]
+
+            frame_id = int(precursor_row["Id"])
+
+            #ook0 = precursor_row["OOK0"]
+            #ccs = precursor_row["CCS"]
+            #prec_intensity = precursor_row["Intensity"]
+            #mass = calculate_p1mass(mz, charge)
+
+            ms2_spectra = Ms2Spectrum(
+                mz=mz,
+                mass=mass,
+                charge=charge,
+                mz_spectra=[],
+                intensity_spectra=[],
+                charge_spectra=[],
+            )
+
+            ms2_spectra.parent_id = parent_id
+            ms2_spectra.precursor_id = precursor_id
+            ms2_spectra.prec_intensity = int(prec_intensity)
+            ms2_spectra.ook0 = round(ook0, 4)
+            ms2_spectra.ccs = round(ccs, 1)
+            ms2_spectra.rt = round(precursor_row["Time"], 2)
+            ms2_spectra.ce = round(precursor_row["CollisionEnergy"], 1)
+            ms2_spectra.iso_width = round(precursor_row["IsolationWidth"], 1)
+            ms2_spectra.iso_mz = round(precursor_row["IsolationMz"], 4)
+            ms2_spectra.scan_begin = round(float(precursor_row["ScanNumBegin"]), 4)
+            ms2_spectra.scan_end = round(float(precursor_row["ScanNumEnd"]), 4)
+            ms2_spectra.info["Accumulation_Time"] = round(
+                float(precursor_row["AccumulationTime"]), 4
+            )
+            ms2_spectra.info["Ramp_Time"] = round(
+                float(precursor_row["RampTime"]), 4
+            )
+            ms2_spectra.info["PASEF_Scans"] = int(precursor_row["count"])
+
+            if "Pressure" in precursor_row:
+                ms2_spectra.info["Pressure"] = round(
+                    float(precursor_row["Pressure"]), 4
+                )
+
+            ook0_range = td.scanNumToOneOverK0(
+                int(precursor_row["Id_Frame"]),
+                [ms2_spectra.scan_begin, ms2_spectra.scan_end],
+            )
+            ms2_spectra.info["OOK0_Begin"] = round(float(ook0_range[0]), 4)
+            ms2_spectra.info["OOK0_End"] = round(float(ook0_range[1]), 4)
+
+            ms2_spectra_data = list(
+                zip(pasef_ms_ms[precursor_id][0], pasef_ms_ms[precursor_id][1])
+            )
+
+            if len(ms2_spectra_data) == 0:
+                mz_array = np.array([])
+                intensity_array = np.array([])
+            else:
+                mz_array = np.array([data[0] for data in ms2_spectra_data])
+                intensity_array = np.array([data[1] for data in ms2_spectra_data])
+
+            # Apply min_intensity filter
+            if min_spectra_intensity is not None:
+
+                if (
+                    isinstance(min_spectra_intensity, float)
+                    and 0.0 <= min_spectra_intensity <= 1.0
+                ):
+                    # Convert percentage to absolute intensity
+                    _min_intensity = max(intensity_array) * min_spectra_intensity
+                elif (
+                    isinstance(min_spectra_intensity, (float, int))
+                    and min_spectra_intensity > 1.0
+                ):
+                    _min_intensity = min_spectra_intensity
+
+                intensity_mask = intensity_array >= _min_intensity
+                mz_array = mz_array[intensity_mask]
+                intensity_array = intensity_array[intensity_mask]
+
+            # Apply max_intensity filter
+            if max_spectra_intensity is not None:
+                if (
+                    isinstance(max_spectra_intensity, float)
+                    and 0.0 <= max_spectra_intensity <= 1.0
+                ):
+                    # Convert percentage to absolute intensity
+                    _max_intensity = max(intensity_array) * max_spectra_intensity
+                elif (
+                    isinstance(max_spectra_intensity, (float, int))
+                    and max_spectra_intensity > 1.0
+                ):
+                    _max_intensity = max_spectra_intensity
+
+                intensity_mask = intensity_array <= _max_intensity
+                mz_array = mz_array[intensity_mask]
+                intensity_array = intensity_array[intensity_mask]
+
+            if min_spectra_mz is not None:
+                mz_mask = mz_array >= min_spectra_mz
+                mz_array = mz_array[mz_mask]
+                intensity_array = intensity_array[mz_mask]
+
+            if max_spectra_mz is not None:
+                mz_mask = mz_array <= max_spectra_mz
+                mz_array = mz_array[mz_mask]
+                intensity_array = intensity_array[mz_mask]
+
+            if remove_precursor is True:
+                # Remove precursor peak from MS/MS spectra
+                precursor_mz = ms2_spectra.mz
+                min_prec_mz = precursor_mz - precursor_peak_width
+                max_precursor_mz = precursor_mz + precursor_peak_width
+
+                precursor_mask = ~(
+                    (mz_array >= min_prec_mz) & (mz_array <= max_precursor_mz)
+                )
+                mz_array = mz_array[precursor_mask]
+                intensity_array = intensity_array[precursor_mask]
+
+            if top_n_peaks is not None and len(intensity_array) > top_n_peaks:
+
+                if top_n_peaks < 0:
+                    raise ValueError("top_n_peaks must be a positive integer")
+
+                elif top_n_peaks == 0:
+                    mz_array = np.array([])
+                    intensity_array = np.array([])
+                elif top_n_peaks > len(intensity_array):
+                    # Get indices of top N intensities
+                    top_indices = np.argpartition(intensity_array, -top_n_peaks)[
+                        -top_n_peaks:
+                    ]
+                    mz_array = mz_array[top_indices]
+                    intensity_array = intensity_array[top_indices]
+
+            # Sort by m/z values
+            sort_indices = np.argsort(mz_array)
+            mz_array = mz_array[sort_indices]
+            intensity_array = intensity_array[sort_indices]
+
+            # Convert to lists
+            ms2_spectra.mz_spectra = mz_array.tolist()
+            ms2_spectra.intensity_spectra = intensity_array.astype(int).tolist()
+
+            assert len(ms2_spectra.mz_spectra) == len(ms2_spectra.intensity_spectra)
+
+            yield ms2_spectra
+

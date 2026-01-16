@@ -246,6 +246,7 @@ class TimsData:
         if not isinstance(analysis_directory, str): # type: ignore[type-var]
             raise ValueError("analysis_directory must be a string.")
 
+        self.analysis_directory = analysis_directory
         self.dll: CDLL = dll
         self.handle: int | None
         self.conn: sqlite3.Connection | None
