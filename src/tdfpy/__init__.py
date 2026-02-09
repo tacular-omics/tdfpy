@@ -17,8 +17,6 @@ Attributes:
 from .pandas_tdf import PandasTdf
 from .timsdata import TimsData, timsdata_connect
 from .spectra import (
-    Peak,
-    Ms1Spectrum,
     merge_peaks,
     get_centroided_ms1_spectrum,
     get_centroided_ms1_spectra,
@@ -31,8 +29,6 @@ __all__ = [
     "PandasTdf",
     "TimsData",
     "timsdata_connect",
-    "Peak",
-    "Ms1Spectrum",
     "merge_peaks",
     "get_centroided_ms1_spectrum",
     "get_centroided_ms1_spectra",

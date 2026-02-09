@@ -27,7 +27,7 @@ def convert_table_to_df(db_path: str, table_name: str) -> pd.DataFrame:
     """
     logger.debug("Fetching " + table_name + " from " + db_path)
     with sqlite3.connect(str(db_path)) as conn:
-        df = pd.read_sql_query(f"SELECT * FROM {table_name}", conn) # type: ignore[arg-type]
+        df = pd.read_sql_query(f"SELECT * FROM {table_name}", conn)  # type: ignore[arg-type]
         return df
 
 
@@ -71,9 +71,7 @@ class PandasTdf:
         The 'DIA_FRAME_MSMS_WINDOWS' table as a pandas DataFrame.
         :return: table as a pandas DataFrame
         """
-        return convert_table_to_df(
-            self.db_path, TableNames.DIA_FRAME_MSMS_WINDOWS
-        )
+        return convert_table_to_df(self.db_path, TableNames.DIA_FRAME_MSMS_WINDOWS)
 
     @property
     def error_log(self) -> pd.DataFrame:
@@ -193,9 +191,7 @@ class PandasTdf:
         The 'PRM_FRAME_MEASUREMENT_MODE' table as a pandas DataFrame.
         :return: table as a pandas DataFrame
         """
-        return convert_table_to_df(
-            self.db_path, TableNames.PRM_FRAME_MEASUREMENT_MODE
-        )
+        return convert_table_to_df(self.db_path, TableNames.PRM_FRAME_MEASUREMENT_MODE)
 
     @property
     def prm_frame_msms_info(self) -> pd.DataFrame:

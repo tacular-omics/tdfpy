@@ -243,7 +243,7 @@ class TimsData:
         use_recalibrated_state: bool = False,
         pressure_compensation_strategy: PressureCompensationStrategy = PressureCompensationStrategy.NoPressureCompensation,
     ) -> None:
-        if not isinstance(analysis_directory, str): # type: ignore[type-var]
+        if not isinstance(analysis_directory, str):  # type: ignore[type-var]
             raise ValueError("analysis_directory must be a string.")
 
         self.analysis_directory = analysis_directory
@@ -310,38 +310,50 @@ class TimsData:
         return out
 
     def indexToMz(
-        self, frame_id: int, indices: npt.NDArray[np.float64] | npt.NDArray[np.uint32] | list[float]
+        self,
+        frame_id: int,
+        indices: npt.NDArray[np.float64] | npt.NDArray[np.uint32] | list[float],
     ) -> npt.NDArray[np.float64]:
         return self.__callConversionFunc(frame_id, indices, self.dll.tims_index_to_mz)
 
     def mzToIndex(
-        self, frame_id: int, mzs: npt.NDArray[np.float64] | npt.NDArray[np.uint32] | list[float]
+        self,
+        frame_id: int,
+        mzs: npt.NDArray[np.float64] | npt.NDArray[np.uint32] | list[float],
     ) -> npt.NDArray[np.float64]:
         return self.__callConversionFunc(frame_id, mzs, self.dll.tims_mz_to_index)
 
     def scanNumToOneOverK0(
-        self, frame_id: int, scan_nums: npt.NDArray[np.float64] | npt.NDArray[np.uint32] | list[float]
+        self,
+        frame_id: int,
+        scan_nums: npt.NDArray[np.float64] | npt.NDArray[np.uint32] | list[float],
     ) -> npt.NDArray[np.float64]:
         return self.__callConversionFunc(
             frame_id, scan_nums, self.dll.tims_scannum_to_oneoverk0
         )
 
     def oneOverK0ToScanNum(
-        self, frame_id: int, mobilities: npt.NDArray[np.float64] | npt.NDArray[np.uint32] | list[float]
+        self,
+        frame_id: int,
+        mobilities: npt.NDArray[np.float64] | npt.NDArray[np.uint32] | list[float],
     ) -> npt.NDArray[np.float64]:
         return self.__callConversionFunc(
             frame_id, mobilities, self.dll.tims_oneoverk0_to_scannum
         )
 
     def scanNumToVoltage(
-        self, frame_id: int, scan_nums: npt.NDArray[np.float64] | npt.NDArray[np.uint32] | list[float]
+        self,
+        frame_id: int,
+        scan_nums: npt.NDArray[np.float64] | npt.NDArray[np.uint32] | list[float],
     ) -> npt.NDArray[np.float64]:
         return self.__callConversionFunc(
             frame_id, scan_nums, self.dll.tims_scannum_to_voltage
         )
 
     def voltageToScanNum(
-        self, frame_id: int, voltages: npt.NDArray[np.float64] | npt.NDArray[np.uint32] | list[float]
+        self,
+        frame_id: int,
+        voltages: npt.NDArray[np.float64] | npt.NDArray[np.uint32] | list[float],
     ) -> npt.NDArray[np.float64]:
         return self.__callConversionFunc(
             frame_id, voltages, self.dll.tims_voltage_to_scannum

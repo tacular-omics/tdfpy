@@ -3,57 +3,21 @@ import numpy as np
 
 from tdfpy import (
     timsdata,
-    Peak,
-    Ms1Spectrum,
     merge_peaks,
     get_centroided_ms1_spectrum,
     get_centroided_ms1_spectra,
 )
-from tdfpy.spectra import _merge_peaks_python, _HAS_RUST # type: ignore[import]
+from tdfpy.spectra import _merge_peaks_python, _HAS_RUST  # type: ignore[import]
 
 # Try to import Rust extension for comparison tests
 if _HAS_RUST:
-    from tdfpy._tdfpy_rust import merge_peaks as _merge_peaks_rust # type: ignore[import]
+    from tdfpy._tdfpy_rust import merge_peaks as _merge_peaks_rust  # type: ignore[import]
 
 TDF_PATH = r"tests/data/200ngHeLaPASEF_1min.d"
 
 
 class TestSpectra(unittest.TestCase):
     """Test the higher-level spectra API."""
-
-    def test_peak_namedtuple(self):
-        """Test Peak NamedTuple creation and access."""
-        peak = Peak(mz=123.456, intensity=1000.0, ion_mobility=0.8)
-
-        self.assertAlmostEqual(peak.mz, 123.456)
-        self.assertAlmostEqual(peak.intensity, 1000.0)
-        self.assertAlmostEqual(peak.ion_mobility, 0.8)
-
-        # Test that it's a tuple (immutable)
-        self.assertIsInstance(peak, tuple)
-
-    def test_ms1_spectrum_namedtuple(self):
-        """Test Ms1Spectrum NamedTuple creation and access."""
-        peaks = [
-            Peak(mz=100.0, intensity=500.0, ion_mobility=0.5),
-            Peak(mz=200.0, intensity=1000.0, ion_mobility=0.5),
-        ]
-
-        spectrum = Ms1Spectrum(
-            spectrum_index=0,
-            frame_id=1,
-            retention_time=1.5,
-            peaks=peaks,
-            ion_mobility_type="ook0",
-        )
-
-        self.assertEqual(spectrum.spectrum_index, 0)
-        self.assertEqual(spectrum.frame_id, 1)
-        self.assertAlmostEqual(spectrum.retention_time, 1.5)
-        self.assertEqual(spectrum.num_peaks, 2)
-        self.assertEqual(len(spectrum.peaks), 2)
-        self.assertEqual(spectrum.ion_mobility_type, "ook0")
-        self.assertIsInstance(spectrum, tuple)
 
     def test_get_centroided_ms1_spectrum(self):
         """Test extracting a single centroided MS1 spectrum."""
@@ -69,19 +33,17 @@ class TestSpectra(unittest.TestCase):
             spectrum = get_centroided_ms1_spectrum(td, frame_id)
 
             # Verify structure
-            self.assertIsInstance(spectrum, Ms1Spectrum)
-            self.assertEqual(spectrum.frame_id, frame_id)
-            self.assertGreaterEqual(spectrum.retention_time, 0)
-            self.assertEqual(spectrum.num_peaks, len(spectrum.peaks))
+            self.assertIsInstance(spectrum, np.ndarray)
+            self.assertEqual(spectrum.ndim, 2)
+            self.assertEqual(spectrum.shape[1], 3)
 
             # Verify peaks if any exist
-            if spectrum.num_peaks > 0:
-                first_peak = spectrum.peaks[0]
-                self.assertIsInstance(first_peak, Peak)
-                self.assertGreater(first_peak.mz, 0)
-                self.assertGreater(first_peak.intensity, 0)
-                # Ion mobility should be set
-                self.assertIsNotNone(first_peak.ion_mobility)
+            if len(spectrum) > 0:
+                first_peak = spectrum[0]
+                mz, intensity, mobility = first_peak
+                self.assertGreater(mz, 0)
+                self.assertGreater(intensity, 0)
+                self.assertGreater(mobility, 0)
 
     def test_get_centroided_ms1_spectra_subset(self):
         """Test extracting specific MS1 spectra (limited to 2)."""
@@ -99,12 +61,10 @@ class TestSpectra(unittest.TestCase):
                 spectra = list(spectra_gen)
 
                 self.assertEqual(len(spectra), 2)
-                self.assertEqual(spectra[0].frame_id, frame_ids[0])
-                self.assertEqual(spectra[1].frame_id, frame_ids[1])
-
-                # Verify sequential indexing
-                for idx, spectrum in enumerate(spectra):
-                    self.assertEqual(spectrum.spectrum_index, idx)
+                for spectrum in spectra:
+                    self.assertIsInstance(spectrum, np.ndarray)
+                    self.assertEqual(spectrum.ndim, 2)
+                    self.assertEqual(spectrum.shape[1], 3)
 
     def test_merge_peaks_basic(self):
         """Test basic peak merging functionality."""
@@ -127,10 +87,8 @@ class TestSpectra(unittest.TestCase):
 
         # Should merge into 2 peaks
         self.assertEqual(len(peaks), 2)
-
-        # Check that peaks are Peak objects
-        for peak in peaks:
-            self.assertIsInstance(peak, Peak)
+        self.assertIsInstance(peaks, np.ndarray)
+        self.assertEqual(peaks.shape, (2, 3))
 
     @unittest.skipIf(not _HAS_RUST, "Rust extension not available")
     def test_rust_python_equivalence(self):
@@ -138,73 +96,102 @@ class TestSpectra(unittest.TestCase):
         test_cases = [
             # Basic test
             {
-                'mz': np.array([100.0, 100.0008, 100.0016, 200.0, 200.0005]),
-                'intensity': np.array([1000.0, 800.0, 600.0, 2000.0, 1500.0]),
-                'im': np.array([0.8, 0.8, 0.8, 0.9, 0.9]),
-                'params': {'mz_tolerance': 10, 'mz_tolerance_type': 'ppm', 'min_peaks': 1}
+                "mz": np.array([100.0, 100.0008, 100.0016, 200.0, 200.0005]),
+                "intensity": np.array([1000.0, 800.0, 600.0, 2000.0, 1500.0]),
+                "im": np.array([0.8, 0.8, 0.8, 0.9, 0.9]),
+                "params": {
+                    "mz_tolerance": 10,
+                    "mz_tolerance_type": "ppm",
+                    "min_peaks": 1,
+                },
             },
             # Empty arrays
             {
-                'mz': np.array([]),
-                'intensity': np.array([]),
-                'im': np.array([]),
-                'params': {'mz_tolerance': 8, 'mz_tolerance_type': 'ppm', 'min_peaks': 3}
+                "mz": np.array([]),
+                "intensity": np.array([]),
+                "im": np.array([]),
+                "params": {
+                    "mz_tolerance": 8,
+                    "mz_tolerance_type": "ppm",
+                    "min_peaks": 3,
+                },
             },
             # Single peak
             {
-                'mz': np.array([100.0]),
-                'intensity': np.array([1000.0]),
-                'im': np.array([0.8]),
-                'params': {'mz_tolerance': 8, 'mz_tolerance_type': 'ppm', 'min_peaks': 1}
+                "mz": np.array([100.0]),
+                "intensity": np.array([1000.0]),
+                "im": np.array([0.8]),
+                "params": {
+                    "mz_tolerance": 8,
+                    "mz_tolerance_type": "ppm",
+                    "min_peaks": 1,
+                },
             },
             # Dalton tolerance
             {
-                'mz': np.array([100.0, 100.005, 100.01, 200.0]),
-                'intensity': np.array([1000.0, 800.0, 600.0, 2000.0]),
-                'im': np.array([0.8, 0.8, 0.8, 0.9]),
-                'params': {'mz_tolerance': 0.01, 'mz_tolerance_type': 'da', 'min_peaks': 1}
+                "mz": np.array([100.0, 100.005, 100.01, 200.0]),
+                "intensity": np.array([1000.0, 800.0, 600.0, 2000.0]),
+                "im": np.array([0.8, 0.8, 0.8, 0.9]),
+                "params": {
+                    "mz_tolerance": 0.01,
+                    "mz_tolerance_type": "da",
+                    "min_peaks": 1,
+                },
             },
             # Absolute ion mobility tolerance
             {
-                'mz': np.array([100.0, 100.0008, 200.0, 200.0005]),
-                'intensity': np.array([1000.0, 800.0, 2000.0, 1500.0]),
-                'im': np.array([0.8, 0.82, 0.9, 0.95]),
-                'params': {'mz_tolerance': 10, 'mz_tolerance_type': 'ppm', 'im_tolerance': 0.03, 
-                          'im_tolerance_type': 'absolute', 'min_peaks': 1}
+                "mz": np.array([100.0, 100.0008, 200.0, 200.0005]),
+                "intensity": np.array([1000.0, 800.0, 2000.0, 1500.0]),
+                "im": np.array([0.8, 0.82, 0.9, 0.95]),
+                "params": {
+                    "mz_tolerance": 10,
+                    "mz_tolerance_type": "ppm",
+                    "im_tolerance": 0.03,
+                    "im_tolerance_type": "absolute",
+                    "min_peaks": 1,
+                },
             },
             # With max_peaks limit
             {
-                'mz': np.array([100.0, 200.0, 300.0, 400.0, 500.0]),
-                'intensity': np.array([1000.0, 2000.0, 3000.0, 4000.0, 5000.0]),
-                'im': np.array([0.8, 0.8, 0.8, 0.8, 0.8]),
-                'params': {'mz_tolerance': 10, 'mz_tolerance_type': 'ppm', 'min_peaks': 1, 'max_peaks': 3}
+                "mz": np.array([100.0, 200.0, 300.0, 400.0, 500.0]),
+                "intensity": np.array([1000.0, 2000.0, 3000.0, 4000.0, 5000.0]),
+                "im": np.array([0.8, 0.8, 0.8, 0.8, 0.8]),
+                "params": {
+                    "mz_tolerance": 10,
+                    "mz_tolerance_type": "ppm",
+                    "min_peaks": 1,
+                    "max_peaks": 3,
+                },
             },
         ]
 
         tolerance = 1e-9
-        
+
         for test in test_cases:
-            with self.subTest(params=test['params']):
+            with self.subTest(params=test["params"]):
                 # Get Python results
-                py_peaks = _merge_peaks_python(test['mz'], test['intensity'], test['im'], **test['params'])
-                
+                py_peaks = _merge_peaks_python(
+                    test["mz"], test["intensity"], test["im"], **test["params"]
+                )
+
                 # Get Rust results (raw arrays)
                 rust_mz, rust_int, rust_im = _merge_peaks_rust(
-                    test['mz'], test['intensity'], test['im'], **test['params']
+                    test["mz"], test["intensity"], test["im"], **test["params"]
                 )
-                
+
                 # Compare lengths
-                self.assertEqual(len(py_peaks), len(rust_mz),
-                               f"Different number of peaks: Python={len(py_peaks)}, Rust={len(rust_mz)}")
-                
+                self.assertEqual(
+                    len(py_peaks),
+                    len(rust_mz),
+                    f"Different number of peaks: Python={len(py_peaks)}, Rust={len(rust_mz)}",
+                )
+
                 # Compare each peak
-                for j, py_peak in enumerate(py_peaks):
-                    self.assertAlmostEqual(py_peak.mz, rust_mz[j], delta=tolerance,
-                                         msg=f"Peak {j} m/z mismatch")
-                    self.assertAlmostEqual(py_peak.intensity, rust_int[j], delta=tolerance,
-                                         msg=f"Peak {j} intensity mismatch")
-                    self.assertAlmostEqual(py_peak.ion_mobility, rust_im[j], delta=tolerance,
-                                         msg=f"Peak {j} ion mobility mismatch")
+                # py_peaks is (N, 3) array [mz, intensity, mobility]
+                if len(py_peaks) > 0:
+                    np.testing.assert_allclose(py_peaks[:, 0], rust_mz, rtol=tolerance)
+                    np.testing.assert_allclose(py_peaks[:, 1], rust_int, rtol=tolerance)
+                    np.testing.assert_allclose(py_peaks[:, 2], rust_im, rtol=tolerance)
 
 
 if __name__ == "__main__":

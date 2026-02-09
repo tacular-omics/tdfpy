@@ -58,7 +58,8 @@ def _estimate_noise_iterative_median(intensity_array: np.ndarray) -> float:
 
 def estimate_noise_level(
     intensity_array: np.ndarray,
-    method: Literal["mad", "percentile", "histogram", "baseline", "iterative_median"] | float = "mad",
+    method: Literal["mad", "percentile", "histogram", "baseline", "iterative_median"]
+    | float = "mad",
 ) -> float:
     """
     Estimate noise level using various methods.

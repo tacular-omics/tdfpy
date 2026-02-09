@@ -4,28 +4,28 @@ Higher-level Pythonic API for working with MS1 spectrum data from Bruker timsTOF
 This module provides a cleaner interface using NamedTuples and convenience functions
 for reading centroided MS1 spectra with peak clustering/centroiding algorithms.
 """
+
 from typing import Any, Literal, NamedTuple
 from collections.abc import Generator
 import logging
 
 import numpy as np
-import pandas as pd # type: ignore
+import pandas as pd  # type: ignore
 
 from .timsdata import TimsData, oneOverK0ToCCSforMz
 from .noise import estimate_noise_level
 from .pandas_tdf import PandasTdf
-from .constants import PROTON_MASS
 
 # Try to import Rust extension, fallback to Python implementation
 try:
-    from tdfpy._tdfpy_rust import merge_peaks as _merge_peaks_rust # type: ignore[import]
+    from tdfpy._tdfpy_rust import merge_peaks as _merge_peaks_rust  # type: ignore[import]
+
     _HAS_RUST = True
 except ImportError:
-    _HAS_RUST = False # type: ignore[assignment]
+    _HAS_RUST = False  # type: ignore[assignment]
 
 
 logger = logging.getLogger(__name__)
-
 
 
 def batch_iterator(input_list: list[Any], batch_size: int):
@@ -49,37 +49,6 @@ class Peak(NamedTuple):
     ion_mobility: float
 
 
-class Ms1Spectrum(NamedTuple):
-    """Represents a complete MS1 spectrum from a single frame.
-
-    Attributes:
-        spectrum_index: Sequential index of this spectrum
-        frame_id: Original frame ID from the TDF file
-        retention_time: Retention time in minutes
-        num_peaks: Number of peaks in the spectrum
-        peaks: List of Peak objects
-        ion_mobility_type: Type of ion mobility values in peaks ('ook0' or 'ccs')
-    """
-
-    spectrum_index: int
-    frame_id: int
-    retention_time: float
-    peaks: list[Peak]
-    ion_mobility_type: Literal["ook0", "ccs"]
-
-    @property
-    def num_peaks(self) -> int:
-        """Number of peaks in the spectrum."""
-        return len(self.peaks)
-
-    def __repr__(self) -> str:
-        return (
-            f"Ms1Spectrum(index={self.spectrum_index}, frame_id={self.frame_id}, "
-            f"retention_time={self.retention_time:.2f} min, num_peaks={self.num_peaks}, "
-            f"ion_mobility_type='{self.ion_mobility_type}')"
-        )
-    
-
 def merge_peaks(
     mz_array: np.ndarray,
     intensity_array: np.ndarray,
@@ -91,7 +60,7 @@ def merge_peaks(
     min_peaks: int = 3,
     max_peaks: int | None = None,
     use_rust: bool = True,
-) -> list[Peak]:
+) -> np.ndarray:
     """Centroid profile-like peaks using m/z and ion mobility tolerances.
 
     This function implements a greedy clustering algorithm that centroids raw peaks
@@ -112,7 +81,8 @@ def merge_peaks(
         max_peaks: Maximum number of centroided peaks to return (keeps highest intensity)
 
     Returns:
-        List of centroided Peak objects
+        np.ndarray: Array of shape (N, 3) containing centroided peaks.
+                   Columns are: [mz, intensity, ion_mobility]
 
     Example:
         >>> mz = np.array([100.0, 100.001, 200.0])
@@ -122,7 +92,7 @@ def merge_peaks(
     """
     # Use Rust implementation if available
     if _HAS_RUST and use_rust:
-        merged_mz, merged_intensity, merged_mobility = _merge_peaks_rust( # type: ignore[call-arg]
+        merged_mz, merged_intensity, merged_mobility = _merge_peaks_rust(  # type: ignore[call-arg]
             mz_array,
             intensity_array,
             ion_mobility_array,
@@ -134,14 +104,17 @@ def merge_peaks(
             max_peaks,
         )
 
-        if not isinstance(merged_mz, np.ndarray) or not isinstance(merged_intensity, np.ndarray) or not isinstance(merged_mobility, np.ndarray):
-            raise RuntimeError("Rust merge_peaks did not return numpy arrays as expected")
+        if (
+            not isinstance(merged_mz, np.ndarray)
+            or not isinstance(merged_intensity, np.ndarray)
+            or not isinstance(merged_mobility, np.ndarray)
+        ):
+            raise RuntimeError(
+                "Rust merge_peaks did not return numpy arrays as expected"
+            )
 
-        # Convert numpy arrays to Peak list
-        return [
-            Peak(mz=float(mz), intensity=float(intensity), ion_mobility=float(mobility)) # type: ignore[call-arg]
-            for mz, intensity, mobility in zip(merged_mz, merged_intensity, merged_mobility, strict=True)  # type: ignore[call-arg]
-        ]
+        # Stack arrays into (N, 3) matrix
+        return np.column_stack((merged_mz, merged_intensity, merged_mobility))
 
     # Fallback to Python implementation
     return _merge_peaks_python(
@@ -167,16 +140,22 @@ def _merge_peaks_python(
     im_tolerance_type: Literal["relative", "absolute"] = "relative",
     min_peaks: int = 3,
     max_peaks: int | None = None,
-) -> list[Peak]:
+) -> np.ndarray:
     """Python implementation of merge_peaks (fallback when Rust extension unavailable)."""
     logger.debug(
         "Centroiding %d raw peaks with mz_tol=%s %s, im_tol=%s %s, min_peaks=%d, max_peaks=%s",
-        len(mz_array), mz_tolerance, mz_tolerance_type, im_tolerance, im_tolerance_type, min_peaks, max_peaks
+        len(mz_array),
+        mz_tolerance,
+        mz_tolerance_type,
+        im_tolerance,
+        im_tolerance_type,
+        min_peaks,
+        max_peaks,
     )
 
     if len(mz_array) == 0:
-        logger.debug("No raw peaks to centroid, returning empty list")
-        return []
+        logger.debug("No raw peaks to centroid, returning empty array")
+        return np.empty((0, 3), dtype=np.float64)
 
     # Pre-compute tolerances
     if mz_tolerance_type == "ppm":
@@ -206,7 +185,9 @@ def _merge_peaks_python(
 
     # Use boolean mask for tracking used peaks
     used_mask = np.zeros(len(mz_array), dtype=bool)
-    merged_peaks: list[Peak] = []
+    merged_mz_list: list[float] = []
+    merged_int_list: list[float] = []
+    merged_mob_list: list[float] = []
 
     for peak_idx in intensity_order:
         if used_mask[peak_idx]:
@@ -238,12 +219,14 @@ def _merge_peaks_python(
         used_window = used_mask[left_idx:right_idx]
 
         # Find nearby peaks in mobility dimension (combined operation)
-        nearby_mask = (np.abs(mobility_window - mobility_peak) <= mobility_tol) & ~used_window
+        nearby_mask = (
+            np.abs(mobility_window - mobility_peak) <= mobility_tol
+        ) & ~used_window
 
         # Get nearby intensities (need this for multiple operations)
         nearby_intensities = intensity_window[nearby_mask]
         num_nearby = len(nearby_intensities)
-        
+
         # Check minimum peaks requirement
         if min_peaks > 0 and num_nearby < min_peaks:
             # Not enough nearby raw peaks to form a centroid, skip
@@ -252,9 +235,9 @@ def _merge_peaks_python(
 
         if num_nearby == 0:
             # Edge case: no nearby raw peaks (shouldn't happen but be safe)
-            merged_peaks.append(
-                Peak(mz=float(mz_peak), intensity=float(intensity_peak), ion_mobility=float(mobility_peak))
-            )
+            merged_mz_list.append(float(mz_peak))
+            merged_int_list.append(float(intensity_peak))
+            merged_mob_list.append(float(mobility_peak))
             used_mask[peak_idx] = True
             continue
 
@@ -266,27 +249,34 @@ def _merge_peaks_python(
         merged_mz = np.dot(nearby_mz, nearby_intensities) / total_intensity
         merged_mobility = np.dot(nearby_mobility, nearby_intensities) / total_intensity
 
-        merged_peaks.append(
-            Peak(mz=float(merged_mz), intensity=float(total_intensity), ion_mobility=float(merged_mobility))
-        )
+        merged_mz_list.append(float(merged_mz))
+        merged_int_list.append(float(total_intensity))
+        merged_mob_list.append(float(merged_mobility))
 
         # Mark as used (convert local indices to global)
         global_nearby_idx = np.where(nearby_mask)[0] + left_idx
         used_mask[global_nearby_idx] = True
 
-        if max_peaks and len(merged_peaks) >= max_peaks:
-            logger.debug("Reached max_peaks limit of %d, stopping centroiding", max_peaks)
+        if max_peaks and len(merged_mz_list) >= max_peaks:
+            logger.debug(
+                "Reached max_peaks limit of %d, stopping centroiding", max_peaks
+            )
             break
 
     logger.info(
         "Centroiding complete: %d raw peaks → %d centroided peaks (%.1f%% reduction)",
-        len(mz_array), len(merged_peaks), 100 - len(merged_peaks) / len(mz_array) * 100
+        len(mz_array),
+        len(merged_mz_list),
+        100 - len(merged_mz_list) / len(mz_array) * 100,
     )
     logger.debug(
         "Total raw peaks used in centroiding: %d/%d", np.sum(used_mask), len(mz_array)
     )
 
-    return merged_peaks
+    if not merged_mz_list:
+        return np.empty((0, 3), dtype=np.float64)
+
+    return np.column_stack((merged_mz_list, merged_int_list, merged_mob_list))
 
 
 def get_centroided_ms1_spectrum(
@@ -300,13 +290,14 @@ def get_centroided_ms1_spectrum(
     im_tolerance_type: Literal["relative", "absolute"] = "relative",
     min_peaks: int = 3,
     max_peaks: int | None = None,
-    noise_filter: None | (
-            Literal["mad", "percentile", "histogram", "baseline", "iterative_median"] |
-            float |
-            int
+    noise_filter: None
+    | (
+        Literal["mad", "percentile", "histogram", "baseline", "iterative_median"]
+        | float
+        | int
     ) = None,
     use_rust: bool = True,
-) -> Ms1Spectrum:
+) -> np.ndarray:
     """Extract a centroided MS1 spectrum for a single frame.
 
     This function reads raw profile-like scans from the frame, converts indices to m/z values,
@@ -336,7 +327,8 @@ def get_centroided_ms1_spectrum(
                      - float/int: Direct intensity threshold value
 
     Returns:
-        Ms1Spectrum object containing centroided peaks and metadata
+        np.ndarray: Array of shape (N, 3) containing centroided peaks.
+                   Columns are: [mz, intensity, ion_mobility]
 
     Raises:
         ValueError: If the frame_id doesn't exist or is not an MS1 frame
@@ -345,8 +337,8 @@ def get_centroided_ms1_spectrum(
     Example:
         >>> with timsdata_connect('path/to/data.d') as td:
         ...     # Get centroided spectrum with 1/K0 (default)
-        ...     spectrum = get_centroided_ms1_spectrum(td, frame_id=1)
-        ...     print(f"Found {spectrum.num_peaks} centroided peaks")
+        ...     peaks = get_centroided_ms1_spectrum(td, frame_id=1)
+        ...     print(f"Found {len(peaks)} centroided peaks")
         ...
         ...     # Get spectrum with CCS values
         ...     spectrum = get_centroided_ms1_spectrum(td, frame_id=1, ion_mobility_type="ccs")
@@ -367,7 +359,9 @@ def get_centroided_ms1_spectrum(
         ...     )
     """
     logger.debug(
-        "Extracting MS1 spectrum for frame_id=%d, noise_filter=%s", frame_id, noise_filter
+        "Extracting MS1 spectrum for frame_id=%d, noise_filter=%s",
+        frame_id,
+        noise_filter,
     )
 
     if td.conn is None:
@@ -388,7 +382,10 @@ def get_centroided_ms1_spectrum(
     retention_time_sec, num_scans, msms_type = result
     logger.debug(
         "Frame %d metadata: RT=%.2fs, NumScans=%d, MsMsType=%d",
-        frame_id, retention_time_sec, num_scans, msms_type
+        frame_id,
+        retention_time_sec,
+        num_scans,
+        msms_type,
     )
 
     if msms_type != 0:
@@ -399,19 +396,13 @@ def get_centroided_ms1_spectrum(
 
     if num_scans == 0:
         logger.warning("Frame %d has 0 scans, returning empty spectrum", frame_id)
-        return Ms1Spectrum(
-            spectrum_index=spectrum_index if spectrum_index is not None else frame_id,
-            frame_id=frame_id,
-            retention_time=retention_time_min,
-            peaks=[],
-            ion_mobility_type=ion_mobility_type,
-        )
+        return np.empty((0, 3), dtype=np.float64)
 
     # Pre-compute ion mobility values for each scan (always required)
     logger.debug(
         "Computing %s ion mobility values for %d scans", ion_mobility_type, num_scans
     )
-    ion_mobility = td.scanNumToOneOverK0(frame_id, np.arange(0, num_scans)) # type: ignore[call-arg]
+    ion_mobility = td.scanNumToOneOverK0(frame_id, np.arange(0, num_scans))  # type: ignore[call-arg]
 
     # Read all scans at once
     logger.debug("Reading %d scans from frame %d", num_scans, frame_id)
@@ -420,18 +411,15 @@ def get_centroided_ms1_spectrum(
     # Pre-allocate arrays with estimated size
     total_peaks = sum(len(idx) for idx, _ in results)
     logger.debug(
-        "Frame %d contains %d total raw peaks across %d scans", frame_id, total_peaks, num_scans
+        "Frame %d contains %d total raw peaks across %d scans",
+        frame_id,
+        total_peaks,
+        num_scans,
     )
 
     if total_peaks == 0:
         logger.warning("Frame %d has 0 peaks, returning empty spectrum", frame_id)
-        return Ms1Spectrum(
-            spectrum_index=spectrum_index if spectrum_index is not None else frame_id,
-            frame_id=frame_id,
-            retention_time=retention_time_min,
-            peaks=[],
-            ion_mobility_type=ion_mobility_type,
-        )
+        return np.empty((0, 3), dtype=np.float64)
 
     logger.debug("Pre-allocating arrays for %d peaks", total_peaks)
     mz_array = np.empty(total_peaks, dtype=np.float64)
@@ -474,7 +462,11 @@ def get_centroided_ms1_spectrum(
         filtered_count = offset - len(intensity_array)
         logger.info(
             "Noise filtering complete: removed %d peaks below threshold %.2f (%d → %d peaks, %.1f%% removed)",
-            filtered_count, noise_threshold, offset, len(intensity_array), filtered_count / offset * 100
+            filtered_count,
+            noise_threshold,
+            offset,
+            len(intensity_array),
+            filtered_count / offset * 100,
         )
 
     # Convert to CCS if requested
@@ -506,24 +498,24 @@ def get_centroided_ms1_spectrum(
         use_rust=use_rust,
     )
 
-    # Apply max_peaks limit if specified
+    # Apply max_peaks limit if specified (post-centroiding)
     if max_peaks and len(peaks) > max_peaks:
         logger.debug("Applying max_peaks filter: %d → %d", len(peaks), max_peaks)
-        # Sort by intensity and take top N
-        peaks = sorted(peaks, key=lambda p: p.intensity, reverse=True)[:max_peaks]
+        # Sort by intensity (column 1) and take top N
+        # argsort is ascending, so we take from the end [::-1]
+        sort_indices = np.argsort(peaks[:, 1])[::-1][:max_peaks]
+        peaks = peaks[sort_indices]
 
     logger.info(
         "Extracted centroided MS1 spectrum: frame_id=%d, RT=%.2f min, centroided_peaks=%d, raw_peaks=%d, ion_mobility_type=%s",
-        frame_id, retention_time_min, len(peaks), total_peaks, ion_mobility_type
+        frame_id,
+        retention_time_min,
+        len(peaks),
+        total_peaks,
+        ion_mobility_type,
     )
 
-    return Ms1Spectrum(
-        spectrum_index=spectrum_index if spectrum_index is not None else frame_id,
-        frame_id=frame_id,
-        retention_time=retention_time_min,
-        peaks=peaks,
-        ion_mobility_type=ion_mobility_type,
-    )
+    return peaks
 
 
 def get_centroided_ms1_spectra(
@@ -536,12 +528,13 @@ def get_centroided_ms1_spectra(
     im_tolerance_type: Literal["relative", "absolute"] = "relative",
     min_peaks: int = 3,
     max_peaks: int | None = None,
-    noise_filter: None | (
-            Literal["mad", "percentile", "histogram", "baseline", "iterative_median"] |
-            float
+    noise_filter: None
+    | (
+        Literal["mad", "percentile", "histogram", "baseline", "iterative_median"]
+        | float
     ) = None,
     use_rust: bool = True,
-) -> Generator[Ms1Spectrum, None, None]:
+) -> Generator[np.ndarray, None, None]:
     """Extract centroided MS1 spectra for multiple frames.
 
     Convenience function to extract multiple centroided MS1 spectra. If frame_ids is not
@@ -569,13 +562,14 @@ def get_centroided_ms1_spectra(
                      - float/int: Direct intensity threshold value
 
     Returns:
-        Generator yielding Ms1Spectrum objects, ordered by frame ID
+        Generator yielding np.ndarray objects of shape (N, 3), ordered by frame ID.
+        Columns are: [mz, intensity, ion_mobility]
 
     Example:
         >>> with timsdata_connect('path/to/data.d') as td:
         ...     # Get all centroided MS1 spectra with 1/K0 (default)
-        ...     for spectrum in get_centroided_ms1_spectra(td):
-        ...         print(f"Spectrum {spectrum.spectrum_index}: {spectrum.num_peaks} centroided peaks")
+        ...     for peaks in get_centroided_ms1_spectra(td):
+        ...         print(f"Spectrum: {len(peaks)} centroided peaks")
         ...
         ...     # Get spectra with CCS values
         ...     for spectrum in get_centroided_ms1_spectra(td, ion_mobility_type="ccs"):
@@ -592,7 +586,8 @@ def get_centroided_ms1_spectra(
     """
     logger.info(
         "Starting batch MS1 centroided spectrum extraction (frame_ids=%s, noise_filter=%s)",
-        'all MS1' if frame_ids is None else f'{len(frame_ids)} specified', noise_filter
+        "all MS1" if frame_ids is None else f"{len(frame_ids)} specified",
+        noise_filter,
     )
 
     if td.conn is None:
@@ -634,25 +629,37 @@ def get_centroided_ms1_spectra(
             )
             successful_count += 1
             logger.debug(
-                "Successfully extracted centroided spectrum %d/%d: frame_id=%d", idx + 1, len(frame_ids), frame_id
+                "Successfully extracted centroided spectrum %d/%d: frame_id=%d",
+                idx + 1,
+                len(frame_ids),
+                frame_id,
             )
             yield spectrum
         except (ValueError, RuntimeError) as e:
             # Log warning but continue processing
             failed_count += 1
             logger.warning(
-                "Failed to extract spectrum for frame %d (%d/%d): %s", frame_id, idx + 1, len(frame_ids), e
+                "Failed to extract spectrum for frame %d (%d/%d): %s",
+                frame_id,
+                idx + 1,
+                len(frame_ids),
+                e,
             )
             continue
 
     logger.info(
         "Batch centroiding complete: %d successful, %d failed, %d total",
-        successful_count, failed_count, len(frame_ids)
+        successful_count,
+        failed_count,
+        len(frame_ids),
     )
+
+def calculate_nmass(mz: float, charge: int) -> float:
+    """Calculate neutral mass from m/z and charge state."""
+    return mz * abs(charge) - charge * 1.007276466812  # Subtract charge * proton mass
 
 
 def get_tdf_df(td: TimsData) -> pd.DataFrame:
-
     pd_tdf = PandasTdf(td.analysis_directory)
 
     merged_df = pd.merge(
@@ -690,209 +697,3 @@ def get_tdf_df(td: TimsData) -> pd.DataFrame:
     )
 
     return merged_df
-
-
-class Ms2Spectrum(NamedTuple):
-    frame_id: int
-    peaks: list[Peak]
-
-    mz: float
-    charge: int | None
-    ce: float
-    iso_width: float
-    iso_mz: float
-
-    @property
-    def neutral_mass(self) -> float | None:
-        """Precursor neutral mass."""
-        if self.charge is None:
-            return None
-        return self.mz * self.charge - self.charge * PROTON_MASS
-    
-    @property
-    def mass(self) -> float | None:
-        """Precursor mass (with charge)."""
-        if self.charge is None:
-            return None
-        return self.mz * self.charge
-
-    @property
-    def num_peaks(self) -> int:
-        """Number of peaks in the spectrum."""
-        return len(self.peaks)
-
-
-def get_ms2_spectra(
-    td: TimsData,
-    batch_size: int = 100,
-) -> Generator[Ms2Spectrum, None, None]:
-    
-    if td.conn is None:
-        logger.error("TimsData connection is not open")
-        raise RuntimeError("TimsData connection is not open")
-
-    merged_df = get_tdf_df(td)
-    for precursor_batch in batch_iterator(
-        input_list=list(merged_df.iterrows()), batch_size=batch_size
-    ):
-        pasef_ms_ms = None
-        pasef_ms_ms = td.readPasefMsMs(
-            [
-                int(precursor_row["Id_Precursor"])
-                for _, precursor_row in precursor_batch
-            ]
-        )
-
-        for _, precursor_row in precursor_batch:
-
-            #precursor_id = int(precursor_row["Id_Precursor"])
-            #parent_id = int(precursor_row["Parent"])
-            charge = precursor_row["Charge"]
-            mz = precursor_row["MonoisotopicMz"]
-
-            frame_id = int(precursor_row["Id"])
-
-            #ook0 = precursor_row["OOK0"]
-            #ccs = precursor_row["CCS"]
-            #prec_intensity = precursor_row["Intensity"]
-            #mass = calculate_p1mass(mz, charge)
-
-            ms2_spectra = Ms2Spectrum(
-                mz=mz,
-                mass=mass,
-                charge=charge,
-                mz_spectra=[],
-                intensity_spectra=[],
-                charge_spectra=[],
-            )
-
-            ms2_spectra.parent_id = parent_id
-            ms2_spectra.precursor_id = precursor_id
-            ms2_spectra.prec_intensity = int(prec_intensity)
-            ms2_spectra.ook0 = round(ook0, 4)
-            ms2_spectra.ccs = round(ccs, 1)
-            ms2_spectra.rt = round(precursor_row["Time"], 2)
-            ms2_spectra.ce = round(precursor_row["CollisionEnergy"], 1)
-            ms2_spectra.iso_width = round(precursor_row["IsolationWidth"], 1)
-            ms2_spectra.iso_mz = round(precursor_row["IsolationMz"], 4)
-            ms2_spectra.scan_begin = round(float(precursor_row["ScanNumBegin"]), 4)
-            ms2_spectra.scan_end = round(float(precursor_row["ScanNumEnd"]), 4)
-            ms2_spectra.info["Accumulation_Time"] = round(
-                float(precursor_row["AccumulationTime"]), 4
-            )
-            ms2_spectra.info["Ramp_Time"] = round(
-                float(precursor_row["RampTime"]), 4
-            )
-            ms2_spectra.info["PASEF_Scans"] = int(precursor_row["count"])
-
-            if "Pressure" in precursor_row:
-                ms2_spectra.info["Pressure"] = round(
-                    float(precursor_row["Pressure"]), 4
-                )
-
-            ook0_range = td.scanNumToOneOverK0(
-                int(precursor_row["Id_Frame"]),
-                [ms2_spectra.scan_begin, ms2_spectra.scan_end],
-            )
-            ms2_spectra.info["OOK0_Begin"] = round(float(ook0_range[0]), 4)
-            ms2_spectra.info["OOK0_End"] = round(float(ook0_range[1]), 4)
-
-            ms2_spectra_data = list(
-                zip(pasef_ms_ms[precursor_id][0], pasef_ms_ms[precursor_id][1])
-            )
-
-            if len(ms2_spectra_data) == 0:
-                mz_array = np.array([])
-                intensity_array = np.array([])
-            else:
-                mz_array = np.array([data[0] for data in ms2_spectra_data])
-                intensity_array = np.array([data[1] for data in ms2_spectra_data])
-
-            # Apply min_intensity filter
-            if min_spectra_intensity is not None:
-
-                if (
-                    isinstance(min_spectra_intensity, float)
-                    and 0.0 <= min_spectra_intensity <= 1.0
-                ):
-                    # Convert percentage to absolute intensity
-                    _min_intensity = max(intensity_array) * min_spectra_intensity
-                elif (
-                    isinstance(min_spectra_intensity, (float, int))
-                    and min_spectra_intensity > 1.0
-                ):
-                    _min_intensity = min_spectra_intensity
-
-                intensity_mask = intensity_array >= _min_intensity
-                mz_array = mz_array[intensity_mask]
-                intensity_array = intensity_array[intensity_mask]
-
-            # Apply max_intensity filter
-            if max_spectra_intensity is not None:
-                if (
-                    isinstance(max_spectra_intensity, float)
-                    and 0.0 <= max_spectra_intensity <= 1.0
-                ):
-                    # Convert percentage to absolute intensity
-                    _max_intensity = max(intensity_array) * max_spectra_intensity
-                elif (
-                    isinstance(max_spectra_intensity, (float, int))
-                    and max_spectra_intensity > 1.0
-                ):
-                    _max_intensity = max_spectra_intensity
-
-                intensity_mask = intensity_array <= _max_intensity
-                mz_array = mz_array[intensity_mask]
-                intensity_array = intensity_array[intensity_mask]
-
-            if min_spectra_mz is not None:
-                mz_mask = mz_array >= min_spectra_mz
-                mz_array = mz_array[mz_mask]
-                intensity_array = intensity_array[mz_mask]
-
-            if max_spectra_mz is not None:
-                mz_mask = mz_array <= max_spectra_mz
-                mz_array = mz_array[mz_mask]
-                intensity_array = intensity_array[mz_mask]
-
-            if remove_precursor is True:
-                # Remove precursor peak from MS/MS spectra
-                precursor_mz = ms2_spectra.mz
-                min_prec_mz = precursor_mz - precursor_peak_width
-                max_precursor_mz = precursor_mz + precursor_peak_width
-
-                precursor_mask = ~(
-                    (mz_array >= min_prec_mz) & (mz_array <= max_precursor_mz)
-                )
-                mz_array = mz_array[precursor_mask]
-                intensity_array = intensity_array[precursor_mask]
-
-            if top_n_peaks is not None and len(intensity_array) > top_n_peaks:
-
-                if top_n_peaks < 0:
-                    raise ValueError("top_n_peaks must be a positive integer")
-
-                elif top_n_peaks == 0:
-                    mz_array = np.array([])
-                    intensity_array = np.array([])
-                elif top_n_peaks > len(intensity_array):
-                    # Get indices of top N intensities
-                    top_indices = np.argpartition(intensity_array, -top_n_peaks)[
-                        -top_n_peaks:
-                    ]
-                    mz_array = mz_array[top_indices]
-                    intensity_array = intensity_array[top_indices]
-
-            # Sort by m/z values
-            sort_indices = np.argsort(mz_array)
-            mz_array = mz_array[sort_indices]
-            intensity_array = intensity_array[sort_indices]
-
-            # Convert to lists
-            ms2_spectra.mz_spectra = mz_array.tolist()
-            ms2_spectra.intensity_spectra = intensity_array.astype(int).tolist()
-
-            assert len(ms2_spectra.mz_spectra) == len(ms2_spectra.intensity_spectra)
-
-            yield ms2_spectra
-

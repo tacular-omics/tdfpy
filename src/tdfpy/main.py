@@ -1,83 +1,102 @@
+from pathlib import Path
 from typing import Literal
 from collections.abc import Generator
 from dataclasses import dataclass
-
-from .spectra import Ms1Spectrum, Ms2Spectrum, get_centroided_ms1_spectra
+import pandas as pd
+from .spectra import get_centroided_ms1_spectra
 from .timsdata import timsdata_connect
+from .pandas_tdf import PandasTdf
 
 MS1_MSMSTYPE = 0
 MS2_MSMSTYPE = 8
+MS1_FRAME_QUERY = f"SELECT Id FROM Frames WHERE MsMsType = {MS1_MSMSTYPE} ORDER BY Id"
+MS2_FRAME_QUERY = f"SELECT Id FROM Frames WHERE MsMsType = {MS2_MSMSTYPE} ORDER BY Id"
+ALL_FRAME_QUERY = "SELECT Id FROM Frames ORDER BY Id"
 
 @dataclass
 class DFolder:
-    analysis_tdf_path: str
-    ion_mobility_type: Literal["ook0", "ccs"] = "ook0"
+    analysis_dir: str
 
+    @property
+    def analysis_tdf_path(self) -> Path:
+        return Path(self.analysis_dir) / "analysis.tdf"
+
+    @property
+    def analysis_tdf_bin_path(self) -> Path:
+        return Path(self.analysis_dir) / "analysis.tdf_bin"
+
+    @property
+    def analysis_path(self) -> Path:
+        return Path(self.analysis_dir)
+
+    def _get_frame_ids(self, ms_level: int | None) -> list[int]:
+        query = {
+            1: MS1_FRAME_QUERY,
+            2: MS2_FRAME_QUERY,
+            None: ALL_FRAME_QUERY
+        }.get(ms_level)
+
+        if query is None:
+            raise ValueError(f"Invalid ms_level: {ms_level}. Must be 1, 2, or None.")
+
+        with timsdata_connect(str(self.analysis_tdf_path)) as td:
+            if td.conn is None:
+                raise RuntimeError("Database connection is not established.")
+
+            cursor = td.conn.cursor()
+            cursor.execute(query)
+            frame_ids: list[int] = [row[0] for row in cursor.fetchall()]
+            return frame_ids
+
+
+    @property
     def ms1_frame_ids(self) -> list[int]:
-        with timsdata_connect(self.analysis_tdf_path) as td:
+        return self._get_frame_ids(ms_level=1)
 
-            if td.conn is None:
-                raise RuntimeError("Database connection is not established.")
-            
-            cursor = td.conn.cursor()
-            cursor.execute(f"SELECT Id FROM Frames WHERE MsMsType = {MS1_MSMSTYPE} ORDER BY Id")
-            frame_ids: list[int] = [row[0] for row in cursor.fetchall()]
-            return frame_ids
-        
+    @property
     def ms2_frame_ids(self) -> list[int]:
-        with timsdata_connect(self.analysis_tdf_path) as td:
+        return self._get_frame_ids(ms_level=2)
 
-            if td.conn is None:
-                raise RuntimeError("Database connection is not established.")
-            
-            cursor = td.conn.cursor()
-            cursor.execute(f"SELECT Id FROM Frames WHERE MsMsType = {MS2_MSMSTYPE} ORDER BY Id")
-            frame_ids: list[int] = [row[0] for row in cursor.fetchall()]
-            return frame_ids
-        
+    @property
     def frame_ids(self) -> list[int]:
-        with timsdata_connect(self.analysis_tdf_path) as td:
+        return self._get_frame_ids(ms_level=None)
 
-            if td.conn is None:
-                raise RuntimeError("Database connection is not established.")
-            
-            cursor = td.conn.cursor()
-            cursor.execute("SELECT Id FROM Frames ORDER BY Id")
-            frame_ids: list[int] = [row[0] for row in cursor.fetchall()]
-            return frame_ids
+    def get_dda_df(
+        self,
+        ) -> pd.DataFrame:
 
-    def ms1_spectra(self, 
-                    frame_ids: list[int] | None = None,
-                    mz_tolerance: float = 8.0,
-                    mz_tolerance_type: Literal["ppm", "da"] = "ppm",
-                    im_tolerance: float = 0.05,
-                    im_tolerance_type: Literal["relative", "absolute"] = "relative",
-                    min_peaks: int = 3,
-                    max_peaks: int | None = None,
-                    noise_filter: None | (
-                            Literal["mad", "percentile", "histogram", "baseline", "iterative_median"] |
-                            float
-                    ) = None,   
-                    use_rust: bool = True,                 
-                    ) -> Generator[Ms1Spectrum, None, None]:
-        with timsdata_connect(self.analysis_tdf_path) as td:
+        pd_tdf = PandasTdf(str(self.analysis_tdf_path))
 
-            if td.conn is None:
-                raise RuntimeError("Database connection is not established.")
-            
-            yield from get_centroided_ms1_spectra(
-                td=td,
-                frame_ids=frame_ids,
-                ion_mobility_type=self.ion_mobility_type,
-                mz_tolerance=mz_tolerance,
-                mz_tolerance_type=mz_tolerance_type,
-                im_tolerance=im_tolerance,
-                im_tolerance_type=im_tolerance_type,
-                min_peaks=min_peaks,
-                max_peaks=max_peaks,
-                noise_filter=noise_filter,
-                use_rust=use_rust,
-            )
+        precursors_df = pd_tdf.precursors
 
-    def ms2_spectra(self) -> Generator[Ms2Spectrum, None, None]:
-        raise NotImplementedError("MS2 spectra extraction is not yet implemented.")
+        merged_df = pd.merge(
+            precursors_df,
+            pd_tdf.frames,
+            left_on="Parent",
+            right_on="Id",
+            suffixes=("_Precursor", "_Frame"),
+        )
+
+        pasef_frame_msms_info_df = pd_tdf.pasef_frame_msms_info.drop(["Frame"], axis=1)
+
+        # count the number of items in each group
+        pasef_frame_msms_info_df["count"] = pasef_frame_msms_info_df.groupby("Precursor")[
+            "Precursor"
+        ].transform("count")
+
+        # keep only the row for each group
+        pasef_frame_msms_info_df = pasef_frame_msms_info_df.drop_duplicates(
+            subset="Precursor", keep="first"
+        )
+        assert len(pasef_frame_msms_info_df) == len(merged_df)
+
+        merged_df = pd.merge(
+            merged_df,
+            pasef_frame_msms_info_df,
+            left_on="Id_Precursor",
+            right_on="Precursor",
+            suffixes=("_Precursor", "_PasefFrameMsmsInfo"),
+        ).drop("Precursor", axis=1)
+
+
+        return merged_df
