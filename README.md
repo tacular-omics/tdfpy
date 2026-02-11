@@ -13,20 +13,7 @@
 ```
 
 
-A Python package for parsing Bruker timsTOF data files (`.tdf` and `.tdf_bin`) with both low-level and high-level APIs.
-
-TDFpy provides efficient access to mass spectrometry data from Bruker timsTOF instruments, including:
-- High-level API for centroided MS1 spectra with peak merging
-- Low-level ctypes bindings to Bruker's native libraries
-- Pandas DataFrame interface to SQLite metadata tables
-
-## Features
-
-- **Three-layer architecture**: Native DLL → ctypes wrapper → Pythonic API
-- **Memory-efficient**: Generator-based API for processing large datasets
-- **Type-safe**: Full type hints throughout (Python 3.8+)
-- **Cross-platform**: Supports Windows (`.dll`) and Linux (`.so`)
-- **MS1 Peak centroiding**: 2D Peak merging with m/z and ion mobility tolerances (Rust-backend)
+A Python package for extracting datat from Bruker timsTOF data files (`.tdf` and `.tdf_bin`).
 
 ## Installation
 
