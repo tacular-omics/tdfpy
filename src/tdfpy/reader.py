@@ -1,16 +1,16 @@
 from functools import partial
-from numpy.random import Generator
 from .centroiding import get_centroided_spectrum
 import datetime
 import warnings
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, Self, Generator
 from dataclasses import dataclass
 from .timsdata import TimsData, oneOverK0ToCCSforMz
 from .tdf import PandasTdf
 import numpy as np
 import pandas as pd
 import numpy.typing as npt
+
 
 MS1_MSMSTYPE = 0
 DDA_MS2_MSMSTYPE = 8
@@ -646,20 +646,33 @@ class _DFolder:
                 f"Analysis directory not found at {self.analysis_path}"
             )
 
-        self._timsdata = TimsData(str(self.analysis_path))
+        # Lazily load
+        self._timsdata = None
+        self._metadata = None
+        self._calibration = None
 
-        pandas_tdf = PandasTdf(str(self.analysis_tdf_path))
-        self._metadata = MetaData(df=pandas_tdf.global_metadata)
-        self._calibration = Calibration(df=pandas_tdf.calibration_info)
+    @property
+    def timsdata(self) -> TimsData:
+        if self._timsdata is None:
+            self._timsdata = TimsData(str(self.analysis_path))
+        return self._timsdata
+
+    @property
+    def pandas_tdf(self) -> PandasTdf:
+        return PandasTdf(str(self.analysis_tdf_path))
 
     @property
     def metadata(self) -> MetaData:
         """Global metadata about the acquisition."""
+        if self._metadata is None:
+            self._metadata = MetaData(df=self.pandas_tdf.calibration_info)
         return self._metadata
 
     @property
     def calibration(self) -> Calibration:
         """Calibration information."""
+        if self._calibration is None:
+            self._calibration = Calibration(df=self.pandas_tdf.calibration_info)
         return self._calibration
 
     @property
@@ -680,16 +693,16 @@ class _DFolder:
             raise RuntimeError(
                 "DFolder has been closed. Create a new DFolder instance or use a context manager."
             )
-        if self._timsdata.handle is None:
+        if self.timsdata.handle is None:
             raise RuntimeError("TimsData connection has been unexpectedly closed.")
 
     def close(self) -> None:
         """Close the TimsData connection."""
         if not self._closed:
-            self._timsdata.close()
+            self.timsdata.close()
             self._closed = True
 
-    def __enter__(self) -> "_DFolder":
+    def __enter__(self) -> Self:
         """Context manager entry."""
         return self
 
@@ -715,7 +728,7 @@ class DDA(_DFolder):
         self._pasef_msms_infos: dict[int, list[PasefFrameMsmsInfo]] = {}
         for _, row in self._pasef_frame_msms_info_df.iterrows():
             pasef_info = PasefFrameMsmsInfo(
-                _timsdata=self._timsdata,
+                _timsdata=self.timsdata,
                 frame_id=int(row["Frame"]),
                 scan_num_begin=int(row["ScanNumBegin"]),
                 scan_num_end=int(row["ScanNumEnd"]),
@@ -724,9 +737,15 @@ class DDA(_DFolder):
                 collision_energy=float(row["CollisionEnergy"]),
                 precursor=int(row["Precursor"]) if not pd.isna(row["Precursor"]) else None,
             )
-            if pasef_info.frame_id not in self._pasef_msms_infos:
-                self._pasef_msms_infos[pasef_info.frame_id] = []
-            self._pasef_msms_infos[pasef_info.frame_id].append(pasef_info)
+
+            if pasef_info.precursor is None:
+                raise ValueError(
+                    f"PASEF MS/MS info with null precursor found for frame {pasef_info.frame_id}. All PASEF MS/MS info must have a valid precursor ID."
+                )
+
+            if pasef_info.precursor not in self._pasef_msms_infos:
+                self._pasef_msms_infos[pasef_info.precursor] = []
+            self._pasef_msms_infos[pasef_info.precursor].append(pasef_info)
 
         self._precursors: dict[int, Precursor] = {}
         self._frame_to_precursors: dict[int, list[Precursor]] = {}
@@ -734,7 +753,7 @@ class DDA(_DFolder):
             precursor_id = int(row["Id"])
             frame_id = int(row["Parent"])
             precursor = Precursor(
-                _timsdata=self._timsdata,
+                _timsdata=self.timsdata,
                 precurosr_id=precursor_id,
                 largest_peak_mz=float(row["LargestPeakMz"]),
                 average_mz=float(row["AverageMz"]),
@@ -743,7 +762,7 @@ class DDA(_DFolder):
                 scan_number=int(row["ScanNumber"]),
                 intensity=float(row["Intensity"]),
                 parent_frame=int(row["Parent"]),
-                pasef_frame_msms_infos=tuple(self._pasef_msms_infos.get(frame_id, [])),
+                pasef_frame_msms_infos=tuple(self._pasef_msms_infos.get(precursor_id, [])),
             )
             self._precursors[precursor_id] = precursor
             if frame_id not in self._frame_to_precursors:
@@ -760,7 +779,7 @@ class DDA(_DFolder):
                     frame_id, []
                 )
                 frame = DDAMs1Frame(
-                    _timsdata=self._timsdata,
+                    _timsdata=self.timsdata,
                     frame_id=frame_id,
                     time=float(row["Time"]),
                     polarity=str(row["Polarity"]),
@@ -852,7 +871,7 @@ class DIA(_DFolder):
                 self._dia_windows[frame_id] = []
             for window_group in window_groups:
                 dia_window = DiaWindow(
-                    _timsdata=self._timsdata,
+                    _timsdata=self.timsdata,
                     frame_id=frame_id,
                     window_id=window_group.window_id,
                     window_group=window_group.window_group,
@@ -871,7 +890,7 @@ class DIA(_DFolder):
             msms_type = int(row["MsMsType"])
             if msms_type == MS1_MSMSTYPE:
                 frame = DIAMs1Frame(
-                    _timsdata=self._timsdata,
+                    _timsdata=self.timsdata,
                     frame_id=frame_id,
                     time=float(row["Time"]),
                     polarity=str(row["Polarity"]),

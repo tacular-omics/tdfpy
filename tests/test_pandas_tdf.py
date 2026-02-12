@@ -1,7 +1,7 @@
 import unittest
 import pandas as pd
 
-from tdfpy.pandas_tdf import PandasTdf
+from tdfpy import PandasTdf
 
 TDF_PATH = r"tests/data/200ngHeLaPASEF_1min.d/analysis.tdf"
 

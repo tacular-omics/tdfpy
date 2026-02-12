@@ -1,249 +1,69 @@
-```
- ███████████ ██████████   ███████████                     
-░█░░░███░░░█░░███░░░░███ ░░███░░░░░░█                     
-░   ░███  ░  ░███   ░░███ ░███   █ ░  ████████  █████ ████
-    ░███     ░███    ░███ ░███████   ░░███░░███░░███ ░███ 
-    ░███     ░███    ░███ ░███░░░█    ░███ ░███ ░███ ░███ 
-    ░███     ░███    ███  ░███  ░     ░███ ░███ ░███ ░███ 
-    █████    ██████████   █████       ░███████  ░░███████ 
-   ░░░░░    ░░░░░░░░░░   ░░░░░        ░███░░░    ░░░░░███ 
-                                      ░███       ███ ░███ 
-                                      █████     ░░██████  
-                                     ░░░░░       ░░░░░░   
-```
+# TDFpy
 
-
-A Python package for extracting datat from Bruker timsTOF data files (`.tdf` and `.tdf_bin`).
+A Python package for extracting data from Bruker timsTOF data files (`.tdf` and `.tdf_bin`).
 
 ## Installation
 
-### From PyPI
 ```bash
 pip install tdfpy
 ```
 
-
 ## Quick Start
 
-### Read Your First Spectrum
+### DIA Data
 
 ```python
-import tdfpy
+from tdfpy import DIA
 
-# Open a .d folder and read a spectrum
-with tdfpy.timsdata_connect('data.d') as td:
-    spectrum = tdfpy.get_centroided_ms1_spectrum(td, frame_id=1)
-    
-print(f"{spectrum.num_peaks} peaks at RT {spectrum.retention_time:.2f} min")
-# Output: 1523 peaks at RT 0.05 min
+# Open a DIA .d folder
+with DIA('data.d') as dia:
+    # Iterate over MS1 frames
+    for frame in dia.ms1_frames:
+        print(f"Frame {frame.frame_id} at {frame.time}s")
+        # Get centroided peaks (m/z, intensity, ion mobility)
+        centroided_peaks = frame.centroid()
+        print(f"Peaks shape: {centroided_peaks.shape}")
 
-# Access peaks
-for peak in spectrum.peaks[:3]:
-    print(f"m/z {peak.mz:.2f}, intensity {peak.intensity:.0f}")
-# Output:
-# m/z 301.14, intensity 15234.0
-# m/z 524.26, intensity 8901.0
-# m/z 785.42, intensity 12456.0
+    # Iterate over DIA windows
+    for window in dia.windows:
+        print(f"Window {window.window_id}: {window.isolation_mz} m/z")
+        peaks = window.centroid()
 ```
 
-### Process All MS1 Spectra
+### DDA Data
 
 ```python
-import tdfpy
+from tdfpy import DDA
 
-with tdfpy.timsdata_connect('data.d') as td:
-    for spectrum in tdfpy.get_centroided_ms1_spectra(td):
-        print(f"Frame {spectrum.frame_id}: {spectrum.num_peaks} peaks")
+# Open a DDA .d folder
+with DDA('data.d') as dda:
+    # Iterate over MS1 frames
+    for frame in dda.ms1_frames:
+        print(f"Frame {frame.frame_id} at {frame.time}s")
+        centroided_peaks = frame.centroid()
+
+    # Iterate over precursors
+    for precursor in dda.precursors:
+        print(f"Precursor {precursor.precursor_id}: {precursor.largest_peak_mz} m/z")
+        # Raw peaks for precursor (no centroiding needed)
+        peaks = precursor.peaks
 ```
 
-### Read Specific Frames
+## Features
 
-```python
-import tdfpy
-
-with tdfpy.timsdata_connect('data.d') as td:
-    # Process frames 10-20
-    spectra = tdfpy.get_centroided_ms1_spectra(td, frame_ids=range(10, 21))
-    
-    for spectrum in spectra:
-        total_intensity = sum(peak.intensity for peak in spectrum.peaks)
-        print(f"Frame {spectrum.frame_id}: Total intensity {total_intensity:.2e}")
-```
-
-## Advanced Examples
-
-### Customize Peak Centroiding
-
-```python
-import tdfpy
-
-with tdfpy.timsdata_connect('data.d') as td:
-    spectrum = tdfpy.get_centroided_ms1_spectrum(
-        td, 
-        frame_id=1,
-        mz_tolerance=15,              # PPM tolerance (default: 8)
-        im_tolerance=0.05,            # Ion mobility tolerance (default: 0.05)
-        min_peaks=5,                  # Min peaks to merge (default: 3)
-        noise_filter="mad"            # Remove noise peaks
-    )
-```
-
-### Noise Filtering
-
-Apply statistical noise filtering before centroiding:
-
-```python
-from tdfpy import timsdata_connect, get_centroided_ms1_spectrum, estimate_noise_level
-import numpy as np
-
-with timsdata_connect('path/to/data.d') as td:
-    # Use built-in noise filtering methods
-    spectrum = get_centroided_ms1_spectrum(
-        td, 
-        frame_id=1,
-        noise_filter="mad"  # Median Absolute Deviation (recommended)
-    )
-    
-    # Available methods:
-    # - "mad": Median Absolute Deviation (robust to outliers)
-### Noise Filtering
-
-```python
-import tdfpy
-
-with tdfpy.timsdata_connect('data.d') as td:
-    # Automatic noise removal
-    spectrum = tdfpy.get_centroided_ms1_spectrum(
-        td, 
-        frame_id=1,
-        noise_filter="mad"  # Recommended: Median Absolute Deviation
-    )
-    # Other methods: "percentile", "histogram", "baseline", "iterative_median"
-    
-    # Manual threshold
-    spectrum = tdfpy.get_centroided_ms1_spectrum(
-        td, 
-        frame_id=1,
-### Database Metadata (Pandas)
-
-```python
-import tdfpy
-
-pd_tdf = tdfpy.PandasTdf('data.d/analysis.tdf')
-
-# Access metadata tables
-frames_df = pd_tdf.frames          # Frame info (RT, scans, etc.)
-precursors_df = pd_tdf.precursors  # MS2 precursor info
-properties_df = pd_tdf.properties  # Instrument settings
-
-# Filter MS1 frames
-ms1_frames = frames_df[frames_df['MsMsType'] == 0]
-print(f"Found {len(ms1_frames)} MS1 frames")
-print(f"RT range: {ms1_frames['Time'].min():.2f} - {ms1_frames['Time'].max():.2f} sec")
-```     print(f"m/z {peak.mz:.2f}, CCS {peak.ion_mobility:.2f} Ų")
-```nt(f"Found {len(ms1_frames)} MS1 frames")
-```
-### Low-Level API (Advanced)
-
-Direct access to Bruker's native library:
-
-```python
-import tdfpy
-
-with tdfpy.timsdata_connect('data.d') as td:
-    # Read raw profile data
-    scans = td.readScans(frame_id=1, scan_begin=0, scan_end=1000)
-    
-    # Each scan returns (index_array, intensity_array)
-    indices, intensities = scans[500]
-    
-    # Convert indices to m/z
-    mz_values = td.indexToMz(frame_id=1, indices=indices)
-    
-    # Convert scan number to ion mobility
-    mobility = td.scanNumToOneOverK0(frame_id=1, scan_nums=[500])
-``` msms_data = td.readPasefMsMsForFrame(frame_id)
-```
-
-## API Reference
-
-### Key Functions
-
-- **`timsdata_connect(path)`** - Open a .d folder (context manager)
-- **`get_centroided_ms1_spectrum(td, frame_id, ...)`** - Read single spectrum
-- **`get_centroided_ms1_spectra(td, frame_ids=None, ...)`** - Read multiple spectra (generator)
-
-### Data Types
-
-**`Peak`** (NamedTuple):
-- `mz: float` - Mass-to-charge ratio
-- `intensity: float` - Peak intensity
-- `ion_mobility: float` - Ion mobility (1/K0 or CCS)
-
-**`Ms1Spectrum`** (NamedTuple):
-- `spectrum_index: int` - Sequential index
-- `frame_id: int` - Frame ID from TDF
-- `retention_time: float` - RT in minutes
-- `peaks: List[Peak]` - Peak list
-- `ion_mobility_type: str` - "ook0" or "ccs"
-- `num_peaks: int` - Number of peaks (property)
-
-## Development
-## Performance
-
-TDFpy includes a Rust-accelerated backend for peak merging:
-- **11x faster** than pure Python implementation
-- Processes 1.7M peaks in ~250ms
-- Automatic fallback to Python if Rust unavailable
+- **Simple Context Managers**: `DIA` and `DDA` classes handle file connections safely.
+- **Easy Iteration**: Generators for frames, windows, and precursors.
+- **Centroiding**: Built-in `centroid()` method for frames and windows.
+- **Metadata Access**: Via `metadata` and `calibration` properties.
+- **Rust Backend**: Performance-critical operations are optimized with Rust.
 
 ## Development
 
-Uses `uv` for package management:
+The project uses `uv` for dependency management.
 
 ```bash
-make install-dev    # Install with dev dependencies
+make install-dev    # Install dev dependencies
 make test          # Run tests
-make lint          # Run ty + ruff
+make lint          # Run type checking and linting
 make build         # Build package
 ```
-## Requirements
-
-- Python 3.8+
-- NumPy
-- Pandas
-- SQLite3 (standard library)
-- Bruker's native timsTOF library (included in package)
-
-## Architecture
-
-TDFpy uses a three-layer architecture:
-
-1. **Native DLL Layer**: Bruker's proprietary `timsdata.dll` (Windows) or `libtimsdata.so` (Linux)
-2. **Low-Level Wrapper**: `timsdata.py` provides ctypes bindings to DLL functions
-3. **High-Level API**: `spectra.py` provides Pythonic interface with NamedTuples and generators, `noise.py` provides noise estimation functions
-
-## Architecture
-
-Three-layer design:
-
-1. **Native**: Bruker's `timsdata.dll`/`.so` (included)
-2. **Low-level**: ctypes bindings (`timsdata.py`)
-3. **High-level**: Pythonic API with NamedTuples (`spectra.py`, `noise.py`)
-- All tests pass (`make test`)
-- Code passes linting (`make lint`)
-- Type hints are included
-- Docstrings follow Google style
-## Contributing
-
-Contributions welcome! Requirements:
-- Tests pass: `make test`
-- Linting passes: `make lint`
-- Type hints included
-- Docstrings for public APIs
-  title = {TDFpy: Python parser for Bruker timsTOF data},
-  url = {https://github.com/pgarrett-scripps/tdfpy},
-  version = {0.2.0}
-}
-```
-
-

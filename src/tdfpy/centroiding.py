@@ -6,7 +6,6 @@ for reading centroided MS1 spectra with peak clustering/centroiding algorithms.
 """
 
 from typing import Any, Literal, NamedTuple
-from collections.abc import Generator
 import logging
 
 import numpy as np

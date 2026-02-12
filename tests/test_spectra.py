@@ -5,9 +5,8 @@ from tdfpy import (
     timsdata,
     merge_peaks,
     get_centroided_spectrum,
-    get_centroided_ms1_spectra,
 )
-from tdfpy.spectra import _merge_peaks_python, _HAS_RUST  # type: ignore[import]
+from tdfpy.centroiding import _merge_peaks_python, _HAS_RUST  # type: ignore[import]
 
 # Try to import Rust extension for comparison tests
 if _HAS_RUST:
@@ -57,11 +56,8 @@ class TestSpectra(unittest.TestCase):
 
             if len(frame_ids) >= 2:  # Only test if we have at least 2 frames
                 # Get spectra generator and convert to list
-                spectra_gen = get_centroided_ms1_spectra(td, frame_ids=frame_ids)
-                spectra = list(spectra_gen)
-
-                self.assertEqual(len(spectra), 2)
-                for spectrum in spectra:
+                for frame_id in frame_ids:
+                    spectrum = get_centroided_spectrum(td, frame_id=frame_id)
                     self.assertIsInstance(spectrum, np.ndarray)
                     self.assertEqual(spectrum.ndim, 2)
                     self.assertEqual(spectrum.shape[1], 3)

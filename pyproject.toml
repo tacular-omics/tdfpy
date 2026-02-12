@@ -25,7 +25,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Bio-Informatics",
 ]
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 license = {file = "LICENSE"}
 keywords = ["bruker", "timstof", "mass-spectrometry", "proteomics", "tdf"]
 

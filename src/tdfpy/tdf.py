@@ -32,7 +32,7 @@ def convert_table_to_df(db_path: str, table_name: str) -> pd.DataFrame:
             return df
     except Exception as e:
         logger.error(f"Error fetching table {table_name} from {db_path}: {e}")
-        raise
+        raise e
 
 
 @dataclass
@@ -251,3 +251,28 @@ class PandasTdf:
             TableNames.PRM_FRAME_MSMS_INFO.value in self.get_table_names()
             and len(self.prm_frame_msms_info) > 0
         )
+
+    @property
+    def is_dia(self) -> bool:
+        """
+        Checks if the database contains DIA (Data-Independent Acquisition) data.
+
+        Returns:
+            bool: True if DIA data is present, False otherwise.
+        """
+        return (
+            TableNames.DIA_FRAME_MSMS_INFO.value in self.get_table_names()
+            and len(self.dia_frame_msms_info) > 0
+        )
+
+    @property
+    def is_maldi(self) -> bool:
+        """
+        Checks if the database contains MALDI (Matrix-Assisted Laser Desorption/Ionization) data.
+        Not supported in tdfpy, but this method can be used to check for MALDI data if it is added in the future.
+
+        Returns:
+            bool: True if MALDI data is present, False otherwise.
+        """
+        # check if any table contains "MALDI" in its name
+        return any("MALDI" in table_name for table_name in self.get_table_names())
