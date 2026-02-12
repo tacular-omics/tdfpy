@@ -20,8 +20,8 @@ def profile_centroiding():
         print(f"Profiling centroiding on {len(frame_ids)} frames...")
         
         # Profile the centroiding
-        for spectrum in tp.get_centroided_ms1_spectra(td, frame_ids=frame_ids):
-            pass  # Just iterate, don't process
+        for frame_id in frame_ids:
+            tp.get_centroided_spectrum(td, frame_id=frame_id)
 
 
 if __name__ == "__main__":

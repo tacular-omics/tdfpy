@@ -2,7 +2,7 @@
 import time
 import numpy as np
 import tdfpy as tp
-from tdfpy.spectra import _merge_peaks_python, _HAS_RUST
+from tdfpy.centroiding import _merge_peaks_python, _HAS_RUST
 
 if not _HAS_RUST:
     print("ERROR: Rust extension not available")

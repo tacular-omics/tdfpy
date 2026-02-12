@@ -1,31 +1,30 @@
+import logging
+import os
+import sqlite3
+import sys
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from enum import Enum
 from ctypes import (
     CDLL,
-    cdll,
-    c_char_p,
-    c_uint32,
-    c_uint64,
-    c_int64,
-    c_int32,
-    c_double,
-    c_float,
-    c_void_p,
+    CFUNCTYPE,
     POINTER,
     Structure,
+    c_char_p,
+    c_double,
+    c_float,
+    c_int32,
+    c_int64,
+    c_uint32,
+    c_uint64,
+    c_void_p,
+    cdll,
     create_string_buffer,
-    CFUNCTYPE,
 )
+from enum import Enum
 from typing import Any
-from collections.abc import Callable, Iterator
 
 import numpy as np
 import numpy.typing as npt
-import sqlite3
-
-import sys
-import os
-import logging
 
 logger = logging.getLogger(__name__)
 

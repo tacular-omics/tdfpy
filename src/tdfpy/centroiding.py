@@ -5,19 +5,21 @@ This module provides a cleaner interface using NamedTuples and convenience funct
 for reading centroided MS1 spectra with peak clustering/centroiding algorithms.
 """
 
-from typing import Any, Literal, NamedTuple
 import logging
+from typing import Any, Literal, NamedTuple
 
 import numpy as np
 import pandas as pd  # type: ignore
 
-from .timsdata import TimsData, oneOverK0ToCCSforMz
 from .noise import estimate_noise_level
 from .tdf import PandasTdf
+from .timsdata import TimsData, oneOverK0ToCCSforMz
 
 # Try to import Rust extension, fallback to Python implementation
 try:
-    from tdfpy._tdfpy_rust import merge_peaks as _merge_peaks_rust  # type: ignore[import]
+    from tdfpy._tdfpy_rust import (  # type: ignore[import]
+        merge_peaks as _merge_peaks_rust,  # type: ignore[import]
+    )
 
     _HAS_RUST = True
 except ImportError:
@@ -522,6 +524,7 @@ def get_centroided_spectrum(
     )
 
     return peaks
+
 
 def calculate_nmass(mz: float, charge: int) -> float:
     """Calculate neutral mass from m/z and charge state."""

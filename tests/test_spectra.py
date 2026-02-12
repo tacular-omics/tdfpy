@@ -1,16 +1,19 @@
 import unittest
+
 import numpy as np
 
 from tdfpy import (
-    timsdata,
-    merge_peaks,
     get_centroided_spectrum,
+    merge_peaks,
+    timsdata,
 )
-from tdfpy.centroiding import _merge_peaks_python, _HAS_RUST  # type: ignore[import]
+from tdfpy.centroiding import _HAS_RUST, _merge_peaks_python  # type: ignore[import]
 
 # Try to import Rust extension for comparison tests
 if _HAS_RUST:
-    from tdfpy._tdfpy_rust import merge_peaks as _merge_peaks_rust  # type: ignore[import]
+    from tdfpy._tdfpy_rust import (
+        merge_peaks as _merge_peaks_rust,  # type: ignore[import]
+    )
 
 TDF_PATH = r"tests/data/200ngHeLaPASEF_1min.d"
 

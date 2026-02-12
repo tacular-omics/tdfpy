@@ -1,8 +1,9 @@
-
 import pytest
+
 from tdfpy import DDA
 
 D_PATH = "tests/data/200ngHeLaPASEF_1min.d"
+
 
 def test_dda_precursors():
     with DDA(D_PATH) as dda:
@@ -17,16 +18,18 @@ def test_dda_precursors():
         assert p1.monoisotopic_mz == pytest.approx(1292.637062)
         assert p1.charge == 2
         # Note: ScanNumber is truncated to int in reader.py
-        assert p1.scan_number == 162 
+        assert p1.scan_number == 162
         assert p1.intensity == pytest.approx(3603.0)
         assert p1.parent_frame == 1
-        
+
         print(p1)
 
         # Check PASEF info for Precursor 1
         # From output: Frame 2, ScanNumBegin 150, ScanNumEnd 175, IsolationMz 1293.371888, Precursor 1
         assert len(p1.pasef_frame_msms_infos) == 6
-        pasef = next((info for info in p1.pasef_frame_msms_infos if info.frame_id == 2), None)
+        pasef = next(
+            (info for info in p1.pasef_frame_msms_infos if info.frame_id == 2), None
+        )
         assert pasef is not None
         assert pasef.scan_num_begin == 150
         assert pasef.scan_num_end == 175
@@ -41,11 +44,12 @@ def test_dda_precursors():
         assert p_last.scan_number == 375
         assert p_last.parent_frame == 700
 
+
 def test_dda_frames():
     with DDA(D_PATH) as dda:
         # Note: DDA.ms1_frames only yields frames with MsMsType == 0
-        ms1_frames = list(dda.ms1_frames)
-        
+        ms1_frames = list(dda.ms1)
+
         # Frame 1
         # Row 0: 1, 2400.831487, +, 8, 0, 0, 35579, 31546080, 671, 337047, ...
         f1 = next(f for f in ms1_frames if f.frame_id == 1)
@@ -62,6 +66,45 @@ def test_dda_frames():
         # Verify Frame 2 (MsMsType 8) is NOT in ms1_frames
         f2 = next((f for f in ms1_frames if f.frame_id == 2), None)
         assert f2 is None
+
+
+def test_dda_lookup_features():
+    with DDA(D_PATH) as dda:
+        # Test Precursor Lookup by ID
+        p1 = dda.precursors[1]
+        assert p1.precurosr_id == 1
+        assert p1.charge == 2
+
+        # Test MS1 Frame Lookup by ID
+        f1 = dda.ms1[1]
+        assert f1.frame_id == 1
+        assert f1.msms_type == 0
+
+        # Test Precursor Query by m/z
+        # Precursor 1 has monoisotopic_mz 1292.637062
+        mz_target = 1292.637062
+        results = list(
+            dda.precursors.query(
+                mz=mz_target, mz_tolerance=0.01, mz_tolerance_type="da"
+            )
+        )
+        found_ids = [p.precurosr_id for p in results]
+        assert 1 in found_ids
+
+        # Test Precursor Query by RT
+        # Frame 1 time is ~2400.83
+        rt_target = 2400.83
+        results_rt = list(dda.precursors.query(rt=rt_target, rt_tolerance=1.0))
+        found_ids_rt = [p.precurosr_id for p in results_rt]
+        assert 1 in found_ids_rt
+
+        # Test Invalid Lookups
+        with pytest.raises(KeyError):
+            _ = dda.precursors[99999]
+
+        with pytest.raises(KeyError):
+            # Frame 2 is not MS1
+            _ = dda.ms1[2]
 
 
 if __name__ == "__main__":

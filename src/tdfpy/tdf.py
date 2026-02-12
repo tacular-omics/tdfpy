@@ -3,8 +3,8 @@ This module contains PandasTdf which is a utility class to easily retrieve table
 file in the format of pandas dataframes
 """
 
-import sqlite3
 import logging
+import sqlite3
 from dataclasses import dataclass
 
 import pandas as pd
@@ -28,7 +28,7 @@ def convert_table_to_df(db_path: str, table_name: str) -> pd.DataFrame:
     logger.debug("Fetching " + table_name + " from " + db_path)
     try:
         with sqlite3.connect(str(db_path)) as conn:
-            df = pd.read_sql_query(f"SELECT * FROM {table_name}", conn)  # type: ignore[arg-type]
+            df = pd.read_sql_query(f"SELECT * FROM {table_name}", conn)
             return df
     except Exception as e:
         logger.error(f"Error fetching table {table_name} from {db_path}: {e}")

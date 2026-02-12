@@ -1,6 +1,25 @@
+
 # TDFpy
 
-A Python package for extracting data from Bruker timsTOF data files (`.tdf` and `.tdf_bin`).
+A Python package for extracting data from Bruker timsTOF data files (.tdf and .tdf_bin).
+Bruker D folders can be challenging to work with due to limited documentation and the added complexity of the ion mobility dimension. TDFpy simplifies this process by providing an API that works with familiar objects:
+
+- DDA: MS1 spectra and precursors (MS2 spectra)
+- DIA: MS1 spectra and DIA windows
+
+(No need to think about PASEF frames if you don't want to.)
+
+**MS1 Spectra**
+
+- MS1 objects include a Rust-backed centroiding function that returns a 3D NumPy array containing m/z, intensity, and 1/k0 values.
+
+**Precursors (DDA)**
+
+- Precursors are already centroided using Bruker's built-in C extensions.
+
+**Windows (DIA)**
+
+- DIA windows also have access to the centroiding function. However, be careful not to confuse the window's ion mobility dimension with that of the fragment ions. The TIMS components within the instrument are positioned before the fragmentation cell, meaning the ion mobility reported in DIA frames actually corresponds to the precursor ions from the MS1 frame, not the fragment ions.
 
 ## Installation
 
@@ -38,7 +57,7 @@ from tdfpy import DDA
 # Open a DDA .d folder
 with DDA('data.d') as dda:
     # Iterate over MS1 frames
-    for frame in dda.ms1_frames:
+    for frame in dda.ms1:
         print(f"Frame {frame.frame_id} at {frame.time}s")
         centroided_peaks = frame.centroid()
 
@@ -49,10 +68,31 @@ with DDA('data.d') as dda:
         peaks = precursor.peaks
 ```
 
+### Lookups and Queries
+
+Access specific frames, precursors, or windows directly by ID, or query by properties.
+
+```python
+# Access by ID
+frame = dda.ms1[1]          # Get MS1 frame 1
+precursor = dda.precursors[123]    # Get precursor 123
+windows = dia.windows[0]           # Get windows for group 0 (returns list)
+
+# Query Precursors (DDA)
+# Find precursors near a specific m/z and retention time
+results = dda.precursors.query(
+    mz=1292.63, 
+    mz_tolerance=0.01, 
+    rt=2400.0, 
+    rt_tolerance=10.0
+)
+```
+
 ## Features
 
 - **Simple Context Managers**: `DIA` and `DDA` classes handle file connections safely.
 - **Easy Iteration**: Generators for frames, windows, and precursors.
+- **Lookups and Queries**: Access elements by ID or query by m/z and retention time.
 - **Centroiding**: Built-in `centroid()` method for frames and windows.
 - **Metadata Access**: Via `metadata` and `calibration` properties.
 - **Rust Backend**: Performance-critical operations are optimized with Rust.

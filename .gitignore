@@ -6,6 +6,8 @@ __pycache__/
 # C extensions
 *.so
 
+try.py
+
 20*
 .vscode
 # Distribution / packaging
