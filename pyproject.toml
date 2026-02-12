@@ -42,4 +42,6 @@ dev = [
     "maturin>=1.0",
     "ruff>=0.14.3",
     "pyupgrade>=3.21.0",
+    "pandas>=2.3.3",
+    "numpy>=2.3.4",
 ]

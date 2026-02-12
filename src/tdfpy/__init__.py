@@ -14,23 +14,41 @@ Attributes:
 - __version__ (str): The current version of the package.
 """
 
-from .pandas_tdf import PandasTdf
+from .tdf import PandasTdf
 from .timsdata import TimsData, timsdata_connect
-from .spectra import (
+from .centroiding import (
     merge_peaks,
-    get_centroided_ms1_spectrum,
-    get_centroided_ms1_spectra,
+    get_centroided_spectrum,
 )
-from .noise import estimate_noise_level
+from .reader import (
+    DDA,
+    DIA,
+    PRM,
+    MetaData,
+    Calibration,
+    DIAMs1Frame,
+    DiaWindow,
+    DDAMs1Frame,
+    Precursor,
+    PasefFrameMsmsInfo,
+)
 
-__version__ = "0.3.0"
+__version__ = "1.0.0"
 
 __all__ = [
     "PandasTdf",
     "TimsData",
     "timsdata_connect",
     "merge_peaks",
-    "get_centroided_ms1_spectrum",
-    "get_centroided_ms1_spectra",
-    "estimate_noise_level",
+    "get_centroided_spectrum",
+    "DDA",
+    "DIA",
+    "PRM",
+    "MetaData",
+    "Calibration",
+    "DIAMs1Frame",
+    "DiaWindow",
+    "DDAMs1Frame",
+    "Precursor",
+    "PasefFrameMsmsInfo",
 ]

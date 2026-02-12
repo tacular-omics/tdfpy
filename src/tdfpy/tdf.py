@@ -26,9 +26,13 @@ def convert_table_to_df(db_path: str, table_name: str) -> pd.DataFrame:
         pd.DataFrame: The converted table as a pandas DataFrame.
     """
     logger.debug("Fetching " + table_name + " from " + db_path)
-    with sqlite3.connect(str(db_path)) as conn:
-        df = pd.read_sql_query(f"SELECT * FROM {table_name}", conn)  # type: ignore[arg-type]
-        return df
+    try:
+        with sqlite3.connect(str(db_path)) as conn:
+            df = pd.read_sql_query(f"SELECT * FROM {table_name}", conn)  # type: ignore[arg-type]
+            return df
+    except Exception as e:
+        logger.error(f"Error fetching table {table_name} from {db_path}: {e}")
+        raise
 
 
 @dataclass

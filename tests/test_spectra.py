@@ -4,7 +4,7 @@ import numpy as np
 from tdfpy import (
     timsdata,
     merge_peaks,
-    get_centroided_ms1_spectrum,
+    get_centroided_spectrum,
     get_centroided_ms1_spectra,
 )
 from tdfpy.spectra import _merge_peaks_python, _HAS_RUST  # type: ignore[import]
@@ -30,7 +30,7 @@ class TestSpectra(unittest.TestCase):
             frame_id = cursor.fetchone()[0]
 
             # Extract spectrum
-            spectrum = get_centroided_ms1_spectrum(td, frame_id)
+            spectrum = get_centroided_spectrum(td, frame_id)
 
             # Verify structure
             self.assertIsInstance(spectrum, np.ndarray)

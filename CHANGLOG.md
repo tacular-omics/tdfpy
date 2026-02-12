@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0]
+
+### Added
+- New high-level object-oriented API for interacting with TDF data (`DDA`, `DIA`, `PRM` classes)
+- `reader.py` module containing the new class hierarchy
+- Support for extracting Precursor and PASEF MS/MS data via object properties
+- `get_centroided_spectrum` function returning high-performance 2D numpy arrays
+
+### Changed
+- **BREAKING**: `merge_peaks` now returns a `numpy.ndarray` of shape (N, 3) (mz, intensity, mobility) instead of a list of `Peak` objects.
+- **BREAKING**: Refactored spectrum extraction to return pure numpy arrays instead of `Ms1Spectrum` objects for improved performance.
+- `Ms1Spectrum` and `Peak` NamedTuples are replaced by raw numpy array access in the high-level API.
+
 ## [0.3.0]
 - Rust backend for centroiding (11x faster)
 - uv / ty / ruff

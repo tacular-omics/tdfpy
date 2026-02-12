@@ -14,7 +14,7 @@ import pandas as pd  # type: ignore
 
 from .timsdata import TimsData, oneOverK0ToCCSforMz
 from .noise import estimate_noise_level
-from .pandas_tdf import PandasTdf
+from .tdf import PandasTdf
 
 # Try to import Rust extension, fallback to Python implementation
 try:
@@ -279,11 +279,11 @@ def _merge_peaks_python(
     return np.column_stack((merged_mz_list, merged_int_list, merged_mob_list))
 
 
-def get_centroided_ms1_spectrum(
+def get_centroided_spectrum(
     td: TimsData,
     frame_id: int,
     spectrum_index: int | None = None,
-    ion_mobility_type: Literal["ook0", "ccs"] = "ook0",
+    ion_mobility_type: Literal["ook0", "ccs", "voltage"] = "ook0",
     mz_tolerance: float = 8.0,
     mz_tolerance_type: Literal["ppm", "da"] = "ppm",
     im_tolerance: float = 0.05,
@@ -388,9 +388,9 @@ def get_centroided_ms1_spectrum(
         msms_type,
     )
 
-    if msms_type != 0:
-        logger.error("Frame %d is not an MS1 frame (MsMsType=%d)", frame_id, msms_type)
-        raise ValueError(f"Frame {frame_id} is not an MS1 frame (MsMsType={msms_type})")
+    # if msms_type != 0:
+    #    logger.error("Frame %d is not an MS1 frame (MsMsType=%d)", frame_id, msms_type)
+    #    raise ValueError(f"Frame {frame_id} is not an MS1 frame (MsMsType={msms_type})")
 
     retention_time_min = retention_time_sec / 60.0
 
@@ -483,6 +483,13 @@ def get_centroided_ms1_spectrum(
         ion_mobility_array = ccs_array
         logger.debug("Completed CCS conversion")
 
+    if ion_mobility_type == "voltage":
+        logger.debug("Converting 1/K0 to voltage values")
+        # scanNumToVoltage
+        voltage_array = td.scanNumToVoltage(frame_id, ion_mobility_array)
+        ion_mobility_array = voltage_array
+        logger.debug("Completed voltage conversion")
+
     # Apply peak centroiding
     logger.debug("Starting peak centroiding algorithm")
     peaks = merge_peaks(
@@ -516,143 +523,6 @@ def get_centroided_ms1_spectrum(
     )
 
     return peaks
-
-
-def get_centroided_ms1_spectra(
-    td: TimsData,
-    frame_ids: list[int] | None = None,
-    ion_mobility_type: Literal["ook0", "ccs"] = "ook0",
-    mz_tolerance: float = 8.0,
-    mz_tolerance_type: Literal["ppm", "da"] = "ppm",
-    im_tolerance: float = 0.05,
-    im_tolerance_type: Literal["relative", "absolute"] = "relative",
-    min_peaks: int = 3,
-    max_peaks: int | None = None,
-    noise_filter: None
-    | (
-        Literal["mad", "percentile", "histogram", "baseline", "iterative_median"]
-        | float
-    ) = None,
-    use_rust: bool = True,
-) -> Generator[np.ndarray, None, None]:
-    """Extract centroided MS1 spectra for multiple frames.
-
-    Convenience function to extract multiple centroided MS1 spectra. If frame_ids is not
-    specified, all MS1 frames in the file will be processed. Raw profile-like data is
-    converted to centroided spectra using peak clustering.
-
-    Args:
-        td: TimsData instance connected to the analysis directory
-        frame_ids: Optional list of frame IDs to extract. If None, extracts all MS1 frames.
-        ion_mobility_type: Type of ion mobility to calculate and include for each peak
-                          - "ook0": 1/K0 (reciprocal reduced mobility) [default]
-                          - "ccs": Collision Cross Section in Ų (requires charge state estimation)
-        mz_tolerance: Tolerance for m/z matching during centroiding
-        mz_tolerance_type: Type of m/z tolerance - "ppm" or "da" (daltons)
-        im_tolerance: Tolerance for ion mobility matching during centroiding
-        im_tolerance_type: Type of ion mobility tolerance - "relative" or "absolute"
-        min_peaks: Minimum number of nearby raw peaks required to form a centroid
-        noise_filter: Noise filtering method to apply before centroiding. Options:
-                     - None: No noise filtering (default)
-                     - "mad": Median Absolute Deviation method
-                     - "percentile": 75th percentile threshold
-                     - "histogram": Histogram mode-based estimation
-                     - "baseline": Bottom quartile statistics
-                     - "iterative_median": Iterative median filtering
-                     - float/int: Direct intensity threshold value
-
-    Returns:
-        Generator yielding np.ndarray objects of shape (N, 3), ordered by frame ID.
-        Columns are: [mz, intensity, ion_mobility]
-
-    Example:
-        >>> with timsdata_connect('path/to/data.d') as td:
-        ...     # Get all centroided MS1 spectra with 1/K0 (default)
-        ...     for peaks in get_centroided_ms1_spectra(td):
-        ...         print(f"Spectrum: {len(peaks)} centroided peaks")
-        ...
-        ...     # Get spectra with CCS values
-        ...     for spectrum in get_centroided_ms1_spectra(td, ion_mobility_type="ccs"):
-        ...         print(f"CCS spectrum: {spectrum.num_peaks} peaks")
-        ...
-        ...     # Custom centroiding tolerances
-        ...     spectra = list(get_centroided_ms1_spectra(
-        ...         td, mz_tolerance=10, im_tolerance=0.1
-        ...     ))
-        ...
-        ...     # With noise filtering
-        ...     for spectrum in get_centroided_ms1_spectra(td, noise_filter="mad"):
-        ...         print(f"Noise-filtered spectrum: {spectrum.num_peaks} peaks")
-    """
-    logger.info(
-        "Starting batch MS1 centroided spectrum extraction (frame_ids=%s, noise_filter=%s)",
-        "all MS1" if frame_ids is None else f"{len(frame_ids)} specified",
-        noise_filter,
-    )
-
-    if td.conn is None:
-        logger.error("TimsData connection is not open")
-        raise RuntimeError("TimsData connection is not open")
-
-    cursor = td.conn.cursor()
-
-    if frame_ids is None:
-        # Get all MS1 frame IDs
-        logger.debug("Querying database for all MS1 frame IDs")
-        cursor.execute("SELECT Id FROM Frames WHERE MsMsType = 0 ORDER BY Id")
-        frame_ids = [row[0] for row in cursor.fetchall()]
-        logger.info("Found %d MS1 frames to process", len(frame_ids))
-    else:
-        logger.debug("Processing %d user-specified frame IDs", len(frame_ids))
-
-    successful_count = 0
-    failed_count = 0
-
-    for idx, frame_id in enumerate(frame_ids):
-        if (idx + 1) % 100 == 0:
-            logger.info("Progress: %d/%d frames processed", idx + 1, len(frame_ids))
-
-        try:
-            spectrum = get_centroided_ms1_spectrum(
-                td,
-                frame_id=frame_id,
-                spectrum_index=idx,
-                ion_mobility_type=ion_mobility_type,
-                mz_tolerance=mz_tolerance,
-                mz_tolerance_type=mz_tolerance_type,
-                im_tolerance=im_tolerance,
-                im_tolerance_type=im_tolerance_type,
-                min_peaks=min_peaks,
-                max_peaks=max_peaks,
-                noise_filter=noise_filter,
-                use_rust=use_rust,
-            )
-            successful_count += 1
-            logger.debug(
-                "Successfully extracted centroided spectrum %d/%d: frame_id=%d",
-                idx + 1,
-                len(frame_ids),
-                frame_id,
-            )
-            yield spectrum
-        except (ValueError, RuntimeError) as e:
-            # Log warning but continue processing
-            failed_count += 1
-            logger.warning(
-                "Failed to extract spectrum for frame %d (%d/%d): %s",
-                frame_id,
-                idx + 1,
-                len(frame_ids),
-                e,
-            )
-            continue
-
-    logger.info(
-        "Batch centroiding complete: %d successful, %d failed, %d total",
-        successful_count,
-        failed_count,
-        len(frame_ids),
-    )
 
 def calculate_nmass(mz: float, charge: int) -> float:
     """Calculate neutral mass from m/z and charge state."""

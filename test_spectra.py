@@ -1,19 +1,28 @@
-import tdfpy as tp
-
-import logging
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
+from tdfpy import DIA, DDA
 
 def main():
 
-    with tp.timsdata_connect("/home/patrick-garrett/Downloads/HeLa_5min_raw/20180924_50ngHeLa_1.0.25.1_Hystar5.0SR1_S2-B4_1_2057.d") as td:
-        print(td)
+    dia = DIA("/home/patrick-garrett/Data/Arabela/seminal_plasma/raw/DIA/boar/20220217_Boar-1_S3-A7_1_8655.d")
+    for window in dia.windows:
+        print(window.centroid().shape)
+        print(len(window.peaks))
+        break
 
-        for spectra in tp.get_centroided_ms1_spectra(td):
-            print(spectra)
+    for ms1 in dia.ms1_frames:
+        print(ms1.centroid().shape)
+        print(len(ms1.peaks))
+        break
 
+    dda = DDA("/home/patrick-garrett/Data/Arabela/seminal_plasma/raw/DDA/boar/20220217_Boar-1_S3-A7_1_8553.d")
+    for precursor in dda.precursors:
+        print(len(precursor.peaks))
+        # no centroiding for precursors, has internal method for this
+        break
+
+    for ms1 in dda.ms1_frames:
+        print(ms1.centroid().shape)
+        print(len(ms1.peaks))
+        break
 
 if __name__ == "__main__":
     main()
