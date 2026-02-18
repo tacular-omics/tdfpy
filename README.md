@@ -2,13 +2,11 @@
 <div align="center">
   <img src="logo.png" alt="TDFpy Logo" width="400" style="margin: 20px;"/>
   
+    A Python package for extracting data from Bruker timsTOF data files (.tdf and .tdf_bin). Includes a Rust-backed centroiding algorithm for efficient extraction of ion mobility data.
   
-  A Python package for extracting data from Bruker timsTOF data files (.tdf and .tdf_bin).
-    Bruker D folders can be challenging to work with due to limited documentation and the added complexity of the ion mobility dimension. 
-  
-  [![Python package](https://github.com/tacular-omics/peptacular/actions/workflows/python-package.yml/badge.svg)](https://github.com/tacular-omics/peptacular/actions/workflows/python-package.yml)
-  [![codecov](https://codecov.io/github/tacular-omics/peptacular/graph/badge.svg?token=1CTVZVFXF7)](https://codecov.io/github/tacular-omics/peptacular)
-  [![PyPI version](https://badge.fury.io/py/peptacular.svg)](https://badge.fury.io/py/peptacular)
+  [![Python package](https://github.com/tacular-omics/tdfpy/actions/workflows/python-package.yml/badge.svg)](https://github.com/tacular-omics/tdfpy/actions/workflows/python-package.yml)
+  [![codecov](https://codecov.io/github/tacular-omics/tdfpy/graph/badge.svg?token=1CTVZVFXF7)](https://codecov.io/github/tacular-omics/tdfpy)
+  [![PyPI version](https://badge.fury.io/py/tdfpy.svg)](https://badge.fury.io/py/tdfpy)
   [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
   [![License: MIT](https://img.shields.io/badge/License-MIT-g.svg)](https://opensource.org/licenses/MIT)
   
@@ -21,7 +19,7 @@ TDFpy simplifies this process by providing an API that works with familiar objec
 - DDA: MS1 spectra and precursors (MS2 spectra)
 - DIA: MS1 spectra and DIA windows
 
-(No need to think about PASEF frames if you don't want to.)
+(No need to think about PASEF frames)
 
 **MS1 Spectra**
 
@@ -102,22 +100,19 @@ results = dda.precursors.query(
 )
 ```
 
-## Features
-
-- **Simple Context Managers**: `DIA` and `DDA` classes handle file connections safely.
-- **Easy Iteration**: Generators for frames, windows, and precursors.
-- **Lookups and Queries**: Access elements by ID or query by m/z and retention time.
-- **Centroiding**: Built-in `centroid()` method for frames and windows.
-- **Metadata Access**: Via `metadata` and `calibration` properties.
-- **Rust Backend**: Performance-critical operations are optimized with Rust.
-
 ## Development
 
 The project uses `uv` for dependency management.
 
 ```bash
-make install-dev    # Install dev dependencies
-make test          # Run tests
-make lint          # Run type checking and linting
-make build         # Build package
+just install
+
+# QC
+just lint
+just format
+just ty
+just test
+
+# or run all QC commands:
+just check
 ```
