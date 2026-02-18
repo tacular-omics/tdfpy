@@ -35,20 +35,37 @@ jobs:
     - name: Install uv
       uses: astral-sh/setup-uv@v4
     
+    - name: Install just
+      uses: extractions/setup-just@v2
+    
     - name: Install maturin
       run: |
         uv tool install maturin
     
     - name: Install dependencies with Rust extension
-      run: |
-        uv sync --all-groups
-        PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 uv run maturin develop --release
+      run: just install-rust
     
-    - name: Lint with ty and ruff
-      run: |
-        uv run ty check src/tdfpy
-        uv run ruff check src/tdfpy
+    - name: Lint with ruff
+      run: just lint
+    
+    - name: Type check with ty
+      run: just ty
     
     - name: Test with pytest
-      run: |
-        uv run pytest tests/ -v
+      run: just test-codecov
+
+    - name: Upload coverage reports to Codecov
+      uses: codecov/codecov-action@v5
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        slug: tacular-omics/tdfpy
+        fail_ci_if_error: false
+
+    - name: Upload test results to Codecov
+      if: ${{ !cancelled() }}
+      uses: codecov/codecov-action@v5
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        slug: tacular-omics/tdfpy
+        report_type: test_results
+        fail_ci_if_error: false
