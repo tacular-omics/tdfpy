@@ -2,9 +2,11 @@ name: Python package
 
 on:
   push:
-    branches: [ "main", "dev" ]
-  pull_request:
-    branches: [ "main", "dev" ]
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'justfile'
+      - 'pyproject.toml'
   workflow_dispatch:
 
 jobs:
