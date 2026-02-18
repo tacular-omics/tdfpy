@@ -6,8 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 # TODO:
-- add lookup onjkects to DDA, DIA, and PRM readers for searching for ms1 or ms2 frames by id (similar to pymzml)
-- implement PRM (ask sannie for sample data)
+- implement PRM / MALDI
 
 ## [1.0.0]
 

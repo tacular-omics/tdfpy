@@ -51,8 +51,11 @@ jobs:
     - name: Type check with ty
       run: just ty
     
-    - name: Test with pytest
-      run: just test-codecov
+    - name: Test with pytest  coverage
+      run: just test-cov
+
+    - name: Test with pytest tests
+      run: just codecov-tests
 
     - name: Upload coverage reports to Codecov
       uses: codecov/codecov-action@v5
