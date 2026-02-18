@@ -18,6 +18,8 @@ TDFpy simplifies this process by providing an API that works with familiar objec
 
 - DDA: MS1 spectra and precursors (MS2 spectra)
 - DIA: MS1 spectra and DIA windows
+- PRM: Work in progress
+- MALDI: Work in progress
 
 (No need to think about PASEF frames)
 
