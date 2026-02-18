@@ -76,9 +76,9 @@ publish: build
 
 # Upgrade Python syntax to 3.11+
 upgrade:
-  @echo "🚀 Upgrading Python syntax to 3.11+..."
-  @find src/tdfpy tests -name "*.py" -type f -exec uv run pyupgrade --py311-plus {} +
-  @echo "✅ Python syntax upgraded to 3.11+"
+  @echo "🚀 Upgrading Python syntax to 3.12+..."
+  @find src/tdfpy tests -name "*.py" -type f -exec uv run pyupgrade --py312-plus {} +
+  @echo "✅ Python syntax upgraded to 3.12+"
 
 # Run tests with coverage
 test-cov:

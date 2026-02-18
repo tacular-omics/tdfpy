@@ -1,5 +1,6 @@
 from pathlib import Path
-from typing import Generator, Self
+from typing import Self
+from collections.abc import Generator
 
 import pandas as pd
 
@@ -363,8 +364,7 @@ class DIA(_DFolder):
     def window_groups(self) -> Generator[DiaWindowGroup, None, None]:
         self._check_open()
         for window_group_list in self._dia_window_groups.values():
-            for window_group in window_group_list:
-                yield window_group
+            yield from window_group_list
 
 
 class PRM(_DFolder):
