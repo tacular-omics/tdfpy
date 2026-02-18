@@ -43,4 +43,5 @@ dev = [
     "pyupgrade>=3.21.0",
     "pandas>=2.3.3",
     "numpy>=2.3.4",
+    "pytest-cov>=6.0.0",
 ]

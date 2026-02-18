@@ -51,7 +51,7 @@ jobs:
     - name: Type check with ty
       run: just ty
     
-    - name: Test with pytest  coverage
+    - name: Test with pytest coverage
       run: just test-cov
 
     - name: Test with pytest tests
