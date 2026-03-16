@@ -1,8 +1,14 @@
 import pytest
 
-from tdfpy import DDA
+from tdfpy import DDA, get_acquisition_type
 
 D_PATH = "tests/data/200ngHeLaPASEF_1min.d"
+
+
+def test_get_acquisition_type():
+    """Test that get_acquisition_type correctly identifies DDA data."""
+    acq_type = get_acquisition_type(D_PATH)
+    assert acq_type == "DDA"
 
 
 def test_dda_precursors():
@@ -12,7 +18,7 @@ def test_dda_precursors():
 
         # Precursor 1
         # Row 0: 1, 1293.138494, 1293.371888, 1292.637062, 2.0, 162.940341, 3603.0, 1
-        p1 = next(p for p in precursors if p.precurosr_id == 1)
+        p1 = next(p for p in precursors if p.precursor_id == 1)
         assert p1.largest_peak_mz == pytest.approx(1293.138494)
         assert p1.average_mz == pytest.approx(1293.371888)
         assert p1.monoisotopic_mz == pytest.approx(1292.637062)
@@ -37,7 +43,7 @@ def test_dda_precursors():
 
         # Precursor 2519 (Last one in snippet)
         # Row 2518: 2519, 635.842079, 636.152187, 635.842079, 2.0, 375.340166, 11102.0, 700
-        p_last = next(p for p in precursors if p.precurosr_id == 2519)
+        p_last = next(p for p in precursors if p.precursor_id == 2519)
         assert p_last.largest_peak_mz == pytest.approx(635.842079)
         assert p_last.average_mz == pytest.approx(636.152187)
         assert p_last.charge == 2
@@ -54,7 +60,7 @@ def test_dda_frames():
         # Row 0: 1, 2400.831487, +, 8, 0, 0, 35579, 31546080, 671, 337047, ...
         f1 = next(f for f in ms1_frames if f.frame_id == 1)
         assert f1.time == pytest.approx(2400.831487)
-        assert f1.polarity == "+"
+        assert f1.polarity == "positive"
         assert f1.scan_mode == 8
         assert f1.msms_type == 0
         assert f1.max_intensity == 35579
@@ -72,7 +78,7 @@ def test_dda_lookup_features():
     with DDA(D_PATH) as dda:
         # Test Precursor Lookup by ID
         p1 = dda.precursors[1]
-        assert p1.precurosr_id == 1
+        assert p1.precursor_id == 1
         assert p1.charge == 2
 
         # Test MS1 Frame Lookup by ID
@@ -88,14 +94,14 @@ def test_dda_lookup_features():
                 mz=mz_target, mz_tolerance=0.01, mz_tolerance_type="da"
             )
         )
-        found_ids = [p.precurosr_id for p in results]
+        found_ids = [p.precursor_id for p in results]
         assert 1 in found_ids
 
         # Test Precursor Query by RT
         # Frame 1 time is ~2400.83
         rt_target = 2400.83
         results_rt = list(dda.precursors.query(rt=rt_target, rt_tolerance=1.0))
-        found_ids_rt = [p.precurosr_id for p in results_rt]
+        found_ids_rt = [p.precursor_id for p in results_rt]
         assert 1 in found_ids_rt
 
         # Test Invalid Lookups

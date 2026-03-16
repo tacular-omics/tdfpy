@@ -10,6 +10,7 @@ from .reader import (
     DDA,
     DIA,
     PRM,
+    get_acquisition_type,
 )
 from .elems import(
     Calibration,
@@ -37,6 +38,7 @@ __all__ = [
     "DDA",
     "DIA",
     "PRM",
+    "get_acquisition_type",
     "MetaData",
     "Calibration",
     "DIAMs1Frame",

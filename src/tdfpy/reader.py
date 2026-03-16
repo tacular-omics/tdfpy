@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Self
+from typing import Self, Literal
 from collections.abc import Generator
 
 import pandas as pd
@@ -14,11 +14,51 @@ from .elems import (
     MetaData,
     MsMsType,
     PasefFrameMsmsInfo,
-    Precursor,
+    Precursor, Polarity,
 )
 from .lookup import DiaWindowLookup, Ms1FrameLookup, PrecursorLookup
 from .tdf import PandasTdf
 from .timsdata import TimsData
+
+
+def get_acquisition_type(analysis_dir: str) -> Literal["DDA", "DIA", "PRM", "Unknown"]:
+    """
+    Determine the acquisition type (DDA or DIA) of a .d folder by examining
+    the MsMsType values in the Frames table.
+    
+    Args:
+        analysis_dir: Path to the .d folder
+        
+    Returns:
+        "DDA" if DDA acquisition detected
+        "DIA" if DIA acquisition detected
+        "PRM" if PRM acquisition detected
+        "Unknown" if type cannot be determined
+        
+    Raises:
+        FileNotFoundError: If analysis.tdf does not exist
+    """
+    analysis_tdf_path = Path(analysis_dir) / "analysis.tdf"
+    if not analysis_tdf_path.exists():
+        raise FileNotFoundError(f"analysis.tdf not found at {analysis_tdf_path}")
+    
+    pandas_tdf = PandasTdf(str(analysis_tdf_path))
+    frames_df = pandas_tdf.frames
+    
+    # Get unique MsMsType values
+    msms_types = set(frames_df["MsMsType"].unique())
+    
+    # Check for DDA (MS2 type 8)
+    if MsMsType.DDA_MS2.value in msms_types:
+        return "DDA"
+    
+    # Check for DIA (MS2 type 9)
+    if MsMsType.DIA_MS2.value in msms_types:
+        return "DIA"
+    
+    # PRM typically shows as type 2, but we can also check for the presence of certain tables
+    # For now, return Unknown for other types
+    return "Unknown"
 
 
 # abstract base class for DFolder and DDA_Dfolder
@@ -126,9 +166,16 @@ class DDA(_DFolder):
             time = float(row["Time"])
             frame_id_to_rt[frame_id] = time
 
+        frame_to_polarity: dict[int, str] = {}
+        for _, row in self._frames_df.iterrows():
+            frame_id = int(row["Id"])
+            polarity = str(row["Polarity"])
+            frame_to_polarity[frame_id] = polarity
+
         self._pasef_msms_infos: dict[int, list[PasefFrameMsmsInfo]] = {}
         for _, row in self._pasef_frame_msms_info_df.iterrows():
             frame_id = int(row["Frame"])
+            polarity = frame_to_polarity[frame_id]
             pasef_info = PasefFrameMsmsInfo(
                 _timsdata=self.timsdata,
                 frame_id=frame_id,
@@ -141,6 +188,7 @@ class DDA(_DFolder):
                 if not pd.isna(row["Precursor"])
                 else None,
                 rt=frame_id_to_rt[frame_id],
+                polarity=Polarity.from_str(polarity),
             )
 
             if pasef_info.precursor is None:
@@ -160,7 +208,7 @@ class DDA(_DFolder):
 
             precursor = Precursor(
                 _timsdata=self.timsdata,
-                precurosr_id=precursor_id,
+                precursor_id=precursor_id,
                 largest_peak_mz=float(row["LargestPeakMz"]),
                 average_mz=float(row["AverageMz"]),
                 monoisotopic_mz=float(row["MonoisotopicMz"])
@@ -195,7 +243,7 @@ class DDA(_DFolder):
                     _timsdata=self.timsdata,
                     frame_id=frame_id,
                     time=float(row["Time"]),
-                    polarity=str(row["Polarity"]),
+                    polarity=Polarity.from_str(str(row["Polarity"])),
                     scan_mode=int(row["ScanMode"]),
                     msms_type=msms_type,
                     tims_id=int(row["TimsId"]),
@@ -252,6 +300,12 @@ class DIA(_DFolder):
             time = float(row["Time"])
             frame_id_to_rt[frame_id] = time
 
+        frame_id_to_polarity = {}
+        for _, row in self._frames_df.iterrows():
+            frame_id = int(row["Id"])
+            polarity = str(row["Polarity"])
+            frame_id_to_polarity[frame_id] = polarity
+
         # window groups
         self._dia_frame_msms_windows_df = PandasTdf(
             str(self.analysis_tdf_path)
@@ -301,6 +355,7 @@ class DIA(_DFolder):
                     isolation_width=window_group.isolation_width,
                     collision_energy=window_group.collision_energy,
                     rt=frame_id_to_rt[frame_id],
+                    polarity=Polarity.from_str(frame_id_to_polarity[frame_id])
                 )
                 self._dia_windows[frame_id].append(dia_window)
                 self._all_dia_windows.append(dia_window)
@@ -317,7 +372,7 @@ class DIA(_DFolder):
                     _timsdata=self.timsdata,
                     frame_id=frame_id,
                     time=float(row["Time"]),
-                    polarity=str(row["Polarity"]),
+                    polarity=Polarity.from_str(str(row["Polarity"])),
                     scan_mode=int(row["ScanMode"]),
                     msms_type=msms_type,
                     tims_id=int(row["TimsId"]) if not pd.isna(row["TimsId"]) else None,

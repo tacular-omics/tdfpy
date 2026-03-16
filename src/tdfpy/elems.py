@@ -1,7 +1,7 @@
 import datetime
 import warnings
 from dataclasses import dataclass
-from enum import Enum
+from enum import Enum, StrEnum
 from functools import partial
 from typing import Any, Literal
 
@@ -17,6 +17,27 @@ class MsMsType(Enum):
     MS1 = 0
     DDA_MS2 = 8
     DIA_MS2 = 9
+
+class Polarity(StrEnum):
+    POSITIVE = "positive"
+    NEGATIVE = "negative"
+    UNKOWN = "unknown"
+    MIXED = "mixed"
+
+    @staticmethod
+    def from_str(s: str) -> "Polarity":
+        s = s.lower()
+        if s in ("positive", "+"):
+            return Polarity.POSITIVE
+        elif s in ("negative", "-"):
+            return Polarity.NEGATIVE
+        elif s in ("unknown", "unkown" ,'?'):
+            return Polarity.UNKOWN
+        elif s in ("mixed", "mix"):
+            return Polarity.MIXED
+        else:
+            raise ValueError(f"Unknown polarity string: {s}")
+
 
 
 @dataclass
@@ -57,6 +78,7 @@ class PasefFrameMsmsInfo(_TdfData):
     collision_energy: float
     precursor: int | None
     rt: float
+    polarity: Polarity
 
     @property
     def unique_id(self) -> tuple[int, int | None]:
@@ -82,6 +104,60 @@ class PasefFrameMsmsInfo(_TdfData):
         peaks = np.stack((mz_array, intensity_array), axis=-1)
         return peaks
 
+    @property
+    def scan_num_range(self) -> tuple[int, int]:
+        return (self.scan_num_begin, self.scan_num_end)
+
+    @property
+    def ook0_begin(self) -> float:
+        return self.timsdata.scanNumToOneOverK0(self.frame_id, [self.scan_num_begin])[
+            0
+        ]
+
+    @property
+    def ook0_end(self) -> float:
+        return self.timsdata.scanNumToOneOverK0(self.frame_id, [self.scan_num_end])[0]
+
+
+    @property
+    def ook0_range(self) -> tuple[float, float]:
+        return (self.ook0_begin, self.ook0_end)
+
+    @property
+    def ccs_begin(self) -> float:
+        return oneOverK0ToCCSforMz(self.ook0_begin, 1, self.isolation_mz)
+
+    @property
+    def ccs_end(self) -> float:
+        return oneOverK0ToCCSforMz(self.ook0_end, 1, self.isolation_mz)
+
+    @property
+    def ccs_range(self) -> tuple[float, float]:
+        return (self.ccs_begin, self.ccs_end)
+
+    @property
+    def voltage_begin(self) -> float:
+        return self.timsdata.scanNumToVoltage(self.frame_id, [self.scan_num_begin])[0]
+
+    @property
+    def voltage_end(self) -> float:
+        return self.timsdata.scanNumToVoltage(self.frame_id, [self.scan_num_end])[0]
+
+    @property
+    def voltage_range(self) -> tuple[float, float]:
+        return (self.voltage_begin, self.voltage_end)
+
+    @property
+    def mz_begin(self) -> float:
+        return self.isolation_mz - self.isolation_width / 2
+
+    @property
+    def mz_end(self) -> float:
+        return self.isolation_mz + self.isolation_width / 2
+
+    @property
+    def mz_range(self) -> tuple[float, float]:
+        return (self.mz_begin, self.mz_end)
 
 @dataclass
 class Precursor(_TdfData):
@@ -98,7 +174,7 @@ class Precursor(_TdfData):
         )
     """
 
-    precurosr_id: int
+    precursor_id: int
     largest_peak_mz: float
     average_mz: float
     monoisotopic_mz: float | None
@@ -127,10 +203,10 @@ class Precursor(_TdfData):
 
     @property
     def peaks(self) -> npt.NDArray[np.float64]:
-        prec_map: dict[int, Any] = self.timsdata.readPasefMsMs([self.precurosr_id])
-        if self.precurosr_id not in prec_map:
-            raise ValueError(f"Precursor ID {self.precurosr_id} not found in TimsData.")
-        scan = prec_map[self.precurosr_id]
+        prec_map: dict[int, Any] = self.timsdata.readPasefMsMs([self.precursor_id])
+        if self.precursor_id not in prec_map:
+            raise ValueError(f"Precursor ID {self.precursor_id} not found in TimsData.")
+        scan = prec_map[self.precursor_id]
         mz_array = np.array(scan[0])
         intensity_array = np.array(scan[1])
         peaks = np.stack((mz_array, intensity_array), axis=-1)
@@ -139,6 +215,51 @@ class Precursor(_TdfData):
     @property
     def pasef_peaks(self) -> list[np.ndarray]:
         return [pasef_info.peaks for pasef_info in self.pasef_frame_msms_infos]
+
+    def _get_pasef_frame_single_value(self, attr: str) -> Any:
+        values = {getattr(info, attr) for info in self.pasef_frame_msms_infos}
+        if len(values) == 0:
+            warnings.warn(f"No values found for attribute '{attr}' in pasef_frame_msms_infos. Returning None.", UserWarning, stacklevel=2)
+            return None
+        if len(values) > 1:
+            warnings.warn(f"Multiple values found for attribute '{attr}' in pasef_frame_msms_infos. Returning None.", UserWarning, stacklevel=2)
+            return None
+        return values.pop()
+
+    @property
+    def scan_num_range(self) -> tuple[int, int] | None:
+        return self._get_pasef_frame_single_value("scan_num_range")
+
+    @property
+    def ook0_range(self) -> tuple[float, float] | None:
+        return self._get_pasef_frame_single_value("ook0_range")
+
+    @property
+    def ccs_range(self) -> tuple[float, float] | None:
+        return self._get_pasef_frame_single_value("ccs_range")
+
+    @property
+    def voltage_range(self) -> tuple[float, float] | None:
+        return self._get_pasef_frame_single_value("voltage_range")
+
+    @property
+    def mz_range(self) -> tuple[float, float] | None:
+        return self._get_pasef_frame_single_value("mz_range")
+
+    @property
+    def polarity(self) -> Polarity:
+        polarities = {info.polarity for info in self.pasef_frame_msms_infos}
+        if len(polarities) == 0:
+            warnings.warn("No polarities found in pasef_frame_msms_infos. Returning 'unknown' for polarity.", UserWarning, stacklevel=2)
+            return Polarity.UNKOWN
+        if len(polarities) != 1:
+            warnings.warn("Multiple polarities found in pasef_frame_msms_infos. Returning 'mixed' for polarity.", UserWarning, stacklevel=2)
+            return Polarity.MIXED
+        return polarities.pop()
+
+    @property
+    def collision_energy(self) -> float | None:
+        return self._get_pasef_frame_single_value("collision_energy")
 
 
 @dataclass
@@ -163,6 +284,22 @@ class DiaWindowGroup:
     isolation_mz: float
     isolation_width: float
     collision_energy: float
+
+    @property
+    def scan_num_range(self) -> tuple[int, int]:
+        return (self.scan_num_begin, self.scan_num_end)
+
+    @property
+    def mz_begin(self) -> float:
+        return self.isolation_mz - self.isolation_width / 2
+
+    @property
+    def mz_end(self) -> float:
+        return self.isolation_mz + self.isolation_width / 2
+
+    @property
+    def mz_range(self) -> tuple[float, float]:
+        return (self.mz_begin, self.mz_end)
 
 
 @dataclass
@@ -194,7 +331,7 @@ class Frame(_TdfData):
 
     frame_id: int
     time: float
-    polarity: str
+    polarity: Polarity
     scan_mode: int
     msms_type: int
     tims_id: int | None
@@ -209,14 +346,6 @@ class Frame(_TdfData):
     property_group: int | None
     accumulation_time: float
     ramp_time: float
-
-    @property
-    def is_positive(self) -> bool:
-        return self.polarity == "+"
-
-    @property
-    def is_negative(self) -> bool:
-        return self.polarity == "-"
 
     @property
     def peaks(self) -> list[npt.NDArray[np.float64]]:
@@ -279,6 +408,7 @@ class DDAMs1Frame(Frame):
 class DiaWindow(DiaWindowGroup, _TdfData):
     frame_id: int
     rt: float
+    polarity: Polarity
 
     @property
     def peaks(self) -> list[npt.NDArray[np.float64]]:
@@ -333,6 +463,7 @@ class DiaWindow(DiaWindowGroup, _TdfData):
             )
             return get_spectrum(use_rust=False)
 
+
     @property
     def ook0_begin(self) -> float:
         return self.timsdata.scanNumToOneOverK0(self.frame_id, [self.scan_num_begin])[0]
@@ -340,6 +471,10 @@ class DiaWindow(DiaWindowGroup, _TdfData):
     @property
     def ook0_end(self) -> float:
         return self.timsdata.scanNumToOneOverK0(self.frame_id, [self.scan_num_end])[0]
+
+    @property
+    def ook0_range(self) -> tuple[float, float]:
+        return (self.ook0_begin, self.ook0_end)
 
     @property
     def ccs_begin(self) -> float:
@@ -350,12 +485,21 @@ class DiaWindow(DiaWindowGroup, _TdfData):
         return oneOverK0ToCCSforMz(self.ook0_end, 1, self.isolation_mz)
 
     @property
+    def ccs_range(self) -> tuple[float, float]:
+        return (self.ccs_begin, self.ccs_end)
+
+    @property
     def voltage_begin(self) -> float:
         return self.timsdata.scanNumToVoltage(self.frame_id, [self.scan_num_begin])[0]
 
     @property
     def voltage_end(self) -> float:
         return self.timsdata.scanNumToVoltage(self.frame_id, [self.scan_num_end])[0]
+
+    @property
+    def voltage_range(self) -> tuple[float, float]:
+        return (self.voltage_begin, self.voltage_end)
+        
 
 
 @dataclass
