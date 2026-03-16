@@ -1,0 +1,38 @@
+site_name: tdfpy
+repo_url: https://github.com/tacular-omics/tdfpy
+theme:
+  name: material
+  palette:
+    scheme: slate
+    primary: indigo
+  features:
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+
+nav:
+  - Home: index.md
+  - Getting Started: getting-started.md
+  - API Reference:
+    - Reader: api/reader.md
+    - Data Classes: api/elems.md
+    - Lookups: api/lookup.md
+    - Centroiding: api/centroiding.md
+    - Low-Level: api/low-level.md
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            show_source: true
+            show_private: false
+            show_inherited_members: false
+            merge_init_into_class: true
+            docstring_style: google
+
+markdown_extensions:
+  - pymdownx.highlight
+  - pymdownx.superfences
+  - admonition

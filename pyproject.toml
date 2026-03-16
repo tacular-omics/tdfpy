@@ -35,6 +35,10 @@ features = ["pyo3/extension-module"]
 include = ["src/tdfpy/libtimsdata.so"]
 
 [dependency-groups]
+docs = [
+    "mkdocs-material>=9.0",
+    "mkdocstrings[python]>=0.25",
+]
 dev = [
     "pytest>=7.0",
     "ty>=0.0.9",
