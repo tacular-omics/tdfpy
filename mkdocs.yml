@@ -21,7 +21,7 @@ nav:
     - Data Classes: api/elems.md
     - Lookups: api/lookup.md
     - Centroiding: api/centroiding.md
-    - Low-Level: api/low-level.md
+    - PandasTDF: api/low-level.md
 
 plugins:
   - search

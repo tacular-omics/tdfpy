@@ -520,32 +520,21 @@ class _KeyDf:
 @dataclass
 class Calibration(_KeyDf):
     """
-    Calibration Table
-        +	CalibrationDateTime	2018-08-21T16:50:31+02:00
-        +	CalibrationUser	Demo User
-        +	CalibrationSoftware	Bruker otofControl
-        +	CalibrationSoftwareVersion	5.1.81.714-13047
-        +	MzCalibrationMode	3
-        +	MzStandardDeviationPPM	0.130754
-        +	ReferenceMassList	Tuning Mix ES-TOF (ESI)
-        +	MzCalibrationSpectrumDescription
-        +	ReferenceMassPeakNames
-        +	ReferencePeakMasses
-        +	MeasuredTimesOfFlight
-        +	MeasuredMassPeakIntensities
-        +	MassesPreviousCalibration
-        +	MassesCorrectedCalibration
-        +	MobilityCalibrationDateTime	2018-08-21T16:49:17+02:00
-        +	MobilityCalibrationUser	Demo User
-        +	MobilityStandardDeviationPercent	0.000932
-        +	ReferenceMobilityList	Tuning Mix ES-TOF (ESI)
-        +	CalibrationMobilogramDescription
-        +	ReferenceMobilityPeakNames
-        +	ReferencePeakMobilities
-        +	MeasuredTimsVoltages
-        +	MeasuredMobilityPeakIntensities
-        +	MobilitiesPreviousCalibration
-        +	MobilitiesCorrectedCalibration
+    Example Calibration table keys:
+
+    ```
+    CalibrationDateTime              2018-08-21T16:50:31+02:00
+    CalibrationUser                  Demo User
+    CalibrationSoftware              Bruker otofControl
+    CalibrationSoftwareVersion       5.1.81.714-13047
+    MzCalibrationMode                3
+    MzStandardDeviationPPM           0.130754
+    ReferenceMassList                Tuning Mix ES-TOF (ESI)
+    MobilityCalibrationDateTime      2018-08-21T16:49:17+02:00
+    MobilityCalibrationUser          Demo User
+    MobilityStandardDeviationPercent 0.000932
+    ReferenceMobilityList            Tuning Mix ES-TOF (ESI)
+    ```
     """
 
     @property
