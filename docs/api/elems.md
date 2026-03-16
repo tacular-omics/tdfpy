@@ -14,6 +14,12 @@ Data classes and enumerations returned by the reader API.
 
 ::: tdfpy.Calibration
 
+## Frame
+
+Base class for all MS1 frames. `DDAMs1Frame` and `DIAMs1Frame` inherit all fields and methods below.
+
+::: tdfpy.Frame
+
 ## DDAMs1Frame
 
 ::: tdfpy.DDAMs1Frame

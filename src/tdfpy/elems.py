@@ -330,22 +330,39 @@ class Frame(_TdfData):
     """
 
     frame_id: int
+    """Unique frame ID (1-based)."""
     time: float
+    """Acquisition time in seconds."""
     polarity: Polarity
+    """Ion polarity of the acquisition."""
     scan_mode: int
+    """Scan mode integer from the TDF schema."""
     msms_type: int
+    """MS/MS type (0 = MS1, 8 = DDA MS2, 9 = DIA MS2)."""
     tims_id: int | None
+    """TIMS device ID, if present."""
     max_intensity: int
+    """Maximum peak intensity across all scans in this frame."""
     summed_intensities: int
+    """Sum of all peak intensities in this frame."""
     num_scans: int
+    """Number of TIMS scans (mobility bins) in this frame."""
     num_peaks: int
+    """Total number of peaks across all scans in this frame."""
     mz_calibration: int
+    """Reference to the m/z calibration entry."""
     t1: float
+    """TIMS calibration coefficient T1."""
     t2: float
+    """TIMS calibration coefficient T2."""
     tims_calibration: int
+    """Reference to the TIMS calibration entry."""
     property_group: int | None
+    """Reference to the property group entry, if present."""
     accumulation_time: float
+    """Ion accumulation time in milliseconds."""
     ramp_time: float
+    """TIMS ramp time in milliseconds."""
 
     @property
     def peaks(self) -> list[npt.NDArray[np.float64]]:
@@ -402,6 +419,7 @@ class Frame(_TdfData):
 @dataclass
 class DDAMs1Frame(Frame):
     precursors: tuple[Precursor, ...]
+    """All precursors detected in this MS1 frame."""
 
 
 @dataclass
@@ -505,6 +523,7 @@ class DiaWindow(DiaWindowGroup, _TdfData):
 @dataclass
 class DIAMs1Frame(Frame):
     dia_windows: tuple[DiaWindow, ...]
+    """All DIA windows associated with this MS1 frame."""
 
 
 @dataclass
