@@ -21,7 +21,7 @@ class MsMsType(Enum):
 class Polarity(StrEnum):
     POSITIVE = "positive"
     NEGATIVE = "negative"
-    UNKOWN = "unknown"
+    UNKNOWN = "unknown"
     MIXED = "mixed"
 
     @staticmethod
@@ -32,7 +32,7 @@ class Polarity(StrEnum):
         elif s in ("negative", "-"):
             return Polarity.NEGATIVE
         elif s in ("unknown", "unkown" ,'?'):
-            return Polarity.UNKOWN
+            return Polarity.UNKNOWN
         elif s in ("mixed", "mix"):
             return Polarity.MIXED
         else:
@@ -251,7 +251,7 @@ class Precursor(_TdfData):
         polarities = {info.polarity for info in self.pasef_frame_msms_infos}
         if len(polarities) == 0:
             warnings.warn("No polarities found in pasef_frame_msms_infos. Returning 'unknown' for polarity.", UserWarning, stacklevel=2)
-            return Polarity.UNKOWN
+            return Polarity.UNKNOWN
         if len(polarities) != 1:
             warnings.warn("Multiple polarities found in pasef_frame_msms_infos. Returning 'mixed' for polarity.", UserWarning, stacklevel=2)
             return Polarity.MIXED

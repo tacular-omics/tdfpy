@@ -55,9 +55,11 @@ def get_acquisition_type(analysis_dir: str) -> Literal["DDA", "DIA", "PRM", "Unk
     # Check for DIA (MS2 type 9)
     if MsMsType.DIA_MS2.value in msms_types:
         return "DIA"
-    
-    # PRM typically shows as type 2, but we can also check for the presence of certain tables
-    # For now, return Unknown for other types
+
+    # PRM shows as MsMsType 2
+    if 2 in msms_types:
+        return "PRM"
+
     return "Unknown"
 
 
@@ -423,5 +425,5 @@ class DIA(_DFolder):
 
 
 class PRM(_DFolder):
-    # not implemented yet
-    pass
+    def __init__(self, analysis_dir: str):
+        raise NotImplementedError("PRM acquisition mode is not yet supported.")
