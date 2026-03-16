@@ -86,10 +86,12 @@ def merge_peaks(
                    Columns are: [mz, intensity, ion_mobility]
 
     Example:
-        >>> mz = np.array([100.0, 100.001, 200.0])
-        >>> intensity = np.array([1000.0, 500.0, 2000.0])
-        >>> im = np.array([0.8, 0.8, 0.9])
-        >>> peaks = merge_peaks(mz, intensity, im, mz_tolerance=10, mz_tolerance_type="ppm")
+        ```python
+        mz = np.array([100.0, 100.001, 200.0])
+        intensity = np.array([1000.0, 500.0, 2000.0])
+        im = np.array([0.8, 0.8, 0.9])
+        peaks = merge_peaks(mz, intensity, im, mz_tolerance=10, mz_tolerance_type="ppm")
+        ```
     """
     # Use Rust implementation if available
     if _HAS_RUST and use_rust:
@@ -336,28 +338,26 @@ def get_centroided_spectrum(
         RuntimeError: If the TimsData connection is not open
 
     Example:
-        >>> with timsdata_connect('path/to/data.d') as td:
-        ...     # Get centroided spectrum with 1/K0 (default)
-        ...     peaks = get_centroided_ms1_spectrum(td, frame_id=1)
-        ...     print(f"Found {len(peaks)} centroided peaks")
-        ...
-        ...     # Get spectrum with CCS values
-        ...     spectrum = get_centroided_ms1_spectrum(td, frame_id=1, ion_mobility_type="ccs")
-        ...
-        ...     # Custom centroiding tolerances
-        ...     spectrum = get_centroided_ms1_spectrum(
-        ...         td, frame_id=1, mz_tolerance=10, im_tolerance=0.1
-        ...     )
-        ...
-        ...     # With noise filtering
-        ...     spectrum = get_centroided_ms1_spectrum(
-        ...         td, frame_id=1, noise_filter="mad"
-        ...     )
-        ...
-        ...     # With custom noise threshold
-        ...     spectrum = get_centroided_ms1_spectrum(
-        ...         td, frame_id=1, noise_filter=1000.0
-        ...     )
+        ```python
+        with timsdata_connect('path/to/data.d') as td:
+            # Get centroided spectrum with 1/K0 (default)
+            peaks = get_centroided_ms1_spectrum(td, frame_id=1)
+            print(f"Found {len(peaks)} centroided peaks")
+
+            # Get spectrum with CCS values
+            spectrum = get_centroided_ms1_spectrum(td, frame_id=1, ion_mobility_type="ccs")
+
+            # Custom centroiding tolerances
+            spectrum = get_centroided_ms1_spectrum(
+                td, frame_id=1, mz_tolerance=10, im_tolerance=0.1
+            )
+
+            # With noise filtering
+            spectrum = get_centroided_ms1_spectrum(td, frame_id=1, noise_filter="mad")
+
+            # With custom noise threshold
+            spectrum = get_centroided_ms1_spectrum(td, frame_id=1, noise_filter=1000.0)
+        ```
     """
     logger.debug(
         "Extracting MS1 spectrum for frame_id=%d, noise_filter=%s",

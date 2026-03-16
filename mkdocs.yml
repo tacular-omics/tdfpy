@@ -27,8 +27,7 @@ plugins:
         python:
           options:
             show_source: true
-            show_private: false
-            show_inherited_members: false
+            inherited_members: false
             merge_init_into_class: true
             docstring_style: google
 
