@@ -599,35 +599,30 @@ class Calibration(_KeyDf):
 @dataclass
 class MetaData(_KeyDf):
     """
-    GlobalMetaData Table:
-        SchemaType	TDF
-        SchemaVersionMajor	3
-        SchemaVersionMinor	1
-        AcquisitionSoftwareVendor	Bruker
-        InstrumentVendor	Bruker
-        TimsCompressionType	2
-        ClosedProperly	1
-        MaxNumPeaksPerScan	1412
-        AnalysisId	00000000-0000-0000-0000-000000000000
-        DigitizerNumSamples	397600
-        PeakListIndexScaleFactor	1
-        MzAcqRangeLower	100.000000
-        MzAcqRangeUpper	1700.000000
-        OneOverK0AcqRangeLower	0.578703
-        OneOverK0AcqRangeUpper	1.524471
-        AcquisitionSoftware	Bruker otofControl
-        AcquisitionSoftwareVersion	5.1.81.714-13047-vc110
-        AcquisitionFirmwareVersion	<unknown>
-        AcquisitionDateTime	2018-08-21T20:40:14.356+02:00
-        InstrumentName	timsTOF Pro
-        InstrumentFamily	9
-        InstrumentRevision	1
-        InstrumentSourceType	11
-        InstrumentSerialNumber	1844426.34
-        OperatorName	Demo User
-        Description
-        SampleName	200ngHeLaDIAPASEF_CE8V1st10VPASEF
-        MethodName	20180813diagonSWATHPASEFref.m
+    Example GlobalMetaData table keys:
+
+    ```
+    SchemaType                  TDF
+    SchemaVersionMajor          3
+    SchemaVersionMinor          1
+    AcquisitionSoftwareVendor   Bruker
+    InstrumentVendor            Bruker
+    TimsCompressionType         2
+    ClosedProperly              1
+    MaxNumPeaksPerScan          1412
+    AnalysisId                  00000000-0000-0000-0000-000000000000
+    MzAcqRangeLower             100.000000
+    MzAcqRangeUpper             1700.000000
+    OneOverK0AcqRangeLower      0.578703
+    OneOverK0AcqRangeUpper      1.524471
+    AcquisitionSoftware         Bruker otofControl
+    AcquisitionSoftwareVersion  5.1.81.714-13047-vc110
+    AcquisitionDateTime         2018-08-21T20:40:14.356+02:00
+    InstrumentName              timsTOF Pro
+    InstrumentSerialNumber      1844426.34
+    OperatorName                Demo User
+    SampleName                  200ngHeLaDIAPASEF_CE8V1st10VPASEF
+    ```
     """
 
     @property

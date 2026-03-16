@@ -278,11 +278,13 @@ class DDA(_DFolder):
 
     @property
     def ms1(self) -> Ms1FrameLookup[DDAMs1Frame]:
+        """Lookup for MS1 frames. Supports indexing by frame ID and `.query()`."""
         self._check_open()
         return self._ms1_frames_lookup
 
     @property
     def precursors(self) -> PrecursorLookup:
+        """Lookup for all precursors. Supports indexing by precursor ID and `.query()`."""
         self._check_open()
         return self._precursor_lookup
 
@@ -409,16 +411,19 @@ class DIA(_DFolder):
 
     @property
     def ms1(self) -> Ms1FrameLookup[DIAMs1Frame]:
+        """Lookup for MS1 frames. Supports indexing by frame ID and `.query()`."""
         self._check_open()
         return self._ms1_frames_lookup
 
     @property
     def windows(self) -> DiaWindowLookup:
+        """Lookup for all DIA windows. Supports indexing by window index and `.query()`."""
         self._check_open()
         return self._dia_windows_lookup
 
     @property
     def window_groups(self) -> Generator[DiaWindowGroup, None, None]:
+        """Iterate over all DiaWindowGroup objects across all window groups."""
         self._check_open()
         for window_group_list in self._dia_window_groups.values():
             yield from window_group_list
