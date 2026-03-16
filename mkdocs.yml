@@ -1,5 +1,7 @@
 site_name: tdfpy
+site_description: A Python library for parsing Bruker timsTOF data with centroiding and noise filtering.
 repo_url: https://github.com/tacular-omics/tdfpy
+repo_name: tacular-omics/tdfpy
 theme:
   name: material
   palette:
@@ -9,6 +11,7 @@ theme:
     - navigation.sections
     - navigation.top
     - content.code.copy
+    - search.highlight
 
 nav:
   - Home: index.md
@@ -25,11 +28,19 @@ plugins:
   - mkdocstrings:
       handlers:
         python:
+          paths: [src]
           options:
+            docstring_style: google
             show_source: true
+            show_root_heading: true
+            show_symbol_type_heading: true
+            members_order: source
             inherited_members: true
             merge_init_into_class: true
-            docstring_style: google
+            show_signature_annotations: true
+            separate_signature: true
+            annotations_path: source
+            signature_crossrefs: true
 
 markdown_extensions:
   - pymdownx.highlight
