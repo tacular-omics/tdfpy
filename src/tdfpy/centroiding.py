@@ -15,15 +15,13 @@ from .noise import estimate_noise_level
 from .tdf import PandasTdf
 from .timsdata import TimsData, oneOverK0ToCCSforMz
 
-# Try to import Rust extension, fallback to Python implementation
+# Try to import Numba for JIT-accelerated implementation
 try:
-    from tdfpy._tdfpy_rust import (  # type: ignore[import]
-        merge_peaks as _merge_peaks_rust,  # type: ignore[import]
-    )
-
-    _HAS_RUST = True
+    from numba import njit as _njit
+    _HAS_NUMBA = True
 except ImportError:
-    _HAS_RUST = False  # type: ignore[assignment]
+    _HAS_NUMBA = False
+_HAS_RUST = False  # kept for backward compatibility
 
 
 logger = logging.getLogger(__name__)
@@ -48,6 +46,102 @@ class Peak(NamedTuple):
     mz: float
     intensity: float
     ion_mobility: float
+
+
+if _HAS_NUMBA:
+    @_njit(cache=True)
+    def _merge_peaks_numba_kernel(
+        mz_sorted, intensity_sorted, im_sorted, intensity_order,
+        mz_tol_factor, mz_tol_abs, mob_tol_factor, mob_tol_abs,
+        mz_is_ppm, im_is_relative, min_peaks, max_peaks,
+    ):
+        n = len(mz_sorted)
+        out_mz = np.empty(n, dtype=np.float64)
+        out_intensity = np.empty(n, dtype=np.float64)
+        out_im = np.empty(n, dtype=np.float64)
+        used = np.zeros(n, dtype=np.bool_)
+        count = 0
+        for order_idx in range(len(intensity_order)):
+            peak_idx = intensity_order[order_idx]
+            if used[peak_idx]:
+                continue
+            mz_peak = mz_sorted[peak_idx]
+            im_peak = im_sorted[peak_idx]
+            if mz_is_ppm:
+                mz_tol = mz_peak * mz_tol_factor
+            else:
+                mz_tol = mz_tol_abs
+            if im_is_relative:
+                mob_tol = im_peak * mob_tol_factor
+            else:
+                mob_tol = mob_tol_abs
+            left_mz = mz_peak - mz_tol
+            right_mz = mz_peak + mz_tol
+            left_idx = np.searchsorted(mz_sorted, left_mz)
+            right_idx = np.searchsorted(mz_sorted, right_mz, side='right')
+            total_int = 0.0
+            weighted_mz = 0.0
+            weighted_im = 0.0
+            num_nearby = 0
+            for i in range(left_idx, right_idx):
+                if not used[i] and abs(im_sorted[i] - im_peak) <= mob_tol:
+                    w = intensity_sorted[i]
+                    total_int += w
+                    weighted_mz += mz_sorted[i] * w
+                    weighted_im += im_sorted[i] * w
+                    num_nearby += 1
+            if min_peaks > 0 and num_nearby < min_peaks:
+                used[peak_idx] = True
+                continue
+            for i in range(left_idx, right_idx):
+                if not used[i] and abs(im_sorted[i] - im_peak) <= mob_tol:
+                    used[i] = True
+            if total_int > 0.0:
+                out_mz[count] = weighted_mz / total_int
+                out_intensity[count] = total_int
+                out_im[count] = weighted_im / total_int
+            else:
+                out_mz[count] = mz_peak
+                out_intensity[count] = intensity_sorted[peak_idx]
+                out_im[count] = im_peak
+            count += 1
+            if max_peaks != -1 and count >= max_peaks:
+                break
+        return out_mz[:count], out_intensity[:count], out_im[:count]
+
+
+def _merge_peaks_numba(
+    mz_array: np.ndarray,
+    intensity_array: np.ndarray,
+    ion_mobility_array: np.ndarray,
+    mz_tolerance: float = 8.0,
+    mz_tolerance_type: Literal["ppm", "da"] = "ppm",
+    im_tolerance: float = 0.05,
+    im_tolerance_type: Literal["relative", "absolute"] = "relative",
+    min_peaks: int = 3,
+    max_peaks: int | None = None,
+) -> np.ndarray:
+    """Numba JIT-accelerated implementation of merge_peaks."""
+    if len(mz_array) == 0:
+        return np.empty((0, 3), dtype=np.float64)
+    mz_is_ppm = 1 if mz_tolerance_type == "ppm" else 0
+    im_is_relative = 1 if im_tolerance_type == "relative" else 0
+    mz_tol_factor = mz_tolerance / 1e6 if mz_is_ppm else 0.0
+    mz_tol_abs = 0.0 if mz_is_ppm else mz_tolerance
+    mob_tol_factor = im_tolerance if im_is_relative else 0.0
+    mob_tol_abs = 0.0 if im_is_relative else im_tolerance
+    _max_peaks = -1 if max_peaks is None else int(max_peaks)
+    sort_idx = np.argsort(mz_array)
+    mz_s = np.ascontiguousarray(mz_array[sort_idx], dtype=np.float64)
+    int_s = np.ascontiguousarray(intensity_array[sort_idx], dtype=np.float64)
+    im_s = np.ascontiguousarray(ion_mobility_array[sort_idx], dtype=np.float64)
+    intensity_order = np.ascontiguousarray(np.argsort(int_s)[::-1].astype(np.int64))
+    out_mz, out_int, out_im = _merge_peaks_numba_kernel(
+        mz_s, int_s, im_s, intensity_order,
+        mz_tol_factor, mz_tol_abs, mob_tol_factor, mob_tol_abs,
+        mz_is_ppm, im_is_relative, min_peaks, _max_peaks,
+    )
+    return np.column_stack([out_mz, out_int, out_im])
 
 
 def merge_peaks(
@@ -93,31 +187,17 @@ def merge_peaks(
         peaks = merge_peaks(mz, intensity, im, mz_tolerance=10, mz_tolerance_type="ppm")
         ```
     """
-    # Use Rust implementation if available
-    if _HAS_RUST and use_rust:
-        merged_mz, merged_intensity, merged_mobility = _merge_peaks_rust(  # type: ignore[call-arg]
-            mz_array,
-            intensity_array,
-            ion_mobility_array,
-            mz_tolerance,
-            mz_tolerance_type,
-            im_tolerance,
-            im_tolerance_type,
-            min_peaks,
-            max_peaks,
+    # Use Numba implementation if available
+    if _HAS_NUMBA and use_rust:
+        return _merge_peaks_numba(
+            mz_array, intensity_array, ion_mobility_array,
+            mz_tolerance=mz_tolerance,
+            mz_tolerance_type=mz_tolerance_type,
+            im_tolerance=im_tolerance,
+            im_tolerance_type=im_tolerance_type,
+            min_peaks=min_peaks,
+            max_peaks=max_peaks,
         )
-
-        if (
-            not isinstance(merged_mz, np.ndarray)
-            or not isinstance(merged_intensity, np.ndarray)
-            or not isinstance(merged_mobility, np.ndarray)
-        ):
-            raise RuntimeError(
-                "Rust merge_peaks did not return numpy arrays as expected"
-            )
-
-        # Stack arrays into (N, 3) matrix
-        return np.column_stack((merged_mz, merged_intensity, merged_mobility))
 
     # Fallback to Python implementation
     return _merge_peaks_python(
@@ -144,7 +224,7 @@ def _merge_peaks_python(
     min_peaks: int = 3,
     max_peaks: int | None = None,
 ) -> np.ndarray:
-    """Python implementation of merge_peaks (fallback when Rust extension unavailable)."""
+    """Python implementation of merge_peaks (fallback when Numba unavailable)."""
     logger.debug(
         "Centroiding %d raw peaks with mz_tol=%s %s, im_tol=%s %s, min_peaks=%d, max_peaks=%s",
         len(mz_array),

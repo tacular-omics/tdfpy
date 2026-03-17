@@ -1,6 +1,6 @@
 [build-system]
-requires = ["maturin>=1.0,<2.0"]
-build-backend = "maturin"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [project]
 name = "tdfpy"
@@ -12,6 +12,7 @@ authors = [
 dependencies = [
     "numpy",
     "pandas",
+    "numba>=0.59",
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
@@ -28,11 +29,11 @@ requires-python = ">=3.12"
 license = {file = "LICENSE"}
 keywords = ["bruker", "timstof", "mass-spectrometry", "proteomics", "tdf"]
 
-[tool.maturin]
-python-source = "src"
-module-name = "tdfpy._tdfpy_rust"
-features = ["pyo3/extension-module"]
-include = ["src/tdfpy/libtimsdata.so"]
+[tool.hatch.version]
+path = "src/tdfpy/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tdfpy"]
 
 [dependency-groups]
 docs = [
@@ -43,7 +44,6 @@ dev = [
     "pytest>=7.0",
     "pytest-examples>=0.0.14",
     "ty>=0.0.9",
-    "maturin>=1.0",
     "ruff>=0.14.3",
     "pyupgrade>=3.21.0",
     "pandas>=2.3.3",

@@ -15,31 +15,22 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            target: x86_64
             python-version: "3.12"
           - os: ubuntu-latest
-            target: x86_64
             python-version: "3.13"
           - os: ubuntu-latest
-            target: x86_64
             python-version: "3.14"
           - os: windows-latest
-            target: x64
             python-version: "3.12"
           - os: windows-latest
-            target: x64
             python-version: "3.13"
           - os: windows-latest
-            target: x64
             python-version: "3.14"
           - os: macos-latest
-            target: aarch64
             python-version: "3.12"
           - os: macos-latest
-            target: aarch64
             python-version: "3.13"
           - os: macos-latest
-            target: aarch64
             python-version: "3.14"
 
     runs-on: ${{ matrix.os }}
@@ -52,29 +43,38 @@ jobs:
       with:
         python-version: ${{ matrix.python-version }}
 
-    - name: Build wheels
-      uses: PyO3/maturin-action@v1
-      with:
-        target: ${{ matrix.target }}
-        args: --release --out dist -i python${{ matrix.python-version }}
-        sccache: 'true'
-        manylinux: auto
+    - name: Install uv
+      uses: astral-sh/setup-uv@v4
+
+    - name: Build wheel
+      run: |
+        uv pip install build
+        python -m build --wheel --outdir dist
 
     - name: Upload wheels
       uses: actions/upload-artifact@v4
       with:
-        name: wheels-${{ matrix.os }}-${{ matrix.target }}-py${{ matrix.python-version }}
+        name: wheels-${{ matrix.os }}-py${{ matrix.python-version }}
         path: dist/*.whl
 
   sdist:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
-    - name: Build sdist
-      uses: PyO3/maturin-action@v1
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
       with:
-        command: sdist
-        args: --out dist
+        python-version: "3.12"
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v4
+
+    - name: Build sdist
+      run: |
+        uv pip install build
+        python -m build --sdist --outdir dist
+
     - name: Upload sdist
       uses: actions/upload-artifact@v4
       with:
