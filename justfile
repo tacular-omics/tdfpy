@@ -70,13 +70,13 @@ clean:
   find . -type f -name "*.pyc" -delete
   find . -type f -name "*.so" ! -name "libtimsdata.so" -delete
 
-# Serve docs locally
-docs:
-    uv run --group docs mkdocs serve
+# Build and serve docs
+docs:  
+    uv run mkdocs serve --dev-addr=localhost:8002
 
-# Deploy docs to GitHub Pages
-docs-deploy:
-    uv run --group docs mkdocs gh-deploy --force
+# Build docs to site/
+docs-build:  
+    uv run mkdocs build
 
 # Publish to PyPI (requires UV_PUBLISH_TOKEN or interactive auth)
 publish: build

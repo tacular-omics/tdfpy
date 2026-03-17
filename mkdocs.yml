@@ -4,9 +4,6 @@ repo_url: https://github.com/tacular-omics/tdfpy
 repo_name: tacular-omics/tdfpy
 theme:
   name: material
-  palette:
-    scheme: slate
-    primary: indigo
   features:
     - navigation.sections
     - navigation.top
@@ -18,7 +15,10 @@ nav:
   - Getting Started: getting-started.md
   - API Reference:
     - Reader: api/reader.md
-    - Data Classes: api/elems.md
+    - Frames: api/frames.md
+    - Precursor: api/precursor.md
+    - DIA Windows: api/windows.md
+    - Metadata: api/metadata.md
     - Lookups: api/lookup.md
     - Centroiding: api/centroiding.md
     - PandasTDF: api/low-level.md

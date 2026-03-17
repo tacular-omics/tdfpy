@@ -30,6 +30,7 @@ class Ms1FrameLookup(Generic[T]):
         return len(self._frames)
 
     def get(self, frame_id: int, default=None):
+        """Return the frame with the given ID, or `default` if not found."""
         return self._frames.get(frame_id, default)
 
 
@@ -63,6 +64,7 @@ class DiaWindowLookup:
         return len(self._windows)
 
     def get(self, window_group_id: int, default=None):
+        """Return windows for the given window group ID, or `default` if not found."""
         return self._window_map.get(window_group_id, default)
 
     def query_range(
@@ -71,10 +73,13 @@ class DiaWindowLookup:
         rt_range: tuple[float, float] | None = None,
     ) -> Iterator[DiaWindow]:
         """
-        Query windows by retention time range.
+        Query windows by window group and/or retention time range.
 
         Args:
+            window_group_index: Window group index or `DiaWindowGroup` to filter by.
+                If None, all window groups are included.
             rt_range: Tuple of (min_rt, max_rt) in seconds. If None, RT filtering is skipped.
+
         Yields:
             DiaWindow objects matching the criteria.
         """
@@ -138,6 +143,7 @@ class PrecursorLookup:
         return len(self._precursors)
 
     def get(self, precursor_id: int, default=None):
+        """Return the precursor with the given ID, or `default` if not found."""
         return self._precursors.get(precursor_id, default)
 
     def query_range(
@@ -183,7 +189,7 @@ class PrecursorLookup:
             mz: Target m/z value. If None, m/z filtering is skipped.
             rt: Target retention time (in seconds). If None, RT filtering is skipped.
             mz_tolerance: Tolerance for m/z matching.
-            mz_tolerance_type: Unit for m/z tolerance ("ppm" or "da"). Default is "da".
+            mz_tolerance_type: Unit for m/z tolerance ("ppm" or "da"). Default is "ppm".
             rt_tolerance: Tolerance for retention time matching (in seconds). Default is 20s.
 
         Yields:

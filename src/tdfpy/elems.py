@@ -26,6 +26,21 @@ class Polarity(StrEnum):
 
     @staticmethod
     def from_str(s: str) -> "Polarity":
+        """Convert a string to a `Polarity` enum value.
+
+        Args:
+            s: Polarity string. Accepted values (case-insensitive):
+                `"positive"` or `"+"` → `Polarity.POSITIVE`;
+                `"negative"` or `"-"` → `Polarity.NEGATIVE`;
+                `"unknown"` or `"?"` → `Polarity.UNKNOWN`;
+                `"mixed"` or `"mix"` → `Polarity.MIXED`.
+
+        Returns:
+            The matching `Polarity` enum member.
+
+        Raises:
+            ValueError: If the string does not match any known polarity.
+        """
         s = s.lower()
         if s in ("positive", "+"):
             return Polarity.POSITIVE
@@ -55,19 +70,23 @@ class _TdfData:
 
 @dataclass
 class PasefFrameMsmsInfo(_TdfData):
-    """
-    CREATE TABLE PasefFrameMsMsInfo (
-        Frame INTEGER NOT NULL,
-        ScanNumBegin INTEGER NOT NULL,
-        ScanNumEnd INTEGER NOT NULL,
-        IsolationMz REAL NOT NULL,
-        IsolationWidth REAL NOT NULL,
-        CollisionEnergy REAL NOT NULL,
-        Precursor INTEGER,
-        PRIMARY KEY(Frame, ScanNumBegin),
-        FOREIGN KEY(Frame) REFERENCES Frames(Id),
-        FOREIGN KEY(Precursor) REFERENCES Precursors(Id)
-        ) WITHOUT ROWID
+    """A single PASEF MS/MS isolation window within a parent frame.
+
+    Each instance corresponds to one row in the `PasefFrameMsMsInfo` table: a
+    contiguous range of mobility scans acquired with a specific isolation window and
+    collision energy, linked to a precursor ion.
+
+    | Field | Type | Description |
+    |---|---|---|
+    | `frame_id` | `int` | Parent MS1 frame ID |
+    | `scan_num_begin` | `int` | First mobility scan (inclusive) |
+    | `scan_num_end` | `int` | Last mobility scan (inclusive) |
+    | `isolation_mz` | `float` | Isolation window center m/z |
+    | `isolation_width` | `float` | Isolation window width in Th |
+    | `collision_energy` | `float` | Collision energy in eV |
+    | `precursor` | `int \\| None` | Associated precursor ID |
+    | `rt` | `float` | Retention time in seconds (from parent frame) |
+    | `polarity` | `Polarity` | Ion polarity |
     """
 
     frame_id: int
@@ -161,17 +180,24 @@ class PasefFrameMsmsInfo(_TdfData):
 
 @dataclass
 class Precursor(_TdfData):
-    """
-    CREATE TABLE Precursors (Id INTEGER PRIMARY KEY,
-        LargestPeakMz REAL NOT NULL,
-        AverageMz REAL NOT NULL,
-        MonoisotopicMz REAL,
-        Charge INTEGER,
-        ScanNumber REAL NOT NULL,
-        Intensity REAL NOT NULL,
-        Parent INTEGER,
-        FOREIGN KEY(Parent) REFERENCES Frames(Id)
-        )
+    """A detected precursor ion from a DDA acquisition.
+
+    Combines data from the `Precursors` table with its associated PASEF MS/MS
+    scan windows (`PasefFrameMsmsInfo`). Provides direct access to ion mobility,
+    CCS, and fragmentation spectra.
+
+    | Field | Type | Description |
+    |---|---|---|
+    | `precursor_id` | `int` | Unique precursor ID |
+    | `largest_peak_mz` | `float` | m/z of the most intense isotope peak |
+    | `average_mz` | `float` | Intensity-weighted average m/z |
+    | `monoisotopic_mz` | `float \\| None` | Monoisotopic m/z (if determined) |
+    | `charge` | `int \\| None` | Charge state (if determined) |
+    | `scan_number` | `int` | Mobility scan bin containing this precursor |
+    | `intensity` | `float` | Summed precursor intensity |
+    | `parent_frame` | `int` | MS1 frame ID |
+    | `pasef_frame_msms_infos` | `tuple[PasefFrameMsmsInfo, ...]` | Associated PASEF MS/MS windows |
+    | `rt` | `float` | Retention time in seconds |
     """
 
     precursor_id: int
@@ -264,17 +290,21 @@ class Precursor(_TdfData):
 
 @dataclass
 class DiaWindowGroup:
-    """
-    CREATE TABLE DiaFrameMsMsWindows (
-        WindowGroup INTEGER NOT NULL,
-        ScanNumBegin INTEGER NOT NULL,
-        ScanNumEnd INTEGER NOT NULL,
-        IsolationMz REAL NOT NULL,
-        IsolationWidth REAL NOT NULL,
-        CollisionEnergy REAL NOT NULL,
-        PRIMARY KEY(WindowGroup, ScanNumBegin),
-        FOREIGN KEY (WindowGroup) REFERENCES DiaFrameMsMsWindowGroups (Id)
-        ) WITHOUT ROWID
+    """A DIA isolation window definition (shared across frames in the same group).
+
+    Defines the m/z isolation range, mobility scan range, and collision energy
+    for one window within a DIA window group. `DiaWindow` extends this with
+    per-frame fields (`frame_id`, `rt`, `polarity`).
+
+    | Field | Type | Description |
+    |---|---|---|
+    | `window_index` | `int` | Index of this window within its group |
+    | `window_group` | `int` | Window group ID |
+    | `scan_num_begin` | `int` | First mobility scan (inclusive) |
+    | `scan_num_end` | `int` | Last mobility scan (inclusive) |
+    | `isolation_mz` | `float` | Isolation window center m/z |
+    | `isolation_width` | `float` | Isolation window width in Th |
+    | `collision_energy` | `float` | Collision energy in eV |
     """
 
     window_index: int
@@ -304,29 +334,10 @@ class DiaWindowGroup:
 
 @dataclass
 class Frame(_TdfData):
-    """
-    CREATE TABLE Frames (
-        Id INTEGER PRIMARY KEY,
-        Time REAL NOT NULL,
-        Polarity CHAR(1) CHECK (Polarity IN ('+', '-')) NOT NULL,
-        ScanMode INTEGER NOT NULL,
-        MsMsType INTEGER NOT NULL,
-        TimsId INTEGER,
-        MaxIntensity INTEGER NOT NULL,
-        SummedIntensities INTEGER NOT NULL,
-        NumScans INTEGER NOT NULL,
-        NumPeaks INTEGER NOT NULL,
-        MzCalibration INTEGER NOT NULL,
-        T1 REAL NOT NULL,
-        T2 REAL NOT NULL,
-        TimsCalibration INTEGER NOT NULL,
-        PropertyGroup INTEGER,
-        AccumulationTime REAL NOT NULL,
-        RampTime REAL NOT NULL,
-        FOREIGN KEY (MzCalibration) REFERENCES MzCalibration (Id),
-        FOREIGN KEY (TimsCalibration) REFERENCES TimsCalibration (Id),
-        FOREIGN KEY (PropertyGroup) REFERENCES PropertyGroups (Id)
-    )
+    """Base class for a single timsTOF acquisition frame.
+
+    A frame represents one complete TIMS-MS acquisition cycle. All fields below
+    are present on `DDAMs1Frame` and `DIAMs1Frame` through inheritance.
     """
 
     frame_id: int
@@ -418,15 +429,31 @@ class Frame(_TdfData):
 
 @dataclass
 class DDAMs1Frame(Frame):
+    """An MS1 frame from a DDA acquisition.
+
+    Inherits all fields from `Frame`. The `precursors` field lists every
+    precursor detected in this frame.
+    """
+
     precursors: tuple[Precursor, ...]
     """All precursors detected in this MS1 frame."""
 
 
 @dataclass
 class DiaWindow(DiaWindowGroup, _TdfData):
+    """A DIA isolation window bound to a specific frame.
+
+    Extends `DiaWindowGroup` with per-frame context (`frame_id`, `rt`,
+    `polarity`). Provides raw and centroided spectrum access and ion mobility
+    conversion properties.
+    """
+
     frame_id: int
+    """Frame ID this window belongs to."""
     rt: float
+    """Retention time of the parent frame in seconds."""
     polarity: Polarity
+    """Ion polarity."""
 
     @property
     def peaks(self) -> list[npt.NDArray[np.float64]]:
@@ -522,6 +549,12 @@ class DiaWindow(DiaWindowGroup, _TdfData):
 
 @dataclass
 class DIAMs1Frame(Frame):
+    """An MS1 frame from a DIA acquisition.
+
+    Inherits all fields from `Frame`. The `dia_windows` field lists the DIA
+    isolation windows that were active during this frame.
+    """
+
     dia_windows: tuple[DiaWindow, ...]
     """All DIA windows associated with this MS1 frame."""
 

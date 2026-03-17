@@ -86,27 +86,6 @@ with DIA('data.d') as dia:
         print(w.window_group, w.isolation_mz)
 ```
 
-## Low-Level Centroiding
-
-Use `get_centroided_spectrum` and `merge_peaks` directly when you need fine-grained
-control over centroiding parameters or noise filtering.
-
-```python
-from tdfpy import get_centroided_spectrum, timsdata_connect
-
-with timsdata_connect('data.d') as td:
-    peaks = get_centroided_spectrum(
-        td,
-        frame_id=1,
-        ion_mobility_type='ook0',   # or 'ccs'
-        mz_tolerance=8.0,
-        mz_tolerance_type='ppm',
-        im_tolerance=0.05,
-        noise_filter='mad',         # optional noise filtering
-    )
-    # peaks shape: (N, 3) — [m/z, intensity, 1/K0]
-```
-
 ## Development
 
 The project uses `uv` for dependency management and `just` as a task runner.

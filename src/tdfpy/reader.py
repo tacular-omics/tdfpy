@@ -153,6 +153,25 @@ class _DFolder:
 
 
 class DDA(_DFolder):
+    """Open a DDA (Data-Dependent Acquisition) `.d` folder.
+
+    Use as a context manager to ensure the TimsData connection is closed when done.
+    Exposes MS1 frames via `ms1` and precursors via `precursors`.
+
+    Args:
+        analysis_dir: Path to the `.d` folder containing `analysis.tdf` and `analysis.tdf_bin`.
+
+    Raises:
+        FileNotFoundError: If the `.d` folder or required files are missing.
+
+    Example:
+        ```python
+        with DDA("/path/to/data.d") as dda:
+            for frame in dda.ms1:
+                print(frame.frame_id, frame.time)
+        ```
+    """
+
     def __init__(self, analysis_dir: str):
         super().__init__(analysis_dir)
 
@@ -290,7 +309,26 @@ class DDA(_DFolder):
 
 
 class DIA(_DFolder):
-    # doesnt have precursors frame
+    """Open a DIA (Data-Independent Acquisition) `.d` folder.
+
+    Use as a context manager to ensure the TimsData connection is closed when done.
+    Exposes MS1 frames via `ms1`, individual windows via `windows`, and window groups
+    via `window_groups`.
+
+    Args:
+        analysis_dir: Path to the `.d` folder containing `analysis.tdf` and `analysis.tdf_bin`.
+
+    Raises:
+        FileNotFoundError: If the `.d` folder or required files are missing.
+
+    Example:
+        ```python
+        with DIA("/path/to/data.d") as dia:
+            for group in dia.window_groups:
+                for window in group.windows:
+                    print(window.isolation_mz)
+        ```
+    """
 
     def __init__(self, analysis_dir: str):
         super().__init__(analysis_dir)
@@ -430,5 +468,11 @@ class DIA(_DFolder):
 
 
 class PRM(_DFolder):
+    """PRM (Parallel Reaction Monitoring) acquisition mode.
+
+    Note:
+        Not yet implemented. Raises `NotImplementedError` on instantiation.
+    """
+
     def __init__(self, analysis_dir: str):
         raise NotImplementedError("PRM acquisition mode is not yet supported.")
