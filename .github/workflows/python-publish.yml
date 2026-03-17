@@ -20,18 +20,27 @@ jobs:
           - os: ubuntu-latest
             target: x86_64
             python-version: "3.13"
+          - os: ubuntu-latest
+            target: x86_64
+            python-version: "3.14"
           - os: windows-latest
             target: x64
             python-version: "3.12"
           - os: windows-latest
             target: x64
             python-version: "3.13"
+          - os: windows-latest
+            target: x64
+            python-version: "3.14"
           - os: macos-latest
             target: aarch64
             python-version: "3.12"
           - os: macos-latest
             target: aarch64
             python-version: "3.13"
+          - os: macos-latest
+            target: aarch64
+            python-version: "3.14"
 
     runs-on: ${{ matrix.os }}
 
