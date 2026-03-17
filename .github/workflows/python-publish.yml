@@ -10,55 +10,8 @@ permissions:
 
 jobs:
   build:
-    name: Build wheels - ${{ matrix.os }} py${{ matrix.python-version }}
-    strategy:
-      matrix:
-        include:
-          - os: ubuntu-latest
-            python-version: "3.12"
-          - os: ubuntu-latest
-            python-version: "3.13"
-          - os: ubuntu-latest
-            python-version: "3.14"
-          - os: windows-latest
-            python-version: "3.12"
-          - os: windows-latest
-            python-version: "3.13"
-          - os: windows-latest
-            python-version: "3.14"
-          - os: macos-latest
-            python-version: "3.12"
-          - os: macos-latest
-            python-version: "3.13"
-          - os: macos-latest
-            python-version: "3.14"
-
-    runs-on: ${{ matrix.os }}
-
-    steps:
-    - uses: actions/checkout@v4
-
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v5
-      with:
-        python-version: ${{ matrix.python-version }}
-
-    - name: Install uv
-      uses: astral-sh/setup-uv@v4
-
-    - name: Build wheel
-      run: |
-        uv pip install build
-        python -m build --wheel --outdir dist
-
-    - name: Upload wheels
-      uses: actions/upload-artifact@v4
-      with:
-        name: wheels-${{ matrix.os }}-py${{ matrix.python-version }}
-        path: dist/*.whl
-
-  sdist:
     runs-on: ubuntu-latest
+
     steps:
     - uses: actions/checkout@v4
 
@@ -67,36 +20,26 @@ jobs:
       with:
         python-version: "3.12"
 
-    - name: Install uv
-      uses: astral-sh/setup-uv@v4
-
-    - name: Build sdist
+    - name: Build wheel and sdist
       run: |
-        uv pip install build
-        python -m build --sdist --outdir dist
+        pip install build
+        python -m build --outdir dist
 
-    - name: Upload sdist
+    - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: sdist
-        path: dist/*.tar.gz
+        name: dist
+        path: dist/
 
   publish:
-    needs: [build, sdist]
+    needs: build
     runs-on: ubuntu-latest
 
     steps:
-    - name: Download all artifacts
+    - name: Download artifacts
       uses: actions/download-artifact@v4
       with:
-        pattern: wheels-*
-        path: dist
-        merge-multiple: true
-
-    - name: Download sdist
-      uses: actions/download-artifact@v4
-      with:
-        name: sdist
+        name: dist
         path: dist
 
     - name: Publish package
