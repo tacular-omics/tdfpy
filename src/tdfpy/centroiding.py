@@ -21,8 +21,6 @@ try:
     _HAS_NUMBA = True
 except ImportError:
     _HAS_NUMBA = False
-_HAS_RUST = False  # kept for backward compatibility
-
 
 logger = logging.getLogger(__name__)
 
@@ -154,7 +152,7 @@ def merge_peaks(
     im_tolerance_type: Literal["relative", "absolute"] = "relative",
     min_peaks: int = 3,
     max_peaks: int | None = None,
-    use_rust: bool = True,
+    use_numba: bool = True,
 ) -> np.ndarray:
     """Centroid profile-like peaks using m/z and ion mobility tolerances.
 
@@ -188,7 +186,7 @@ def merge_peaks(
         ```
     """
     # Use Numba implementation if available
-    if _HAS_NUMBA and use_rust:
+    if _HAS_NUMBA and use_numba:
         return _merge_peaks_numba(
             mz_array, intensity_array, ion_mobility_array,
             mz_tolerance=mz_tolerance,
@@ -379,7 +377,7 @@ def get_centroided_spectrum(
         | float
         | int
     ) = None,
-    use_rust: bool = True,
+    use_numba: bool = True,
 ) -> np.ndarray:
     """Extract a centroided MS1 spectrum for a single frame.
 
@@ -583,7 +581,7 @@ def get_centroided_spectrum(
         im_tolerance_type=im_tolerance_type,
         min_peaks=min_peaks,
         max_peaks=max_peaks,
-        use_rust=use_rust,
+        use_numba=use_numba,
     )
 
     # Apply max_peaks limit if specified (post-centroiding)

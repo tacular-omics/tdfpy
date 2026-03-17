@@ -7,7 +7,7 @@ from tdfpy import (
     merge_peaks,
     timsdata,
 )
-from tdfpy.centroiding import _HAS_NUMBA, _HAS_RUST, _merge_peaks_numba, _merge_peaks_python  # type: ignore[import]
+from tdfpy.centroiding import _HAS_NUMBA, _merge_peaks_numba, _merge_peaks_python  # type: ignore[import]
 
 TDF_PATH = r"tests/data/200ngHeLaPASEF_1min.d"
 
@@ -171,111 +171,6 @@ class TestSpectra(unittest.TestCase):
                     np.testing.assert_allclose(py_peaks[:, 0], numba_peaks[:, 0], rtol=1e-6)
                     np.testing.assert_allclose(py_peaks[:, 1], numba_peaks[:, 1], rtol=1e-6)
                     np.testing.assert_allclose(py_peaks[:, 2], numba_peaks[:, 2], rtol=1e-6)
-
-    @unittest.skipIf(not _HAS_RUST, "Rust extension not available")
-    def test_rust_python_equivalence(self):
-        """Test that Rust and Python implementations produce identical results."""
-        test_cases = [
-            # Basic test
-            {
-                "mz": np.array([100.0, 100.0008, 100.0016, 200.0, 200.0005]),
-                "intensity": np.array([1000.0, 800.0, 600.0, 2000.0, 1500.0]),
-                "im": np.array([0.8, 0.8, 0.8, 0.9, 0.9]),
-                "params": {
-                    "mz_tolerance": 10,
-                    "mz_tolerance_type": "ppm",
-                    "min_peaks": 1,
-                },
-            },
-            # Empty arrays
-            {
-                "mz": np.array([]),
-                "intensity": np.array([]),
-                "im": np.array([]),
-                "params": {
-                    "mz_tolerance": 8,
-                    "mz_tolerance_type": "ppm",
-                    "min_peaks": 3,
-                },
-            },
-            # Single peak
-            {
-                "mz": np.array([100.0]),
-                "intensity": np.array([1000.0]),
-                "im": np.array([0.8]),
-                "params": {
-                    "mz_tolerance": 8,
-                    "mz_tolerance_type": "ppm",
-                    "min_peaks": 1,
-                },
-            },
-            # Dalton tolerance
-            {
-                "mz": np.array([100.0, 100.005, 100.01, 200.0]),
-                "intensity": np.array([1000.0, 800.0, 600.0, 2000.0]),
-                "im": np.array([0.8, 0.8, 0.8, 0.9]),
-                "params": {
-                    "mz_tolerance": 0.01,
-                    "mz_tolerance_type": "da",
-                    "min_peaks": 1,
-                },
-            },
-            # Absolute ion mobility tolerance
-            {
-                "mz": np.array([100.0, 100.0008, 200.0, 200.0005]),
-                "intensity": np.array([1000.0, 800.0, 2000.0, 1500.0]),
-                "im": np.array([0.8, 0.82, 0.9, 0.95]),
-                "params": {
-                    "mz_tolerance": 10,
-                    "mz_tolerance_type": "ppm",
-                    "im_tolerance": 0.03,
-                    "im_tolerance_type": "absolute",
-                    "min_peaks": 1,
-                },
-            },
-            # With max_peaks limit
-            {
-                "mz": np.array([100.0, 200.0, 300.0, 400.0, 500.0]),
-                "intensity": np.array([1000.0, 2000.0, 3000.0, 4000.0, 5000.0]),
-                "im": np.array([0.8, 0.8, 0.8, 0.8, 0.8]),
-                "params": {
-                    "mz_tolerance": 10,
-                    "mz_tolerance_type": "ppm",
-                    "min_peaks": 1,
-                    "max_peaks": 3,
-                },
-            },
-        ]
-
-        from tdfpy._tdfpy_rust import merge_peaks as _merge_peaks_rust  # type: ignore[import]
-
-        tolerance = 1e-9
-
-        for test in test_cases:
-            with self.subTest(params=test["params"]):
-                # Get Python results
-                py_peaks = _merge_peaks_python(
-                    test["mz"], test["intensity"], test["im"], **test["params"]
-                )
-
-                # Get Rust results (raw arrays)
-                rust_mz, rust_int, rust_im = _merge_peaks_rust(
-                    test["mz"], test["intensity"], test["im"], **test["params"]
-                )
-
-                # Compare lengths
-                self.assertEqual(
-                    len(py_peaks),
-                    len(rust_mz),
-                    f"Different number of peaks: Python={len(py_peaks)}, Rust={len(rust_mz)}",
-                )
-
-                # Compare each peak
-                # py_peaks is (N, 3) array [mz, intensity, mobility]
-                if len(py_peaks) > 0:
-                    np.testing.assert_allclose(py_peaks[:, 0], rust_mz, rtol=tolerance)
-                    np.testing.assert_allclose(py_peaks[:, 1], rust_int, rtol=tolerance)
-                    np.testing.assert_allclose(py_peaks[:, 2], rust_im, rtol=tolerance)
 
 
 if __name__ == "__main__":

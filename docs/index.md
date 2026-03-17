@@ -6,7 +6,7 @@
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-g.svg)](https://opensource.org/licenses/MIT)
 
-A Python package for extracting data from Bruker timsTOF data files (`.tdf` and `.tdf_bin`). Includes a Rust-backed centroiding algorithm for efficient extraction of ion mobility data.
+A Python package for extracting data from Bruker timsTOF data files (`.tdf` and `.tdf_bin`). Includes a Numba-accelerated centroiding algorithm for efficient extraction of ion mobility data.
 
 ## Overview
 
@@ -17,7 +17,7 @@ tdfpy provides an API that works with familiar objects — no need to think abou
 - **PRM** — Work in progress
 - **MALDI** — Work in progress
 
-**MS1 Spectra** — MS1 objects include a Rust-backed centroiding function that returns a 3D NumPy array containing m/z, intensity, and 1/K0 values.
+**MS1 Spectra** — MS1 objects include a Numba-accelerated centroiding function that returns a 3D NumPy array containing m/z, intensity, and 1/K0 values.
 
 **Precursors (DDA)** — Precursors are already centroided using Bruker's built-in C extensions.
 

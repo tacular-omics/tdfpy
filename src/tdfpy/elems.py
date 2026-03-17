@@ -431,14 +431,14 @@ class Frame(_TdfData):
         )
 
         try:
-            return get_spectrum(use_rust=True)
+            return get_spectrum(use_numba=True)
         except Exception:
             warnings.warn(
-                f"Rust centroiding failed for frame {self.frame_id}. Falling back to Python implementation.",
+                f"Numba centroiding failed for frame {self.frame_id}. Falling back to Python implementation.",
                 UserWarning,
                 stacklevel=2,
             )
-            return get_spectrum(use_rust=False)
+            return get_spectrum(use_numba=False)
 
 
 @dataclass
@@ -513,14 +513,14 @@ class DiaWindow(DiaWindowGroup, _TdfData):
         )
 
         try:
-            return get_spectrum(use_rust=True)
+            return get_spectrum(use_numba=True)
         except Exception:
             warnings.warn(
-                f"Rust centroiding failed for frame {self.frame_id}. Falling back to Python implementation.",
+                f"Numba centroiding failed for frame {self.frame_id}. Falling back to Python implementation.",
                 UserWarning,
                 stacklevel=2,
             )
-            return get_spectrum(use_rust=False)
+            return get_spectrum(use_numba=False)
 
     @property
     def ook0_begin(self) -> float:

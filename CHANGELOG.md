@@ -26,6 +26,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **BREAKING**: `merge_peaks` now returns a `numpy.ndarray` of shape (N, 3) (mz, intensity, mobility) instead of a list of `Peak` objects.
 - **BREAKING**: Refactored spectrum extraction to return pure numpy arrays instead of `Ms1Spectrum` objects for improved performance.
 - `Ms1Spectrum` and `Peak` NamedTuples are replaced by raw numpy array access in the high-level API.
+- Replaced Rust extension (`_tdfpy_rust`) with Numba JIT-compiled centroiding backend; no Rust toolchain required.
+- `merge_peaks()` and `get_centroided_spectrum()` parameter `use_rust` renamed to `use_numba`.
 
 ## [0.3.0]
 - Rust backend for centroiding (11x faster)
