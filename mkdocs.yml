@@ -14,7 +14,7 @@ nav:
   - Home: index.md
   - Getting Started: getting-started.md
   - API Reference:
-    - Reader: api/reader.md
+    - Readers: api/readers.md
     - Frames: api/frames.md
     - Precursor: api/precursor.md
     - DIA Windows: api/windows.md

@@ -18,6 +18,7 @@ class MsMsType(Enum):
     DDA_MS2 = 8
     DIA_MS2 = 9
 
+
 class Polarity(StrEnum):
     POSITIVE = "positive"
     NEGATIVE = "negative"
@@ -46,13 +47,12 @@ class Polarity(StrEnum):
             return Polarity.POSITIVE
         elif s in ("negative", "-"):
             return Polarity.NEGATIVE
-        elif s in ("unknown", "unkown" ,'?'):
+        elif s in ("unknown", "unkown", "?"):
             return Polarity.UNKNOWN
         elif s in ("mixed", "mix"):
             return Polarity.MIXED
         else:
             raise ValueError(f"Unknown polarity string: {s}")
-
 
 
 @dataclass
@@ -129,14 +129,11 @@ class PasefFrameMsmsInfo(_TdfData):
 
     @property
     def ook0_begin(self) -> float:
-        return self.timsdata.scanNumToOneOverK0(self.frame_id, [self.scan_num_begin])[
-            0
-        ]
+        return self.timsdata.scanNumToOneOverK0(self.frame_id, [self.scan_num_begin])[0]
 
     @property
     def ook0_end(self) -> float:
         return self.timsdata.scanNumToOneOverK0(self.frame_id, [self.scan_num_end])[0]
-
 
     @property
     def ook0_range(self) -> tuple[float, float]:
@@ -177,6 +174,7 @@ class PasefFrameMsmsInfo(_TdfData):
     @property
     def mz_range(self) -> tuple[float, float]:
         return (self.mz_begin, self.mz_end)
+
 
 @dataclass
 class Precursor(_TdfData):
@@ -245,10 +243,18 @@ class Precursor(_TdfData):
     def _get_pasef_frame_single_value(self, attr: str) -> Any:
         values = {getattr(info, attr) for info in self.pasef_frame_msms_infos}
         if len(values) == 0:
-            warnings.warn(f"No values found for attribute '{attr}' in pasef_frame_msms_infos. Returning None.", UserWarning, stacklevel=2)
+            warnings.warn(
+                f"No values found for attribute '{attr}' in pasef_frame_msms_infos. Returning None.",
+                UserWarning,
+                stacklevel=2,
+            )
             return None
         if len(values) > 1:
-            warnings.warn(f"Multiple values found for attribute '{attr}' in pasef_frame_msms_infos. Returning None.", UserWarning, stacklevel=2)
+            warnings.warn(
+                f"Multiple values found for attribute '{attr}' in pasef_frame_msms_infos. Returning None.",
+                UserWarning,
+                stacklevel=2,
+            )
             return None
         return values.pop()
 
@@ -276,10 +282,18 @@ class Precursor(_TdfData):
     def polarity(self) -> Polarity:
         polarities = {info.polarity for info in self.pasef_frame_msms_infos}
         if len(polarities) == 0:
-            warnings.warn("No polarities found in pasef_frame_msms_infos. Returning 'unknown' for polarity.", UserWarning, stacklevel=2)
+            warnings.warn(
+                "No polarities found in pasef_frame_msms_infos. Returning 'unknown' for polarity.",
+                UserWarning,
+                stacklevel=2,
+            )
             return Polarity.UNKNOWN
         if len(polarities) != 1:
-            warnings.warn("Multiple polarities found in pasef_frame_msms_infos. Returning 'mixed' for polarity.", UserWarning, stacklevel=2)
+            warnings.warn(
+                "Multiple polarities found in pasef_frame_msms_infos. Returning 'mixed' for polarity.",
+                UserWarning,
+                stacklevel=2,
+            )
             return Polarity.MIXED
         return polarities.pop()
 
@@ -508,7 +522,6 @@ class DiaWindow(DiaWindowGroup, _TdfData):
             )
             return get_spectrum(use_rust=False)
 
-
     @property
     def ook0_begin(self) -> float:
         return self.timsdata.scanNumToOneOverK0(self.frame_id, [self.scan_num_begin])[0]
@@ -544,7 +557,6 @@ class DiaWindow(DiaWindowGroup, _TdfData):
     @property
     def voltage_range(self) -> tuple[float, float]:
         return (self.voltage_begin, self.voltage_end)
-        
 
 
 @dataclass

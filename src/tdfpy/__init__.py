@@ -6,13 +6,7 @@ from .centroiding import (
     get_centroided_spectrum,
     merge_peaks,
 )
-from .reader import (
-    DDA,
-    DIA,
-    PRM,
-    get_acquisition_type,
-)
-from .elems import(
+from .elems import (
     Calibration,
     DDAMs1Frame,
     DIAMs1Frame,
@@ -23,10 +17,15 @@ from .elems import(
     PasefFrameMsmsInfo,
     Precursor,
 )
-
+from .lookup import DiaWindowLookup, Ms1FrameLookup, PrecursorLookup
+from .reader import (
+    DDA,
+    DIA,
+    PRM,
+    get_acquisition_type,
+)
 from .tdf import PandasTdf
 from .timsdata import TimsData, timsdata_connect
-from .lookup import DiaWindowLookup, Ms1FrameLookup, PrecursorLookup
 
 __version__ = "1.0.0"
 

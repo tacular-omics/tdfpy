@@ -15,7 +15,7 @@ Before loading data, you can inspect the acquisition type of a `.d` folder:
 ```python
 from tdfpy import get_acquisition_type
 
-acq_type = get_acquisition_type('data.d')
+acq_type = get_acquisition_type(D_PATH)
 # Returns one of: "DDA", "DIA", "PRM", "Unknown"
 print(acq_type)
 ```
@@ -25,7 +25,7 @@ print(acq_type)
 ```python
 from tdfpy import DDA
 
-with DDA('data.d') as dda:
+with DDA(D_PATH) as dda:
     # Iterate over MS1 frames
     for frame in dda.ms1:
         print(f"Frame {frame.frame_id} at RT {frame.time:.1f}s")
@@ -45,7 +45,7 @@ with DDA('data.d') as dda:
 ```python
 from tdfpy import DIA
 
-with DIA('data.d') as dia:
+with DIA(D_PATH) as dia:
     # MS1 frames
     for frame in dia.ms1:
         peaks = frame.centroid()
@@ -61,10 +61,12 @@ with DIA('data.d') as dia:
 Access frames, precursors, or windows directly by ID or query by properties.
 
 ```python
-with DDA('data.d') as dda:
+from tdfpy import DDA
+
+with DDA(D_PATH) as dda:
     # Access by ID
     frame = dda.ms1[1]
-    precursor = dda.precursors[123]
+    precursor = dda.precursors[1]
 
     # Query precursors by m/z and retention time
     results = dda.precursors.query(
@@ -75,8 +77,12 @@ with DDA('data.d') as dda:
     )
     for p in results:
         print(p.precursor_id, p.largest_peak_mz)
+```
 
-with DIA('data.d') as dia:
+```python
+from tdfpy import DIA
+
+with DIA(D_PATH) as dia:
     # Get all windows in a window group
     group_windows = dia.windows[0]  # returns a list
 
@@ -84,6 +90,33 @@ with DIA('data.d') as dia:
     results = dia.windows.query(rt=1200.0, rt_tolerance=60.0)
     for w in results:
         print(w.window_group, w.isolation_mz)
+```
+
+## How Data Access Works
+
+A `.d` folder contains two files: `analysis.tdf` (a SQLite database with metadata) and
+`analysis.tdf_bin` (a binary file with the raw spectral data).
+
+When you open a `DDA` or `DIA` reader, it immediately:
+
+1. Opens a connection to the binary file
+2. Reads all frame and precursor metadata from the SQLite database into memory
+
+The objects you get back — `Frame`, `Precursor`, `DiaWindow`, etc. — all hold a reference
+to that open connection. Their fields (`frame_id`, `rt`, `monoisotopic_mz`, etc.) are
+available immediately. **Spectral data is fetched lazily**: calling `.peaks` or `.centroid()`
+reads from the binary file at that moment.
+
+This means objects cannot be used after the reader closes:
+
+```python
+from tdfpy import DDA
+
+with DDA(D_PATH) as dda:
+    frame = dda.ms1[1]
+    peaks = frame.centroid()  # fine — connection is open
+
+# peaks = frame.centroid()  # RuntimeError: connection is closed
 ```
 
 ## Development

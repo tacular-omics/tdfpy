@@ -1,5 +1,5 @@
-from typing import Generic, Literal, TypeVar
 from collections.abc import Iterator
+from typing import Generic, Literal, TypeVar
 
 from .elems import DiaWindow, DiaWindowGroup, Frame, Precursor
 

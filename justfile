@@ -71,12 +71,12 @@ clean:
   find . -type f -name "*.so" ! -name "libtimsdata.so" -delete
 
 # Build and serve docs
-docs:  
-    uv run mkdocs serve --dev-addr=localhost:8002
+docs:
+    uv run --group docs mkdocs serve --dev-addr=localhost:8002
 
 # Build docs to site/
-docs-build:  
-    uv run mkdocs build
+docs-build:
+    uv run --group docs mkdocs build
 
 # Publish to PyPI (requires UV_PUBLISH_TOKEN or interactive auth)
 publish: build

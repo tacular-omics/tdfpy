@@ -1,6 +1,6 @@
-from pathlib import Path
-from typing import Self, Literal
 from collections.abc import Generator
+from pathlib import Path
+from typing import Literal, Self
 
 import pandas as pd
 
@@ -14,7 +14,8 @@ from .elems import (
     MetaData,
     MsMsType,
     PasefFrameMsmsInfo,
-    Precursor, Polarity,
+    Polarity,
+    Precursor,
 )
 from .lookup import DiaWindowLookup, Ms1FrameLookup, PrecursorLookup
 from .tdf import PandasTdf
@@ -25,33 +26,33 @@ def get_acquisition_type(analysis_dir: str) -> Literal["DDA", "DIA", "PRM", "Unk
     """
     Determine the acquisition type (DDA or DIA) of a .d folder by examining
     the MsMsType values in the Frames table.
-    
+
     Args:
         analysis_dir: Path to the .d folder
-        
+
     Returns:
         "DDA" if DDA acquisition detected
         "DIA" if DIA acquisition detected
         "PRM" if PRM acquisition detected
         "Unknown" if type cannot be determined
-        
+
     Raises:
         FileNotFoundError: If analysis.tdf does not exist
     """
     analysis_tdf_path = Path(analysis_dir) / "analysis.tdf"
     if not analysis_tdf_path.exists():
         raise FileNotFoundError(f"analysis.tdf not found at {analysis_tdf_path}")
-    
+
     pandas_tdf = PandasTdf(str(analysis_tdf_path))
     frames_df = pandas_tdf.frames
-    
+
     # Get unique MsMsType values
     msms_types = set(frames_df["MsMsType"].unique())
-    
+
     # Check for DDA (MS2 type 8)
     if MsMsType.DDA_MS2.value in msms_types:
         return "DDA"
-    
+
     # Check for DIA (MS2 type 9)
     if MsMsType.DIA_MS2.value in msms_types:
         return "DIA"
@@ -397,7 +398,7 @@ class DIA(_DFolder):
                     isolation_width=window_group.isolation_width,
                     collision_energy=window_group.collision_energy,
                     rt=frame_id_to_rt[frame_id],
-                    polarity=Polarity.from_str(frame_id_to_polarity[frame_id])
+                    polarity=Polarity.from_str(frame_id_to_polarity[frame_id]),
                 )
                 self._dia_windows[frame_id].append(dia_window)
                 self._all_dia_windows.append(dia_window)

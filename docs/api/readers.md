@@ -1,4 +1,4 @@
-# Reader
+# Readers
 
 High-level entry points for opening timsTOF `.d` acquisitions.
 
