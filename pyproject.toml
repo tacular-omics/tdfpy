@@ -34,6 +34,7 @@ path = "src/tdfpy/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/tdfpy"]
+artifacts = ["src/tdfpy/libtimsdata.so"]
 
 [dependency-groups]
 docs = [

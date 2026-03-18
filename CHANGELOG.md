@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.1]
+
+### Fixed
+- `libtimsdata.so` (Linux Bruker native library) was missing from the PyPI wheel due to a `*.so` entry in `.gitignore`; fixed by declaring it as a hatchling build artifact.
+
 ## [1.0.0]
 
 ### Added
