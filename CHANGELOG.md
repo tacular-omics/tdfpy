@@ -7,13 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-- `get_acquisition_type()` function to detect DDA/DIA/PRM acquisition mode from a `.d` folder
-- `Polarity` StrEnum (`POSITIVE`, `NEGATIVE`, `UNKNOWN`, `MIXED`) replacing plain strings for frame and window polarity fields
-
-### Fixed
-- `Polarity.UNKNOWN` typo (was `UNKOWN`)
-
 ## [1.0.0]
 
 ### Added
