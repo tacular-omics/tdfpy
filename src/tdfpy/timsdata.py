@@ -61,6 +61,7 @@ data_path = os.path.join(data_dir, libname)  # type: ignore[arg-type]
 logger.debug(f"data_path: {data_path}")
 
 # Try to load library
+_dll_load_error: Exception | None = None
 try:
     if os.path.exists(data_path):
         dll = cdll.LoadLibrary(data_path)
@@ -69,80 +70,13 @@ try:
         dll = cdll.LoadLibrary(libname)
 except Exception as e:
     logger.error(f"Error loading library: {e}")
-    raise
+    dll = None
+    _dll_load_error = e
 
-dll.tims_open_v2.argtypes = [c_char_p, c_uint32, c_uint32]
-dll.tims_open_v2.restype = c_uint64
-dll.tims_close.argtypes = [c_uint64]
-dll.tims_close.restype = None
-dll.tims_get_last_error_string.argtypes = [c_char_p, c_uint32]
-dll.tims_get_last_error_string.restype = c_uint32
-dll.tims_has_recalibrated_state.argtypes = [c_uint64]
-dll.tims_has_recalibrated_state.restype = c_uint32
-dll.tims_read_scans_v2.argtypes = [
-    c_uint64,
-    c_int64,
-    c_uint32,
-    c_uint32,
-    c_void_p,
-    c_uint32,
-]
-dll.tims_read_scans_v2.restype = c_uint32
 MSMS_SPECTRUM_FUNCTOR = CFUNCTYPE(
     None, c_int64, c_uint32, POINTER(c_double), POINTER(c_float)
 )
-dll.tims_read_pasef_msms.argtypes = [
-    c_uint64,
-    POINTER(c_int64),
-    c_uint32,
-    MSMS_SPECTRUM_FUNCTOR,
-]
-dll.tims_read_pasef_msms.restype = c_uint32
-dll.tims_read_pasef_msms_for_frame.argtypes = [c_uint64, c_int64, MSMS_SPECTRUM_FUNCTOR]
-dll.tims_read_pasef_msms_for_frame.restype = c_uint32
 MSMS_PROFILE_SPECTRUM_FUNCTOR = CFUNCTYPE(None, c_int64, c_uint32, POINTER(c_int32))
-dll.tims_read_pasef_profile_msms.argtypes = [
-    c_uint64,
-    POINTER(c_int64),
-    c_uint32,
-    MSMS_PROFILE_SPECTRUM_FUNCTOR,
-]
-dll.tims_read_pasef_profile_msms.restype = c_uint32
-dll.tims_read_pasef_profile_msms_for_frame.argtypes = [
-    c_uint64,
-    c_int64,
-    MSMS_PROFILE_SPECTRUM_FUNCTOR,
-]
-dll.tims_read_pasef_profile_msms_for_frame.restype = c_uint32
-
-dll.tims_extract_centroided_spectrum_for_frame_v2.argtypes = [
-    c_uint64,
-    c_int64,
-    c_uint32,
-    c_uint32,
-    MSMS_SPECTRUM_FUNCTOR,
-    c_void_p,
-]
-dll.tims_extract_centroided_spectrum_for_frame_v2.restype = c_uint32
-dll.tims_extract_centroided_spectrum_for_frame_ext.argtypes = [
-    c_uint64,
-    c_int64,
-    c_uint32,
-    c_uint32,
-    c_double,
-    MSMS_SPECTRUM_FUNCTOR,
-    c_void_p,
-]
-dll.tims_extract_centroided_spectrum_for_frame_ext.restype = c_uint32
-dll.tims_extract_profile_for_frame.argtypes = [
-    c_uint64,
-    c_int64,
-    c_uint32,
-    c_uint32,
-    MSMS_PROFILE_SPECTRUM_FUNCTOR,
-    c_void_p,
-]
-dll.tims_extract_profile_for_frame.restype = c_uint32
 
 
 class ChromatogramJob(Structure):
@@ -161,13 +95,6 @@ CHROMATOGRAM_JOB_GENERATOR = CFUNCTYPE(c_uint32, POINTER(ChromatogramJob), c_voi
 CHROMATOGRAM_TRACE_SINK = CFUNCTYPE(
     c_uint32, c_int64, c_uint32, POINTER(c_int64), POINTER(c_uint64), c_void_p
 )
-dll.tims_extract_chromatograms.argtypes = [
-    c_uint64,
-    CHROMATOGRAM_JOB_GENERATOR,
-    CHROMATOGRAM_TRACE_SINK,
-    c_void_p,
-]
-dll.tims_extract_chromatograms.restype = c_uint32
 
 convfunc_argtypes: list[Any] = [
     c_uint64,
@@ -177,26 +104,97 @@ convfunc_argtypes: list[Any] = [
     c_uint32,
 ]
 
-dll.tims_index_to_mz.argtypes = convfunc_argtypes
-dll.tims_index_to_mz.restype = c_uint32
-dll.tims_mz_to_index.argtypes = convfunc_argtypes
-dll.tims_mz_to_index.restype = c_uint32
-
-dll.tims_scannum_to_oneoverk0.argtypes = convfunc_argtypes
-dll.tims_scannum_to_oneoverk0.restype = c_uint32
-dll.tims_oneoverk0_to_scannum.argtypes = convfunc_argtypes
-dll.tims_oneoverk0_to_scannum.restype = c_uint32
-
-dll.tims_scannum_to_voltage.argtypes = convfunc_argtypes
-dll.tims_scannum_to_voltage.restype = c_uint32
-dll.tims_voltage_to_scannum.argtypes = convfunc_argtypes
-dll.tims_voltage_to_scannum.restype = c_uint32
-
-dll.tims_oneoverk0_to_ccs_for_mz.argtypes = [c_double, c_int32, c_double]
-dll.tims_oneoverk0_to_ccs_for_mz.restype = c_double
-
-dll.tims_ccs_to_oneoverk0_for_mz.argtypes = [c_double, c_int32, c_double]
-dll.tims_ccs_to_oneoverk0_for_mz.restype = c_double
+if dll is not None:
+    dll.tims_open_v2.argtypes = [c_char_p, c_uint32, c_uint32]
+    dll.tims_open_v2.restype = c_uint64
+    dll.tims_close.argtypes = [c_uint64]
+    dll.tims_close.restype = None
+    dll.tims_get_last_error_string.argtypes = [c_char_p, c_uint32]
+    dll.tims_get_last_error_string.restype = c_uint32
+    dll.tims_has_recalibrated_state.argtypes = [c_uint64]
+    dll.tims_has_recalibrated_state.restype = c_uint32
+    dll.tims_read_scans_v2.argtypes = [
+        c_uint64,
+        c_int64,
+        c_uint32,
+        c_uint32,
+        c_void_p,
+        c_uint32,
+    ]
+    dll.tims_read_scans_v2.restype = c_uint32
+    dll.tims_read_pasef_msms.argtypes = [
+        c_uint64,
+        POINTER(c_int64),
+        c_uint32,
+        MSMS_SPECTRUM_FUNCTOR,
+    ]
+    dll.tims_read_pasef_msms.restype = c_uint32
+    dll.tims_read_pasef_msms_for_frame.argtypes = [c_uint64, c_int64, MSMS_SPECTRUM_FUNCTOR]
+    dll.tims_read_pasef_msms_for_frame.restype = c_uint32
+    dll.tims_read_pasef_profile_msms.argtypes = [
+        c_uint64,
+        POINTER(c_int64),
+        c_uint32,
+        MSMS_PROFILE_SPECTRUM_FUNCTOR,
+    ]
+    dll.tims_read_pasef_profile_msms.restype = c_uint32
+    dll.tims_read_pasef_profile_msms_for_frame.argtypes = [
+        c_uint64,
+        c_int64,
+        MSMS_PROFILE_SPECTRUM_FUNCTOR,
+    ]
+    dll.tims_read_pasef_profile_msms_for_frame.restype = c_uint32
+    dll.tims_extract_centroided_spectrum_for_frame_v2.argtypes = [
+        c_uint64,
+        c_int64,
+        c_uint32,
+        c_uint32,
+        MSMS_SPECTRUM_FUNCTOR,
+        c_void_p,
+    ]
+    dll.tims_extract_centroided_spectrum_for_frame_v2.restype = c_uint32
+    dll.tims_extract_centroided_spectrum_for_frame_ext.argtypes = [
+        c_uint64,
+        c_int64,
+        c_uint32,
+        c_uint32,
+        c_double,
+        MSMS_SPECTRUM_FUNCTOR,
+        c_void_p,
+    ]
+    dll.tims_extract_centroided_spectrum_for_frame_ext.restype = c_uint32
+    dll.tims_extract_profile_for_frame.argtypes = [
+        c_uint64,
+        c_int64,
+        c_uint32,
+        c_uint32,
+        MSMS_PROFILE_SPECTRUM_FUNCTOR,
+        c_void_p,
+    ]
+    dll.tims_extract_profile_for_frame.restype = c_uint32
+    dll.tims_extract_chromatograms.argtypes = [
+        c_uint64,
+        CHROMATOGRAM_JOB_GENERATOR,
+        CHROMATOGRAM_TRACE_SINK,
+        c_void_p,
+    ]
+    dll.tims_extract_chromatograms.restype = c_uint32
+    dll.tims_index_to_mz.argtypes = convfunc_argtypes
+    dll.tims_index_to_mz.restype = c_uint32
+    dll.tims_mz_to_index.argtypes = convfunc_argtypes
+    dll.tims_mz_to_index.restype = c_uint32
+    dll.tims_scannum_to_oneoverk0.argtypes = convfunc_argtypes
+    dll.tims_scannum_to_oneoverk0.restype = c_uint32
+    dll.tims_oneoverk0_to_scannum.argtypes = convfunc_argtypes
+    dll.tims_oneoverk0_to_scannum.restype = c_uint32
+    dll.tims_scannum_to_voltage.argtypes = convfunc_argtypes
+    dll.tims_scannum_to_voltage.restype = c_uint32
+    dll.tims_voltage_to_scannum.argtypes = convfunc_argtypes
+    dll.tims_voltage_to_scannum.restype = c_uint32
+    dll.tims_oneoverk0_to_ccs_for_mz.argtypes = [c_double, c_int32, c_double]
+    dll.tims_oneoverk0_to_ccs_for_mz.restype = c_double
+    dll.tims_ccs_to_oneoverk0_for_mz.argtypes = [c_double, c_int32, c_double]
+    dll.tims_ccs_to_oneoverk0_for_mz.restype = c_double
 
 
 @contextmanager
@@ -221,11 +219,19 @@ def _throwLastTimsDataError(dll_handle: CDLL) -> None:
 
 # Convert 1/K0 to CCS for a given charge and mz
 def oneOverK0ToCCSforMz(ook0: float, charge: int, mz: float) -> float:
+    if dll is None:
+        raise ImportError(
+            f"libtimsdata native library could not be loaded: {_dll_load_error}"
+        ) from _dll_load_error
     return float(dll.tims_oneoverk0_to_ccs_for_mz(ook0, charge, mz))
 
 
 # Convert CCS to 1/K0 for a given charge and mz
 def ccsToOneOverK0ToCCSforMz(ccs: float, charge: int, mz: float) -> float:
+    if dll is None:
+        raise ImportError(
+            f"libtimsdata native library could not be loaded: {_dll_load_error}"
+        ) from _dll_load_error
     return float(dll.tims_ccs_to_oneoverk0_for_mz(ccs, charge, mz))
 
 
@@ -244,6 +250,11 @@ class TimsData:
     ) -> None:
         if not isinstance(analysis_directory, str):  # type: ignore[type-var]
             raise ValueError("analysis_directory must be a string.")
+
+        if dll is None:
+            raise ImportError(
+                f"libtimsdata native library could not be loaded: {_dll_load_error}"
+            ) from _dll_load_error
 
         self.analysis_directory = analysis_directory
         self.dll: CDLL = dll

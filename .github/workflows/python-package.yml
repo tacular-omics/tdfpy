@@ -36,6 +36,24 @@ jobs:
     - name: Install dependencies
       run: just install-dev
 
+    - name: Build wheel and verify native libraries
+      run: |
+        pip install build
+        python -m build --wheel --outdir /tmp/verify-dist
+        python -c "
+        import zipfile, sys, pathlib
+        wheels = list(pathlib.Path('/tmp/verify-dist').glob('*.whl'))
+        assert wheels, 'No wheel found'
+        with zipfile.ZipFile(wheels[0]) as zf:
+            names = zf.namelist()
+        missing = [f for f in ('libtimsdata.so', 'timsdata.dll') if not any(f in n for n in names)]
+        if missing:
+            print('FAIL: missing from wheel:', missing)
+            print('Wheel contents:', names)
+            sys.exit(1)
+        print('OK: wheel contains libtimsdata.so and timsdata.dll')
+        "
+
     - name: Lint with ruff
       run: just lint
 

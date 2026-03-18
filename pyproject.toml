@@ -12,7 +12,6 @@ authors = [
 dependencies = [
     "numpy",
     "pandas",
-    "numba>=0.59",
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
@@ -28,6 +27,9 @@ readme = "README.md"
 requires-python = ">=3.12"
 license = {file = "LICENSE"}
 keywords = ["bruker", "timstof", "mass-spectrometry", "proteomics", "tdf"]
+
+[project.optional-dependencies]
+numba = ["numba>=0.59"]
 
 [tool.hatch.version]
 path = "src/tdfpy/__init__.py"

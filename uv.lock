@@ -942,9 +942,13 @@ wheels = [
 name = "tdfpy"
 source = { editable = "." }
 dependencies = [
-    { name = "numba" },
     { name = "numpy" },
     { name = "pandas" },
+]
+
+[package.optional-dependencies]
+numba = [
+    { name = "numba" },
 ]
 
 [package.dev-dependencies]
@@ -965,10 +969,11 @@ docs = [
 
 [package.metadata]
 requires-dist = [
-    { name = "numba", specifier = ">=0.59" },
+    { name = "numba", marker = "extra == 'numba'", specifier = ">=0.59" },
     { name = "numpy" },
     { name = "pandas" },
 ]
+provides-extras = ["numba"]
 
 [package.metadata.requires-dev]
 dev = [

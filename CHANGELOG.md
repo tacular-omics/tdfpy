@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.2]
+
+### Fixed
+- `libtimsdata.so` is now committed to git and negated in `.gitignore` so it is present during CI checkout and correctly included in the PyPI wheel.
+- Added wheel content check in CI to assert both `libtimsdata.so` and `timsdata.dll` are present in every built wheel.
+
 ## [1.0.1]
 
 ### Fixed
