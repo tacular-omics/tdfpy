@@ -1,0 +1,2541 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A Python library for parsing Bruker timsTOF data with centroiding and noise filtering.">
+      
+      
+      
+      
+        <link rel="prev" href="../../getting-started/">
+      
+      
+        <link rel="next" href="../frames/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.5">
+    
+    
+      
+        <title>Readers - tdfpy</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#readers" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="tdfpy" class="md-header__button md-logo" aria-label="tdfpy" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            tdfpy
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Readers
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/tacular-omics/tdfpy" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    tacular-omics/tdfpy
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="tdfpy" class="md-nav__button md-logo" aria-label="tdfpy" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    tdfpy
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/tacular-omics/tdfpy" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    tacular-omics/tdfpy
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Readers
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Readers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#tdfpy.get_acquisition_type" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        get_acquisition_type
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tdfpy.DDA" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DDA
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="DDA">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#tdfpy.DDA.metadata" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        metadata
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tdfpy.DDA.calibration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        calibration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tdfpy.DDA.ms1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ms1
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tdfpy.DDA.precursors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        precursors
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tdfpy.DDA.close" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        close
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tdfpy.DIA" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DIA
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="DIA">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#tdfpy.DIA.metadata" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        metadata
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tdfpy.DIA.calibration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        calibration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tdfpy.DIA.ms1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ms1
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tdfpy.DIA.windows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        windows
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tdfpy.DIA.window_groups" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        window_groups
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tdfpy.DIA.close" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        close
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tdfpy.PRM" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PRM
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="PRM">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#tdfpy.PRM.metadata" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        metadata
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tdfpy.PRM.calibration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        calibration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tdfpy.PRM.close" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        close
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../frames/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Frames
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../precursor/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Precursor
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../windows/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DIA Windows
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../metadata/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Metadata
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../lookup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Lookups
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../centroiding/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Centroiding
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../low-level/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PandasTDF
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#tdfpy.get_acquisition_type" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        get_acquisition_type
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tdfpy.DDA" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DDA
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="DDA">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#tdfpy.DDA.metadata" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        metadata
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tdfpy.DDA.calibration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        calibration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tdfpy.DDA.ms1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ms1
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tdfpy.DDA.precursors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        precursors
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tdfpy.DDA.close" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        close
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tdfpy.DIA" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DIA
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="DIA">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#tdfpy.DIA.metadata" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        metadata
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tdfpy.DIA.calibration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        calibration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tdfpy.DIA.ms1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ms1
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tdfpy.DIA.windows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        windows
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tdfpy.DIA.window_groups" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        window_groups
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tdfpy.DIA.close" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        close
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tdfpy.PRM" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PRM
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="PRM">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#tdfpy.PRM.metadata" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        metadata
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tdfpy.PRM.calibration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        calibration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tdfpy.PRM.close" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        close
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="readers">Readers</h1>
+<p>High-level entry points for opening timsTOF <code>.d</code> acquisitions.</p>
+
+
+<div class="doc doc-object doc-function">
+
+
+<h2 id="tdfpy.get_acquisition_type" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-function"></code>            <span class="doc doc-object-name doc-function-name">tdfpy.get_acquisition_type</span>
+
+
+</h2>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">get_acquisition_type</span><span class="p">(</span>
+    <span class="n">analysis_dir</span><span class="p">:</span> <span class="n"><span title="str">str</span></span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><span title="typing.Literal">Literal</span></span><span class="p">[</span><span class="s2">&quot;DDA&quot;</span><span class="p">,</span> <span class="s2">&quot;DIA&quot;</span><span class="p">,</span> <span class="s2">&quot;PRM&quot;</span><span class="p">,</span> <span class="s2">&quot;Unknown&quot;</span><span class="p">]</span>
+</code></pre></div>
+
+    <div class="doc doc-contents first">
+
+        <p>Determine the acquisition type (DDA or DIA) of a .d folder by examining
+the MsMsType values in the Frames table.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>analysis_dir</code>
+            </td>
+            <td>
+                  <code><span title="str">str</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Path to the .d folder</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="typing.Literal">Literal</span>[&#39;DDA&#39;, &#39;DIA&#39;, &#39;PRM&#39;, &#39;Unknown&#39;]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>"DDA" if DDA acquisition detected</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="typing.Literal">Literal</span>[&#39;DDA&#39;, &#39;DIA&#39;, &#39;PRM&#39;, &#39;Unknown&#39;]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>"DIA" if DIA acquisition detected</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="typing.Literal">Literal</span>[&#39;DDA&#39;, &#39;DIA&#39;, &#39;PRM&#39;, &#39;Unknown&#39;]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>"PRM" if PRM acquisition detected</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="typing.Literal">Literal</span>[&#39;DDA&#39;, &#39;DIA&#39;, &#39;PRM&#39;, &#39;Unknown&#39;]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>"Unknown" if type cannot be determined</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<p><span class="doc-section-title">Raises:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="FileNotFoundError">FileNotFoundError</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>If analysis.tdf does not exist</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/tdfpy/reader.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">25</span>
+<span class="normal">26</span>
+<span class="normal">27</span>
+<span class="normal">28</span>
+<span class="normal">29</span>
+<span class="normal">30</span>
+<span class="normal">31</span>
+<span class="normal">32</span>
+<span class="normal">33</span>
+<span class="normal">34</span>
+<span class="normal">35</span>
+<span class="normal">36</span>
+<span class="normal">37</span>
+<span class="normal">38</span>
+<span class="normal">39</span>
+<span class="normal">40</span>
+<span class="normal">41</span>
+<span class="normal">42</span>
+<span class="normal">43</span>
+<span class="normal">44</span>
+<span class="normal">45</span>
+<span class="normal">46</span>
+<span class="normal">47</span>
+<span class="normal">48</span>
+<span class="normal">49</span>
+<span class="normal">50</span>
+<span class="normal">51</span>
+<span class="normal">52</span>
+<span class="normal">53</span>
+<span class="normal">54</span>
+<span class="normal">55</span>
+<span class="normal">56</span>
+<span class="normal">57</span>
+<span class="normal">58</span>
+<span class="normal">59</span>
+<span class="normal">60</span>
+<span class="normal">61</span>
+<span class="normal">62</span>
+<span class="normal">63</span>
+<span class="normal">64</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">get_acquisition_type</span><span class="p">(</span><span class="n">analysis_dir</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;DDA&quot;</span><span class="p">,</span> <span class="s2">&quot;DIA&quot;</span><span class="p">,</span> <span class="s2">&quot;PRM&quot;</span><span class="p">,</span> <span class="s2">&quot;Unknown&quot;</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Determine the acquisition type (DDA or DIA) of a .d folder by examining</span>
+<span class="sd">    the MsMsType values in the Frames table.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        analysis_dir: Path to the .d folder</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        &quot;DDA&quot; if DDA acquisition detected</span>
+<span class="sd">        &quot;DIA&quot; if DIA acquisition detected</span>
+<span class="sd">        &quot;PRM&quot; if PRM acquisition detected</span>
+<span class="sd">        &quot;Unknown&quot; if type cannot be determined</span>
+
+<span class="sd">    Raises:</span>
+<span class="sd">        FileNotFoundError: If analysis.tdf does not exist</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">analysis_tdf_path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">analysis_dir</span><span class="p">)</span> <span class="o">/</span> <span class="s2">&quot;analysis.tdf&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">analysis_tdf_path</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+        <span class="k">raise</span> <span class="ne">FileNotFoundError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;analysis.tdf not found at </span><span class="si">{</span><span class="n">analysis_tdf_path</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="n">pandas_tdf</span> <span class="o">=</span> <span class="n">PandasTdf</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">analysis_tdf_path</span><span class="p">))</span>
+    <span class="n">frames_df</span> <span class="o">=</span> <span class="n">pandas_tdf</span><span class="o">.</span><span class="n">frames</span>
+
+    <span class="c1"># Get unique MsMsType values</span>
+    <span class="n">msms_types</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">frames_df</span><span class="p">[</span><span class="s2">&quot;MsMsType&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">unique</span><span class="p">())</span>
+
+    <span class="c1"># Check for DDA (MS2 type 8)</span>
+    <span class="k">if</span> <span class="n">MsMsType</span><span class="o">.</span><span class="n">DDA_MS2</span><span class="o">.</span><span class="n">value</span> <span class="ow">in</span> <span class="n">msms_types</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s2">&quot;DDA&quot;</span>
+
+    <span class="c1"># Check for DIA (MS2 type 9)</span>
+    <span class="k">if</span> <span class="n">MsMsType</span><span class="o">.</span><span class="n">DIA_MS2</span><span class="o">.</span><span class="n">value</span> <span class="ow">in</span> <span class="n">msms_types</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s2">&quot;DIA&quot;</span>
+
+    <span class="c1"># PRM shows as MsMsType 2</span>
+    <span class="k">if</span> <span class="mi">2</span> <span class="ow">in</span> <span class="n">msms_types</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s2">&quot;PRM&quot;</span>
+
+    <span class="k">return</span> <span class="s2">&quot;Unknown&quot;</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h2 id="tdfpy.DDA" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-class"></code>            <span class="doc doc-object-name doc-class-name">tdfpy.DDA</span>
+
+
+</h2>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">DDA</span><span class="p">(</span><span class="n">analysis_dir</span><span class="p">:</span> <span class="n"><span title="str">str</span></span><span class="p">)</span>
+</code></pre></div>
+
+    <div class="doc doc-contents first">
+            <p class="doc doc-class-bases">
+              Bases: <code><span title="tdfpy.reader._DFolder">_DFolder</span></code></p>
+
+
+
+        <p>Open a DDA (Data-Dependent Acquisition) <code>.d</code> folder.</p>
+<p>Use as a context manager to ensure the TimsData connection is closed when done.
+Exposes MS1 frames via <code>ms1</code> and precursors via <code>precursors</code>.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>analysis_dir</code>
+            </td>
+            <td>
+                  <code><span title="str">str</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Path to the <code>.d</code> folder containing <code>analysis.tdf</code> and <code>analysis.tdf_bin</code>.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<p><span class="doc-section-title">Raises:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="FileNotFoundError">FileNotFoundError</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>If the <code>.d</code> folder or required files are missing.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<details class="example" open>
+  <summary>Example</summary>
+  <div class="highlight"><pre><span></span><code><span class="k">with</span> <span class="n">DDA</span><span class="p">(</span><span class="s2">&quot;/path/to/data.d&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">dda</span><span class="p">:</span>
+    <span class="k">for</span> <span class="n">frame</span> <span class="ow">in</span> <span class="n">dda</span><span class="o">.</span><span class="n">ms1</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">frame</span><span class="o">.</span><span class="n">frame_id</span><span class="p">,</span> <span class="n">frame</span><span class="o">.</span><span class="n">time</span><span class="p">)</span>
+</code></pre></div>
+</details>
+
+
+
+
+
+
+
+                  <details class="mkdocstrings-source">
+                    <summary>Source code in <code>src/tdfpy/reader.py</code></summary>
+                    <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">180</span>
+<span class="normal">181</span>
+<span class="normal">182</span>
+<span class="normal">183</span>
+<span class="normal">184</span>
+<span class="normal">185</span>
+<span class="normal">186</span>
+<span class="normal">187</span>
+<span class="normal">188</span>
+<span class="normal">189</span>
+<span class="normal">190</span>
+<span class="normal">191</span>
+<span class="normal">192</span>
+<span class="normal">193</span>
+<span class="normal">194</span>
+<span class="normal">195</span>
+<span class="normal">196</span>
+<span class="normal">197</span>
+<span class="normal">198</span>
+<span class="normal">199</span>
+<span class="normal">200</span>
+<span class="normal">201</span>
+<span class="normal">202</span>
+<span class="normal">203</span>
+<span class="normal">204</span>
+<span class="normal">205</span>
+<span class="normal">206</span>
+<span class="normal">207</span>
+<span class="normal">208</span>
+<span class="normal">209</span>
+<span class="normal">210</span>
+<span class="normal">211</span>
+<span class="normal">212</span>
+<span class="normal">213</span>
+<span class="normal">214</span>
+<span class="normal">215</span>
+<span class="normal">216</span>
+<span class="normal">217</span>
+<span class="normal">218</span>
+<span class="normal">219</span>
+<span class="normal">220</span>
+<span class="normal">221</span>
+<span class="normal">222</span>
+<span class="normal">223</span>
+<span class="normal">224</span>
+<span class="normal">225</span>
+<span class="normal">226</span>
+<span class="normal">227</span>
+<span class="normal">228</span>
+<span class="normal">229</span>
+<span class="normal">230</span>
+<span class="normal">231</span>
+<span class="normal">232</span>
+<span class="normal">233</span>
+<span class="normal">234</span>
+<span class="normal">235</span>
+<span class="normal">236</span>
+<span class="normal">237</span>
+<span class="normal">238</span>
+<span class="normal">239</span>
+<span class="normal">240</span>
+<span class="normal">241</span>
+<span class="normal">242</span>
+<span class="normal">243</span>
+<span class="normal">244</span>
+<span class="normal">245</span>
+<span class="normal">246</span>
+<span class="normal">247</span>
+<span class="normal">248</span>
+<span class="normal">249</span>
+<span class="normal">250</span>
+<span class="normal">251</span>
+<span class="normal">252</span>
+<span class="normal">253</span>
+<span class="normal">254</span>
+<span class="normal">255</span>
+<span class="normal">256</span>
+<span class="normal">257</span>
+<span class="normal">258</span>
+<span class="normal">259</span>
+<span class="normal">260</span>
+<span class="normal">261</span>
+<span class="normal">262</span>
+<span class="normal">263</span>
+<span class="normal">264</span>
+<span class="normal">265</span>
+<span class="normal">266</span>
+<span class="normal">267</span>
+<span class="normal">268</span>
+<span class="normal">269</span>
+<span class="normal">270</span>
+<span class="normal">271</span>
+<span class="normal">272</span>
+<span class="normal">273</span>
+<span class="normal">274</span>
+<span class="normal">275</span>
+<span class="normal">276</span>
+<span class="normal">277</span>
+<span class="normal">278</span>
+<span class="normal">279</span>
+<span class="normal">280</span>
+<span class="normal">281</span>
+<span class="normal">282</span>
+<span class="normal">283</span>
+<span class="normal">284</span>
+<span class="normal">285</span>
+<span class="normal">286</span>
+<span class="normal">287</span>
+<span class="normal">288</span>
+<span class="normal">289</span>
+<span class="normal">290</span>
+<span class="normal">291</span>
+<span class="normal">292</span>
+<span class="normal">293</span>
+<span class="normal">294</span>
+<span class="normal">295</span>
+<span class="normal">296</span>
+<span class="normal">297</span>
+<span class="normal">298</span>
+<span class="normal">299</span>
+<span class="normal">300</span>
+<span class="normal">301</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">analysis_dir</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
+    <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">analysis_dir</span><span class="p">)</span>
+
+    <span class="bp">self</span><span class="o">.</span><span class="n">_precursor_df</span> <span class="o">=</span> <span class="n">PandasTdf</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">analysis_tdf_path</span><span class="p">))</span><span class="o">.</span><span class="n">precursors</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_frames_df</span> <span class="o">=</span> <span class="n">PandasTdf</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">analysis_tdf_path</span><span class="p">))</span><span class="o">.</span><span class="n">frames</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_pasef_frame_msms_info_df</span> <span class="o">=</span> <span class="n">PandasTdf</span><span class="p">(</span>
+        <span class="nb">str</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">analysis_tdf_path</span><span class="p">)</span>
+    <span class="p">)</span><span class="o">.</span><span class="n">pasef_frame_msms_info</span>
+
+    <span class="n">frame_id_to_rt</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">row</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_frames_df</span><span class="o">.</span><span class="n">iterrows</span><span class="p">():</span>
+        <span class="n">frame_id</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;Id&quot;</span><span class="p">])</span>
+        <span class="n">time</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;Time&quot;</span><span class="p">])</span>
+        <span class="n">frame_id_to_rt</span><span class="p">[</span><span class="n">frame_id</span><span class="p">]</span> <span class="o">=</span> <span class="n">time</span>
+
+    <span class="n">frame_to_polarity</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">row</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_frames_df</span><span class="o">.</span><span class="n">iterrows</span><span class="p">():</span>
+        <span class="n">frame_id</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;Id&quot;</span><span class="p">])</span>
+        <span class="n">polarity</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;Polarity&quot;</span><span class="p">])</span>
+        <span class="n">frame_to_polarity</span><span class="p">[</span><span class="n">frame_id</span><span class="p">]</span> <span class="o">=</span> <span class="n">polarity</span>
+
+    <span class="bp">self</span><span class="o">.</span><span class="n">_pasef_msms_infos</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">list</span><span class="p">[</span><span class="n">PasefFrameMsmsInfo</span><span class="p">]]</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">row</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_pasef_frame_msms_info_df</span><span class="o">.</span><span class="n">iterrows</span><span class="p">():</span>
+        <span class="n">frame_id</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;Frame&quot;</span><span class="p">])</span>
+        <span class="n">polarity</span> <span class="o">=</span> <span class="n">frame_to_polarity</span><span class="p">[</span><span class="n">frame_id</span><span class="p">]</span>
+        <span class="n">pasef_info</span> <span class="o">=</span> <span class="n">PasefFrameMsmsInfo</span><span class="p">(</span>
+            <span class="n">_timsdata</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">timsdata</span><span class="p">,</span>
+            <span class="n">frame_id</span><span class="o">=</span><span class="n">frame_id</span><span class="p">,</span>
+            <span class="n">scan_num_begin</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;ScanNumBegin&quot;</span><span class="p">]),</span>
+            <span class="n">scan_num_end</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;ScanNumEnd&quot;</span><span class="p">]),</span>
+            <span class="n">isolation_mz</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;IsolationMz&quot;</span><span class="p">]),</span>
+            <span class="n">isolation_width</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;IsolationWidth&quot;</span><span class="p">]),</span>
+            <span class="n">collision_energy</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;CollisionEnergy&quot;</span><span class="p">]),</span>
+            <span class="n">precursor</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;Precursor&quot;</span><span class="p">])</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">pd</span><span class="o">.</span><span class="n">isna</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;Precursor&quot;</span><span class="p">])</span>
+            <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+            <span class="n">rt</span><span class="o">=</span><span class="n">frame_id_to_rt</span><span class="p">[</span><span class="n">frame_id</span><span class="p">],</span>
+            <span class="n">polarity</span><span class="o">=</span><span class="n">Polarity</span><span class="o">.</span><span class="n">from_str</span><span class="p">(</span><span class="n">polarity</span><span class="p">),</span>
+        <span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">pasef_info</span><span class="o">.</span><span class="n">precursor</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;PASEF MS/MS info with null precursor found for frame </span><span class="si">{</span><span class="n">pasef_info</span><span class="o">.</span><span class="n">frame_id</span><span class="si">}</span><span class="s2">. All PASEF MS/MS info must have a valid precursor ID.&quot;</span>
+            <span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">pasef_info</span><span class="o">.</span><span class="n">precursor</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_pasef_msms_infos</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_pasef_msms_infos</span><span class="p">[</span><span class="n">pasef_info</span><span class="o">.</span><span class="n">precursor</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_pasef_msms_infos</span><span class="p">[</span><span class="n">pasef_info</span><span class="o">.</span><span class="n">precursor</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">pasef_info</span><span class="p">)</span>
+
+    <span class="bp">self</span><span class="o">.</span><span class="n">_precursors</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">Precursor</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_frame_to_precursors</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">list</span><span class="p">[</span><span class="n">Precursor</span><span class="p">]]</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">row</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_precursor_df</span><span class="o">.</span><span class="n">iterrows</span><span class="p">():</span>
+        <span class="n">precursor_id</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;Id&quot;</span><span class="p">])</span>
+        <span class="n">frame_id</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;Parent&quot;</span><span class="p">])</span>
+
+        <span class="n">precursor</span> <span class="o">=</span> <span class="n">Precursor</span><span class="p">(</span>
+            <span class="n">_timsdata</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">timsdata</span><span class="p">,</span>
+            <span class="n">precursor_id</span><span class="o">=</span><span class="n">precursor_id</span><span class="p">,</span>
+            <span class="n">largest_peak_mz</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;LargestPeakMz&quot;</span><span class="p">]),</span>
+            <span class="n">average_mz</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;AverageMz&quot;</span><span class="p">]),</span>
+            <span class="n">monoisotopic_mz</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;MonoisotopicMz&quot;</span><span class="p">])</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">pd</span><span class="o">.</span><span class="n">isna</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;MonoisotopicMz&quot;</span><span class="p">])</span>
+            <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+            <span class="n">charge</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;Charge&quot;</span><span class="p">])</span> <span class="k">if</span> <span class="ow">not</span> <span class="n">pd</span><span class="o">.</span><span class="n">isna</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;Charge&quot;</span><span class="p">])</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+            <span class="n">scan_number</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;ScanNumber&quot;</span><span class="p">]),</span>
+            <span class="n">intensity</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;Intensity&quot;</span><span class="p">]),</span>
+            <span class="n">parent_frame</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;Parent&quot;</span><span class="p">]),</span>
+            <span class="n">pasef_frame_msms_infos</span><span class="o">=</span><span class="nb">tuple</span><span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_pasef_msms_infos</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">precursor_id</span><span class="p">,</span> <span class="p">[])</span>
+            <span class="p">),</span>
+            <span class="n">rt</span><span class="o">=</span><span class="n">frame_id_to_rt</span><span class="p">[</span><span class="n">frame_id</span><span class="p">],</span>
+        <span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_precursors</span><span class="p">[</span><span class="n">precursor_id</span><span class="p">]</span> <span class="o">=</span> <span class="n">precursor</span>
+        <span class="k">if</span> <span class="n">frame_id</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_frame_to_precursors</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_frame_to_precursors</span><span class="p">[</span><span class="n">frame_id</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_frame_to_precursors</span><span class="p">[</span><span class="n">frame_id</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">precursor</span><span class="p">)</span>
+
+    <span class="bp">self</span><span class="o">.</span><span class="n">_precursor_lookup</span> <span class="o">=</span> <span class="n">PrecursorLookup</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_precursors</span><span class="p">)</span>
+
+    <span class="bp">self</span><span class="o">.</span><span class="n">_frames</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">Frame</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_ms1_frames</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">DDAMs1Frame</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">row</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_frames_df</span><span class="o">.</span><span class="n">iterrows</span><span class="p">():</span>
+        <span class="n">frame_id</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;Id&quot;</span><span class="p">])</span>
+        <span class="n">msms_type</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;MsMsType&quot;</span><span class="p">])</span>
+        <span class="k">if</span> <span class="n">msms_type</span> <span class="o">==</span> <span class="n">MsMsType</span><span class="o">.</span><span class="n">MS1</span><span class="o">.</span><span class="n">value</span><span class="p">:</span>
+            <span class="n">precursors_for_frame</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">Precursor</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_frame_to_precursors</span><span class="o">.</span><span class="n">get</span><span class="p">(</span>
+                <span class="n">frame_id</span><span class="p">,</span> <span class="p">[]</span>
+            <span class="p">)</span>
+            <span class="n">frame</span> <span class="o">=</span> <span class="n">DDAMs1Frame</span><span class="p">(</span>
+                <span class="n">_timsdata</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">timsdata</span><span class="p">,</span>
+                <span class="n">frame_id</span><span class="o">=</span><span class="n">frame_id</span><span class="p">,</span>
+                <span class="n">time</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;Time&quot;</span><span class="p">]),</span>
+                <span class="n">polarity</span><span class="o">=</span><span class="n">Polarity</span><span class="o">.</span><span class="n">from_str</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;Polarity&quot;</span><span class="p">])),</span>
+                <span class="n">scan_mode</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;ScanMode&quot;</span><span class="p">]),</span>
+                <span class="n">msms_type</span><span class="o">=</span><span class="n">msms_type</span><span class="p">,</span>
+                <span class="n">tims_id</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;TimsId&quot;</span><span class="p">]),</span>
+                <span class="n">max_intensity</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;MaxIntensity&quot;</span><span class="p">]),</span>
+                <span class="n">summed_intensities</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;SummedIntensities&quot;</span><span class="p">]),</span>
+                <span class="n">num_scans</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;NumScans&quot;</span><span class="p">]),</span>
+                <span class="n">num_peaks</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;NumPeaks&quot;</span><span class="p">]),</span>
+                <span class="n">mz_calibration</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;MzCalibration&quot;</span><span class="p">]),</span>
+                <span class="n">t1</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;T1&quot;</span><span class="p">]),</span>
+                <span class="n">t2</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;T2&quot;</span><span class="p">]),</span>
+                <span class="n">tims_calibration</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;TimsCalibration&quot;</span><span class="p">]),</span>
+                <span class="n">property_group</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;PropertyGroup&quot;</span><span class="p">]),</span>
+                <span class="n">accumulation_time</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;AccumulationTime&quot;</span><span class="p">]),</span>
+                <span class="n">ramp_time</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;RampTime&quot;</span><span class="p">]),</span>
+                <span class="n">precursors</span><span class="o">=</span><span class="nb">tuple</span><span class="p">(</span><span class="n">precursors_for_frame</span><span class="p">),</span>
+            <span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_ms1_frames</span><span class="p">[</span><span class="n">frame_id</span><span class="p">]</span> <span class="o">=</span> <span class="n">frame</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_frames</span><span class="p">[</span><span class="n">frame_id</span><span class="p">]</span> <span class="o">=</span> <span class="n">frame</span>
+        <span class="k">elif</span> <span class="n">msms_type</span> <span class="o">==</span> <span class="n">MsMsType</span><span class="o">.</span><span class="n">DDA_MS2</span><span class="o">.</span><span class="n">value</span><span class="p">:</span>
+            <span class="k">pass</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Unknown MsMsType </span><span class="si">{</span><span class="n">msms_type</span><span class="si">}</span><span class="s2"> for frame </span><span class="si">{</span><span class="n">frame_id</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="bp">self</span><span class="o">.</span><span class="n">_ms1_frames_lookup</span> <span class="o">=</span> <span class="n">Ms1FrameLookup</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_ms1_frames</span><span class="p">)</span>
+
+    <span class="c1"># remove uneeded dataframes to save memory</span>
+    <span class="k">del</span> <span class="bp">self</span><span class="o">.</span><span class="n">_precursor_df</span>
+    <span class="k">del</span> <span class="bp">self</span><span class="o">.</span><span class="n">_frames_df</span>
+    <span class="k">del</span> <span class="bp">self</span><span class="o">.</span><span class="n">_pasef_frame_msms_info_df</span>
+</code></pre></div></td></tr></table></div>
+                  </details>
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h3 id="tdfpy.DDA.metadata" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-attribute"></code>            <span class="doc doc-object-name doc-attribute-name">metadata</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-property"><code>property</code></small>
+  </span>
+
+</h3>
+<div class="doc-signature highlight"><pre><span></span><code><span class="n">metadata</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="            tdfpy.MetaData
+
+
+  
+      dataclass
+   (tdfpy.elems.MetaData)" href="../metadata/#tdfpy.MetaData">MetaData</a></span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Global metadata about the acquisition.</p>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h3 id="tdfpy.DDA.calibration" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-attribute"></code>            <span class="doc doc-object-name doc-attribute-name">calibration</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-property"><code>property</code></small>
+  </span>
+
+</h3>
+<div class="doc-signature highlight"><pre><span></span><code><span class="n">calibration</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="            tdfpy.Calibration
+
+
+  
+      dataclass
+   (tdfpy.elems.Calibration)" href="../metadata/#tdfpy.Calibration">Calibration</a></span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Calibration information.</p>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h3 id="tdfpy.DDA.ms1" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-attribute"></code>            <span class="doc doc-object-name doc-attribute-name">ms1</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-property"><code>property</code></small>
+  </span>
+
+</h3>
+<div class="doc-signature highlight"><pre><span></span><code><span class="n">ms1</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="            tdfpy.Ms1FrameLookup (tdfpy.lookup.Ms1FrameLookup)" href="../lookup/#tdfpy.Ms1FrameLookup">Ms1FrameLookup</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-internal" title="            tdfpy.DDAMs1Frame
+
+
+  
+      dataclass
+   (tdfpy.elems.DDAMs1Frame)" href="../frames/#tdfpy.DDAMs1Frame">DDAMs1Frame</a></span><span class="p">]</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Lookup for MS1 frames. Supports indexing by frame ID and <code>.query()</code>.</p>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h3 id="tdfpy.DDA.precursors" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-attribute"></code>            <span class="doc doc-object-name doc-attribute-name">precursors</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-property"><code>property</code></small>
+  </span>
+
+</h3>
+<div class="doc-signature highlight"><pre><span></span><code><span class="n">precursors</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="            tdfpy.PrecursorLookup (tdfpy.lookup.PrecursorLookup)" href="../lookup/#tdfpy.PrecursorLookup">PrecursorLookup</a></span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Lookup for all precursors. Supports indexing by precursor ID and <code>.query()</code>.</p>
+
+    </div>
+
+</div>
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="tdfpy.DDA.close" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-method"></code>            <span class="doc doc-object-name doc-function-name">close</span>
+
+
+</h3>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">close</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Close the TimsData connection.</p>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/tdfpy/reader.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">141</span>
+<span class="normal">142</span>
+<span class="normal">143</span>
+<span class="normal">144</span>
+<span class="normal">145</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">close</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Close the TimsData connection.&quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_closed</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">timsdata</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_closed</span> <span class="o">=</span> <span class="kc">True</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h2 id="tdfpy.DIA" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-class"></code>            <span class="doc doc-object-name doc-class-name">tdfpy.DIA</span>
+
+
+</h2>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">DIA</span><span class="p">(</span><span class="n">analysis_dir</span><span class="p">:</span> <span class="n"><span title="str">str</span></span><span class="p">)</span>
+</code></pre></div>
+
+    <div class="doc doc-contents first">
+            <p class="doc doc-class-bases">
+              Bases: <code><span title="tdfpy.reader._DFolder">_DFolder</span></code></p>
+
+
+
+        <p>Open a DIA (Data-Independent Acquisition) <code>.d</code> folder.</p>
+<p>Use as a context manager to ensure the TimsData connection is closed when done.
+Exposes MS1 frames via <code>ms1</code>, individual windows via <code>windows</code>, and window groups
+via <code>window_groups</code>.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>analysis_dir</code>
+            </td>
+            <td>
+                  <code><span title="str">str</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Path to the <code>.d</code> folder containing <code>analysis.tdf</code> and <code>analysis.tdf_bin</code>.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<p><span class="doc-section-title">Raises:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="FileNotFoundError">FileNotFoundError</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>If the <code>.d</code> folder or required files are missing.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<details class="example" open>
+  <summary>Example</summary>
+  <div class="highlight"><pre><span></span><code><span class="k">with</span> <span class="n">DIA</span><span class="p">(</span><span class="s2">&quot;/path/to/data.d&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">dia</span><span class="p">:</span>
+    <span class="k">for</span> <span class="n">group</span> <span class="ow">in</span> <span class="n">dia</span><span class="o">.</span><span class="n">window_groups</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">window</span> <span class="ow">in</span> <span class="n">group</span><span class="o">.</span><span class="n">windows</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="n">window</span><span class="o">.</span><span class="n">isolation_mz</span><span class="p">)</span>
+</code></pre></div>
+</details>
+
+
+
+
+
+
+
+                  <details class="mkdocstrings-source">
+                    <summary>Source code in <code>src/tdfpy/reader.py</code></summary>
+                    <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">338</span>
+<span class="normal">339</span>
+<span class="normal">340</span>
+<span class="normal">341</span>
+<span class="normal">342</span>
+<span class="normal">343</span>
+<span class="normal">344</span>
+<span class="normal">345</span>
+<span class="normal">346</span>
+<span class="normal">347</span>
+<span class="normal">348</span>
+<span class="normal">349</span>
+<span class="normal">350</span>
+<span class="normal">351</span>
+<span class="normal">352</span>
+<span class="normal">353</span>
+<span class="normal">354</span>
+<span class="normal">355</span>
+<span class="normal">356</span>
+<span class="normal">357</span>
+<span class="normal">358</span>
+<span class="normal">359</span>
+<span class="normal">360</span>
+<span class="normal">361</span>
+<span class="normal">362</span>
+<span class="normal">363</span>
+<span class="normal">364</span>
+<span class="normal">365</span>
+<span class="normal">366</span>
+<span class="normal">367</span>
+<span class="normal">368</span>
+<span class="normal">369</span>
+<span class="normal">370</span>
+<span class="normal">371</span>
+<span class="normal">372</span>
+<span class="normal">373</span>
+<span class="normal">374</span>
+<span class="normal">375</span>
+<span class="normal">376</span>
+<span class="normal">377</span>
+<span class="normal">378</span>
+<span class="normal">379</span>
+<span class="normal">380</span>
+<span class="normal">381</span>
+<span class="normal">382</span>
+<span class="normal">383</span>
+<span class="normal">384</span>
+<span class="normal">385</span>
+<span class="normal">386</span>
+<span class="normal">387</span>
+<span class="normal">388</span>
+<span class="normal">389</span>
+<span class="normal">390</span>
+<span class="normal">391</span>
+<span class="normal">392</span>
+<span class="normal">393</span>
+<span class="normal">394</span>
+<span class="normal">395</span>
+<span class="normal">396</span>
+<span class="normal">397</span>
+<span class="normal">398</span>
+<span class="normal">399</span>
+<span class="normal">400</span>
+<span class="normal">401</span>
+<span class="normal">402</span>
+<span class="normal">403</span>
+<span class="normal">404</span>
+<span class="normal">405</span>
+<span class="normal">406</span>
+<span class="normal">407</span>
+<span class="normal">408</span>
+<span class="normal">409</span>
+<span class="normal">410</span>
+<span class="normal">411</span>
+<span class="normal">412</span>
+<span class="normal">413</span>
+<span class="normal">414</span>
+<span class="normal">415</span>
+<span class="normal">416</span>
+<span class="normal">417</span>
+<span class="normal">418</span>
+<span class="normal">419</span>
+<span class="normal">420</span>
+<span class="normal">421</span>
+<span class="normal">422</span>
+<span class="normal">423</span>
+<span class="normal">424</span>
+<span class="normal">425</span>
+<span class="normal">426</span>
+<span class="normal">427</span>
+<span class="normal">428</span>
+<span class="normal">429</span>
+<span class="normal">430</span>
+<span class="normal">431</span>
+<span class="normal">432</span>
+<span class="normal">433</span>
+<span class="normal">434</span>
+<span class="normal">435</span>
+<span class="normal">436</span>
+<span class="normal">437</span>
+<span class="normal">438</span>
+<span class="normal">439</span>
+<span class="normal">440</span>
+<span class="normal">441</span>
+<span class="normal">442</span>
+<span class="normal">443</span>
+<span class="normal">444</span>
+<span class="normal">445</span>
+<span class="normal">446</span>
+<span class="normal">447</span>
+<span class="normal">448</span>
+<span class="normal">449</span>
+<span class="normal">450</span>
+<span class="normal">451</span>
+<span class="normal">452</span>
+<span class="normal">453</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">analysis_dir</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
+    <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">analysis_dir</span><span class="p">)</span>
+
+    <span class="c1"># frames</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_frames_df</span> <span class="o">=</span> <span class="n">PandasTdf</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">analysis_tdf_path</span><span class="p">))</span><span class="o">.</span><span class="n">frames</span>
+
+    <span class="n">frame_id_to_rt</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">row</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_frames_df</span><span class="o">.</span><span class="n">iterrows</span><span class="p">():</span>
+        <span class="n">frame_id</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;Id&quot;</span><span class="p">])</span>
+        <span class="n">time</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;Time&quot;</span><span class="p">])</span>
+        <span class="n">frame_id_to_rt</span><span class="p">[</span><span class="n">frame_id</span><span class="p">]</span> <span class="o">=</span> <span class="n">time</span>
+
+    <span class="n">frame_id_to_polarity</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">row</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_frames_df</span><span class="o">.</span><span class="n">iterrows</span><span class="p">():</span>
+        <span class="n">frame_id</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;Id&quot;</span><span class="p">])</span>
+        <span class="n">polarity</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;Polarity&quot;</span><span class="p">])</span>
+        <span class="n">frame_id_to_polarity</span><span class="p">[</span><span class="n">frame_id</span><span class="p">]</span> <span class="o">=</span> <span class="n">polarity</span>
+
+    <span class="c1"># window groups</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_dia_frame_msms_windows_df</span> <span class="o">=</span> <span class="n">PandasTdf</span><span class="p">(</span>
+        <span class="nb">str</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">analysis_tdf_path</span><span class="p">)</span>
+    <span class="p">)</span><span class="o">.</span><span class="n">dia_frame_msms_windows</span>
+
+    <span class="c1"># frame to window groups</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_dia_frame_msms_info</span> <span class="o">=</span> <span class="n">PandasTdf</span><span class="p">(</span>
+        <span class="nb">str</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">analysis_tdf_path</span><span class="p">)</span>
+    <span class="p">)</span><span class="o">.</span><span class="n">dia_frame_msms_info</span>
+
+    <span class="bp">self</span><span class="o">.</span><span class="n">_dia_window_groups</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">list</span><span class="p">[</span><span class="n">DiaWindowGroup</span><span class="p">]]</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">row</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_dia_frame_msms_windows_df</span><span class="o">.</span><span class="n">iterrows</span><span class="p">():</span>
+        <span class="n">window_id</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">key</span><span class="p">)</span>  <span class="c1"># type: ignore</span>
+        <span class="n">window</span> <span class="o">=</span> <span class="n">DiaWindowGroup</span><span class="p">(</span>
+            <span class="n">window_index</span><span class="o">=</span><span class="n">window_id</span><span class="p">,</span>
+            <span class="n">window_group</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;WindowGroup&quot;</span><span class="p">]),</span>
+            <span class="n">scan_num_begin</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;ScanNumBegin&quot;</span><span class="p">]),</span>
+            <span class="n">scan_num_end</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;ScanNumEnd&quot;</span><span class="p">]),</span>
+            <span class="n">isolation_mz</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;IsolationMz&quot;</span><span class="p">]),</span>
+            <span class="n">isolation_width</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;IsolationWidth&quot;</span><span class="p">]),</span>
+            <span class="n">collision_energy</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;CollisionEnergy&quot;</span><span class="p">]),</span>
+        <span class="p">)</span>
+        <span class="k">if</span> <span class="n">window</span><span class="o">.</span><span class="n">window_group</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_dia_window_groups</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_dia_window_groups</span><span class="p">[</span><span class="n">window</span><span class="o">.</span><span class="n">window_group</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_dia_window_groups</span><span class="p">[</span><span class="n">window</span><span class="o">.</span><span class="n">window_group</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">window</span><span class="p">)</span>
+
+    <span class="c1"># now we need to create DiaWindow objects which have an additional frame_id</span>
+    <span class="c1"># create dia windows</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_dia_windows</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">list</span><span class="p">[</span><span class="n">DiaWindow</span><span class="p">]]</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_all_dia_windows</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">DiaWindow</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">row</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_dia_frame_msms_info</span><span class="o">.</span><span class="n">iterrows</span><span class="p">():</span>
+        <span class="n">frame_id</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;Frame&quot;</span><span class="p">])</span>
+        <span class="n">window_group_id</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;WindowGroup&quot;</span><span class="p">])</span>
+        <span class="c1"># each frame can have multiple window groups</span>
+        <span class="n">window_groups</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_dia_window_groups</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">window_group_id</span><span class="p">,</span> <span class="p">[])</span>
+        <span class="k">if</span> <span class="n">frame_id</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_dia_windows</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_dia_windows</span><span class="p">[</span><span class="n">frame_id</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">window_group</span> <span class="ow">in</span> <span class="n">window_groups</span><span class="p">:</span>
+            <span class="n">dia_window</span> <span class="o">=</span> <span class="n">DiaWindow</span><span class="p">(</span>
+                <span class="n">_timsdata</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">timsdata</span><span class="p">,</span>
+                <span class="n">frame_id</span><span class="o">=</span><span class="n">frame_id</span><span class="p">,</span>
+                <span class="n">window_index</span><span class="o">=</span><span class="n">window_group</span><span class="o">.</span><span class="n">window_index</span><span class="p">,</span>
+                <span class="n">window_group</span><span class="o">=</span><span class="n">window_group</span><span class="o">.</span><span class="n">window_group</span><span class="p">,</span>
+                <span class="n">scan_num_begin</span><span class="o">=</span><span class="n">window_group</span><span class="o">.</span><span class="n">scan_num_begin</span><span class="p">,</span>
+                <span class="n">scan_num_end</span><span class="o">=</span><span class="n">window_group</span><span class="o">.</span><span class="n">scan_num_end</span><span class="p">,</span>
+                <span class="n">isolation_mz</span><span class="o">=</span><span class="n">window_group</span><span class="o">.</span><span class="n">isolation_mz</span><span class="p">,</span>
+                <span class="n">isolation_width</span><span class="o">=</span><span class="n">window_group</span><span class="o">.</span><span class="n">isolation_width</span><span class="p">,</span>
+                <span class="n">collision_energy</span><span class="o">=</span><span class="n">window_group</span><span class="o">.</span><span class="n">collision_energy</span><span class="p">,</span>
+                <span class="n">rt</span><span class="o">=</span><span class="n">frame_id_to_rt</span><span class="p">[</span><span class="n">frame_id</span><span class="p">],</span>
+                <span class="n">polarity</span><span class="o">=</span><span class="n">Polarity</span><span class="o">.</span><span class="n">from_str</span><span class="p">(</span><span class="n">frame_id_to_polarity</span><span class="p">[</span><span class="n">frame_id</span><span class="p">]),</span>
+            <span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_dia_windows</span><span class="p">[</span><span class="n">frame_id</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">dia_window</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_all_dia_windows</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">dia_window</span><span class="p">)</span>
+
+    <span class="bp">self</span><span class="o">.</span><span class="n">_dia_windows_lookup</span> <span class="o">=</span> <span class="n">DiaWindowLookup</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_all_dia_windows</span><span class="p">)</span>
+
+    <span class="bp">self</span><span class="o">.</span><span class="n">_frames</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">Frame</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_ms1_frames</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">DIAMs1Frame</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">row</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_frames_df</span><span class="o">.</span><span class="n">iterrows</span><span class="p">():</span>
+        <span class="n">frame_id</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;Id&quot;</span><span class="p">])</span>
+        <span class="n">msms_type</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;MsMsType&quot;</span><span class="p">])</span>
+        <span class="k">if</span> <span class="n">msms_type</span> <span class="o">==</span> <span class="n">MsMsType</span><span class="o">.</span><span class="n">MS1</span><span class="o">.</span><span class="n">value</span><span class="p">:</span>
+            <span class="n">frame</span> <span class="o">=</span> <span class="n">DIAMs1Frame</span><span class="p">(</span>
+                <span class="n">_timsdata</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">timsdata</span><span class="p">,</span>
+                <span class="n">frame_id</span><span class="o">=</span><span class="n">frame_id</span><span class="p">,</span>
+                <span class="n">time</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;Time&quot;</span><span class="p">]),</span>
+                <span class="n">polarity</span><span class="o">=</span><span class="n">Polarity</span><span class="o">.</span><span class="n">from_str</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;Polarity&quot;</span><span class="p">])),</span>
+                <span class="n">scan_mode</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;ScanMode&quot;</span><span class="p">]),</span>
+                <span class="n">msms_type</span><span class="o">=</span><span class="n">msms_type</span><span class="p">,</span>
+                <span class="n">tims_id</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;TimsId&quot;</span><span class="p">])</span> <span class="k">if</span> <span class="ow">not</span> <span class="n">pd</span><span class="o">.</span><span class="n">isna</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;TimsId&quot;</span><span class="p">])</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+                <span class="n">max_intensity</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;MaxIntensity&quot;</span><span class="p">]),</span>
+                <span class="n">summed_intensities</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;SummedIntensities&quot;</span><span class="p">]),</span>
+                <span class="n">num_scans</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;NumScans&quot;</span><span class="p">]),</span>
+                <span class="n">num_peaks</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;NumPeaks&quot;</span><span class="p">]),</span>
+                <span class="n">mz_calibration</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;MzCalibration&quot;</span><span class="p">]),</span>
+                <span class="n">t1</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;T1&quot;</span><span class="p">]),</span>
+                <span class="n">t2</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;T2&quot;</span><span class="p">]),</span>
+                <span class="n">tims_calibration</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;TimsCalibration&quot;</span><span class="p">]),</span>
+                <span class="n">property_group</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;PropertyGroup&quot;</span><span class="p">])</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">pd</span><span class="o">.</span><span class="n">isna</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;PropertyGroup&quot;</span><span class="p">])</span>
+                <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+                <span class="n">accumulation_time</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;AccumulationTime&quot;</span><span class="p">]),</span>
+                <span class="n">ramp_time</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">&quot;RampTime&quot;</span><span class="p">]),</span>
+                <span class="n">dia_windows</span><span class="o">=</span><span class="nb">tuple</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_dia_windows</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">frame_id</span><span class="p">,</span> <span class="p">[])),</span>
+            <span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_ms1_frames</span><span class="p">[</span><span class="n">frame_id</span><span class="p">]</span> <span class="o">=</span> <span class="n">frame</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_frames</span><span class="p">[</span><span class="n">frame_id</span><span class="p">]</span> <span class="o">=</span> <span class="n">frame</span>
+        <span class="k">elif</span> <span class="n">msms_type</span> <span class="o">==</span> <span class="n">MsMsType</span><span class="o">.</span><span class="n">DIA_MS2</span><span class="o">.</span><span class="n">value</span><span class="p">:</span>
+            <span class="k">pass</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Unknown MsMsType </span><span class="si">{</span><span class="n">msms_type</span><span class="si">}</span><span class="s2"> for frame </span><span class="si">{</span><span class="n">frame_id</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="bp">self</span><span class="o">.</span><span class="n">_ms1_frames_lookup</span> <span class="o">=</span> <span class="n">Ms1FrameLookup</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_ms1_frames</span><span class="p">)</span>
+
+    <span class="c1"># remove uneeded dataframes to save memory</span>
+    <span class="k">del</span> <span class="bp">self</span><span class="o">.</span><span class="n">_frames_df</span>
+    <span class="k">del</span> <span class="bp">self</span><span class="o">.</span><span class="n">_dia_frame_msms_windows_df</span>
+    <span class="k">del</span> <span class="bp">self</span><span class="o">.</span><span class="n">_dia_frame_msms_info</span>
+</code></pre></div></td></tr></table></div>
+                  </details>
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h3 id="tdfpy.DIA.metadata" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-attribute"></code>            <span class="doc doc-object-name doc-attribute-name">metadata</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-property"><code>property</code></small>
+  </span>
+
+</h3>
+<div class="doc-signature highlight"><pre><span></span><code><span class="n">metadata</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="            tdfpy.MetaData
+
+
+  
+      dataclass
+   (tdfpy.elems.MetaData)" href="../metadata/#tdfpy.MetaData">MetaData</a></span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Global metadata about the acquisition.</p>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h3 id="tdfpy.DIA.calibration" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-attribute"></code>            <span class="doc doc-object-name doc-attribute-name">calibration</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-property"><code>property</code></small>
+  </span>
+
+</h3>
+<div class="doc-signature highlight"><pre><span></span><code><span class="n">calibration</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="            tdfpy.Calibration
+
+
+  
+      dataclass
+   (tdfpy.elems.Calibration)" href="../metadata/#tdfpy.Calibration">Calibration</a></span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Calibration information.</p>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h3 id="tdfpy.DIA.ms1" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-attribute"></code>            <span class="doc doc-object-name doc-attribute-name">ms1</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-property"><code>property</code></small>
+  </span>
+
+</h3>
+<div class="doc-signature highlight"><pre><span></span><code><span class="n">ms1</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="            tdfpy.Ms1FrameLookup (tdfpy.lookup.Ms1FrameLookup)" href="../lookup/#tdfpy.Ms1FrameLookup">Ms1FrameLookup</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-internal" title="            tdfpy.DIAMs1Frame
+
+
+  
+      dataclass
+   (tdfpy.elems.DIAMs1Frame)" href="../frames/#tdfpy.DIAMs1Frame">DIAMs1Frame</a></span><span class="p">]</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Lookup for MS1 frames. Supports indexing by frame ID and <code>.query()</code>.</p>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h3 id="tdfpy.DIA.windows" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-attribute"></code>            <span class="doc doc-object-name doc-attribute-name">windows</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-property"><code>property</code></small>
+  </span>
+
+</h3>
+<div class="doc-signature highlight"><pre><span></span><code><span class="n">windows</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="            tdfpy.DiaWindowLookup (tdfpy.lookup.DiaWindowLookup)" href="../lookup/#tdfpy.DiaWindowLookup">DiaWindowLookup</a></span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Lookup for all DIA windows. Supports indexing by window index and <code>.query()</code>.</p>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h3 id="tdfpy.DIA.window_groups" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-attribute"></code>            <span class="doc doc-object-name doc-attribute-name">window_groups</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-property"><code>property</code></small>
+  </span>
+
+</h3>
+<div class="doc-signature highlight"><pre><span></span><code><span class="n">window_groups</span><span class="p">:</span> <span class="n"><span title="collections.abc.Generator">Generator</span></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-internal" title="            tdfpy.DiaWindowGroup
+
+
+  
+      dataclass
+   (tdfpy.elems.DiaWindowGroup)" href="../windows/#tdfpy.DiaWindowGroup">DiaWindowGroup</a></span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">]</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Iterate over all DiaWindowGroup objects across all window groups.</p>
+
+    </div>
+
+</div>
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="tdfpy.DIA.close" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-method"></code>            <span class="doc doc-object-name doc-function-name">close</span>
+
+
+</h3>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">close</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Close the TimsData connection.</p>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/tdfpy/reader.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">141</span>
+<span class="normal">142</span>
+<span class="normal">143</span>
+<span class="normal">144</span>
+<span class="normal">145</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">close</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Close the TimsData connection.&quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_closed</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">timsdata</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_closed</span> <span class="o">=</span> <span class="kc">True</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h2 id="tdfpy.PRM" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-class"></code>            <span class="doc doc-object-name doc-class-name">tdfpy.PRM</span>
+
+
+</h2>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">PRM</span><span class="p">(</span><span class="n">analysis_dir</span><span class="p">:</span> <span class="n"><span title="str">str</span></span><span class="p">)</span>
+</code></pre></div>
+
+    <div class="doc doc-contents first">
+            <p class="doc doc-class-bases">
+              Bases: <code><span title="tdfpy.reader._DFolder">_DFolder</span></code></p>
+
+
+
+        <p>PRM (Parallel Reaction Monitoring) acquisition mode.</p>
+
+
+<details class="note" open>
+  <summary>Note</summary>
+  <p>Not yet implemented. Raises <code>NotImplementedError</code> on instantiation.</p>
+</details>
+
+
+
+
+
+
+
+                  <details class="mkdocstrings-source">
+                    <summary>Source code in <code>src/tdfpy/reader.py</code></summary>
+                    <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">482</span>
+<span class="normal">483</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">analysis_dir</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
+    <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span><span class="s2">&quot;PRM acquisition mode is not yet supported.&quot;</span><span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+                  </details>
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h3 id="tdfpy.PRM.metadata" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-attribute"></code>            <span class="doc doc-object-name doc-attribute-name">metadata</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-property"><code>property</code></small>
+  </span>
+
+</h3>
+<div class="doc-signature highlight"><pre><span></span><code><span class="n">metadata</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="            tdfpy.MetaData
+
+
+  
+      dataclass
+   (tdfpy.elems.MetaData)" href="../metadata/#tdfpy.MetaData">MetaData</a></span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Global metadata about the acquisition.</p>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h3 id="tdfpy.PRM.calibration" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-attribute"></code>            <span class="doc doc-object-name doc-attribute-name">calibration</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-property"><code>property</code></small>
+  </span>
+
+</h3>
+<div class="doc-signature highlight"><pre><span></span><code><span class="n">calibration</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="            tdfpy.Calibration
+
+
+  
+      dataclass
+   (tdfpy.elems.Calibration)" href="../metadata/#tdfpy.Calibration">Calibration</a></span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Calibration information.</p>
+
+    </div>
+
+</div>
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="tdfpy.PRM.close" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-method"></code>            <span class="doc doc-object-name doc-function-name">close</span>
+
+
+</h3>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">close</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Close the TimsData connection.</p>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/tdfpy/reader.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">141</span>
+<span class="normal">142</span>
+<span class="normal">143</span>
+<span class="normal">144</span>
+<span class="normal">145</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">close</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Close the TimsData connection.&quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_closed</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">timsdata</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_closed</span> <span class="o">=</span> <span class="kc">True</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.top", "content.code.copy", "search.highlight"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

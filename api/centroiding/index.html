@@ -1,0 +1,1946 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A Python library for parsing Bruker timsTOF data with centroiding and noise filtering.">
+      
+      
+      
+      
+        <link rel="prev" href="../lookup/">
+      
+      
+        <link rel="next" href="../low-level/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.5">
+    
+    
+      
+        <title>Centroiding - tdfpy</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#centroiding" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="tdfpy" class="md-header__button md-logo" aria-label="tdfpy" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            tdfpy
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Centroiding
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/tacular-omics/tdfpy" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    tacular-omics/tdfpy
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="tdfpy" class="md-nav__button md-logo" aria-label="tdfpy" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    tdfpy
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/tacular-omics/tdfpy" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    tacular-omics/tdfpy
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../readers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Readers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../frames/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Frames
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../precursor/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Precursor
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../windows/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DIA Windows
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../metadata/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Metadata
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../lookup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Lookups
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Centroiding
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Centroiding
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#tdfpy.get_centroided_spectrum" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        get_centroided_spectrum
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tdfpy.merge_peaks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        merge_peaks
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../low-level/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PandasTDF
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#tdfpy.get_centroided_spectrum" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        get_centroided_spectrum
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tdfpy.merge_peaks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        merge_peaks
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="centroiding">Centroiding</h1>
+<p>Functions for extracting and centroiding timsTOF mass spectra. Both functions use a
+Rust-backed implementation when available, with an automatic Python fallback.</p>
+
+
+<div class="doc doc-object doc-function">
+
+
+<h2 id="tdfpy.get_centroided_spectrum" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-function"></code>            <span class="doc doc-object-name doc-function-name">tdfpy.get_centroided_spectrum</span>
+
+
+</h2>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">get_centroided_spectrum</span><span class="p">(</span>
+    <span class="n">td</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="            tdfpy.TimsData (tdfpy.timsdata.TimsData)" href="../low-level/#tdfpy.TimsData">TimsData</a></span><span class="p">,</span>
+    <span class="n">frame_id</span><span class="p">:</span> <span class="n"><span title="int">int</span></span><span class="p">,</span>
+    <span class="n">spectrum_index</span><span class="p">:</span> <span class="n"><span title="int">int</span></span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">ion_mobility_type</span><span class="p">:</span> <span class="n"><span title="typing.Literal">Literal</span></span><span class="p">[</span>
+        <span class="s2">&quot;ook0&quot;</span><span class="p">,</span> <span class="s2">&quot;ccs&quot;</span><span class="p">,</span> <span class="s2">&quot;voltage&quot;</span>
+    <span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;ook0&quot;</span><span class="p">,</span>
+    <span class="n">mz_tolerance</span><span class="p">:</span> <span class="n"><span title="float">float</span></span> <span class="o">=</span> <span class="mf">8.0</span><span class="p">,</span>
+    <span class="n">mz_tolerance_type</span><span class="p">:</span> <span class="n"><span title="typing.Literal">Literal</span></span><span class="p">[</span><span class="s2">&quot;ppm&quot;</span><span class="p">,</span> <span class="s2">&quot;da&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;ppm&quot;</span><span class="p">,</span>
+    <span class="n">im_tolerance</span><span class="p">:</span> <span class="n"><span title="float">float</span></span> <span class="o">=</span> <span class="mf">0.05</span><span class="p">,</span>
+    <span class="n">im_tolerance_type</span><span class="p">:</span> <span class="n"><span title="typing.Literal">Literal</span></span><span class="p">[</span>
+        <span class="s2">&quot;relative&quot;</span><span class="p">,</span> <span class="s2">&quot;absolute&quot;</span>
+    <span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;relative&quot;</span><span class="p">,</span>
+    <span class="n">min_peaks</span><span class="p">:</span> <span class="n"><span title="int">int</span></span> <span class="o">=</span> <span class="mi">3</span><span class="p">,</span>
+    <span class="n">max_peaks</span><span class="p">:</span> <span class="n"><span title="int">int</span></span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">noise_filter</span><span class="p">:</span> <span class="kc">None</span> <span class="o">|</span> <span class="p">(</span>
+        <span class="n"><span title="typing.Literal">Literal</span></span><span class="p">[</span>
+            <span class="s2">&quot;mad&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;percentile&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;histogram&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;baseline&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;iterative_median&quot;</span><span class="p">,</span>
+        <span class="p">]</span>
+        <span class="o">|</span> <span class="n"><span title="float">float</span></span>
+        <span class="o">|</span> <span class="n"><span title="int">int</span></span>
+    <span class="p">)</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">use_numba</span><span class="p">:</span> <span class="n"><span title="bool">bool</span></span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><span title="numpy">np</span></span><span class="o">.</span><span class="n"><span title="numpy.ndarray">ndarray</span></span>
+</code></pre></div>
+
+    <div class="doc doc-contents first">
+
+        <p>Extract a centroided MS1 spectrum for a single frame.</p>
+<p>This function reads raw profile-like scans from the frame, converts indices to m/z values,
+collects all raw peaks with their ion mobility values, and applies peak centroiding
+based on m/z and ion mobility tolerances to produce a centroided spectrum.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>td</code>
+            </td>
+            <td>
+                  <code><a class="autorefs autorefs-internal" title="            tdfpy.TimsData (tdfpy.timsdata.TimsData)" href="../low-level/#tdfpy.TimsData">TimsData</a></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>TimsData instance connected to the analysis directory</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>frame_id</code>
+            </td>
+            <td>
+                  <code><span title="int">int</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Frame ID to extract</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>spectrum_index</code>
+            </td>
+            <td>
+                  <code><span title="int">int</span> | None</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Optional index for this spectrum (defaults to frame_id)</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>ion_mobility_type</code>
+            </td>
+            <td>
+                  <code><span title="typing.Literal">Literal</span>[&#39;ook0&#39;, &#39;ccs&#39;, &#39;voltage&#39;]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Type of ion mobility to calculate and include for each peak
+              - "ook0": 1/K0 (reciprocal reduced mobility) [default]
+              - "ccs": Collision Cross Section in Ų (requires charge state estimation)</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#39;ook0&#39;</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>mz_tolerance</code>
+            </td>
+            <td>
+                  <code><span title="float">float</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Tolerance for m/z matching during centroiding</p>
+              </div>
+            </td>
+            <td>
+                  <code>8.0</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>mz_tolerance_type</code>
+            </td>
+            <td>
+                  <code><span title="typing.Literal">Literal</span>[&#39;ppm&#39;, &#39;da&#39;]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Type of m/z tolerance - "ppm" or "da" (daltons)</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#39;ppm&#39;</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>im_tolerance</code>
+            </td>
+            <td>
+                  <code><span title="float">float</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Tolerance for ion mobility matching during centroiding</p>
+              </div>
+            </td>
+            <td>
+                  <code>0.05</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>im_tolerance_type</code>
+            </td>
+            <td>
+                  <code><span title="typing.Literal">Literal</span>[&#39;relative&#39;, &#39;absolute&#39;]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Type of ion mobility tolerance - "relative" or "absolute"</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#39;relative&#39;</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>min_peaks</code>
+            </td>
+            <td>
+                  <code><span title="int">int</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Minimum number of nearby raw peaks required to form a centroid (0 or 1 keeps all)</p>
+              </div>
+            </td>
+            <td>
+                  <code>3</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>max_peaks</code>
+            </td>
+            <td>
+                  <code><span title="int">int</span> | None</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Maximum number of centroided peaks to return</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>noise_filter</code>
+            </td>
+            <td>
+                  <code>None | (<span title="typing.Literal">Literal</span>[&#39;mad&#39;, &#39;percentile&#39;, &#39;histogram&#39;, &#39;baseline&#39;, &#39;iterative_median&#39;] | <span title="float">float</span> | <span title="int">int</span>)</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Noise filtering method to apply before centroiding. Options:
+         - None: No noise filtering (default)
+         - "mad": Median Absolute Deviation method
+         - "percentile": 75th percentile threshold
+         - "histogram": Histogram mode-based estimation
+         - "baseline": Bottom quartile statistics
+         - "iterative_median": Iterative median filtering
+         - float/int: Direct intensity threshold value</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="numpy">np</span>.<span title="numpy.ndarray">ndarray</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>np.ndarray: Array of shape (N, 3) containing centroided peaks.
+       Columns are: [mz, intensity, ion_mobility]</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<p><span class="doc-section-title">Raises:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="ValueError">ValueError</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>If the frame_id doesn't exist or is not an MS1 frame</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="RuntimeError">RuntimeError</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>If the TimsData connection is not open</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<details class="example" open>
+  <summary>Example</summary>
+  <div class="highlight"><pre><span></span><code><span class="k">with</span> <span class="n">timsdata_connect</span><span class="p">(</span><span class="s1">&#39;path/to/data.d&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">td</span><span class="p">:</span>
+    <span class="c1"># Get centroided spectrum with 1/K0 (default)</span>
+    <span class="n">peaks</span> <span class="o">=</span> <span class="n">get_centroided_ms1_spectrum</span><span class="p">(</span><span class="n">td</span><span class="p">,</span> <span class="n">frame_id</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Found </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">peaks</span><span class="p">)</span><span class="si">}</span><span class="s2"> centroided peaks&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Get spectrum with CCS values</span>
+    <span class="n">spectrum</span> <span class="o">=</span> <span class="n">get_centroided_ms1_spectrum</span><span class="p">(</span><span class="n">td</span><span class="p">,</span> <span class="n">frame_id</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">ion_mobility_type</span><span class="o">=</span><span class="s2">&quot;ccs&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Custom centroiding tolerances</span>
+    <span class="n">spectrum</span> <span class="o">=</span> <span class="n">get_centroided_ms1_spectrum</span><span class="p">(</span>
+        <span class="n">td</span><span class="p">,</span> <span class="n">frame_id</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">mz_tolerance</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">im_tolerance</span><span class="o">=</span><span class="mf">0.1</span>
+    <span class="p">)</span>
+
+    <span class="c1"># With noise filtering</span>
+    <span class="n">spectrum</span> <span class="o">=</span> <span class="n">get_centroided_ms1_spectrum</span><span class="p">(</span><span class="n">td</span><span class="p">,</span> <span class="n">frame_id</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">noise_filter</span><span class="o">=</span><span class="s2">&quot;mad&quot;</span><span class="p">)</span>
+
+    <span class="c1"># With custom noise threshold</span>
+    <span class="n">spectrum</span> <span class="o">=</span> <span class="n">get_centroided_ms1_spectrum</span><span class="p">(</span><span class="n">td</span><span class="p">,</span> <span class="n">frame_id</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">noise_filter</span><span class="o">=</span><span class="mf">1000.0</span><span class="p">)</span>
+</code></pre></div>
+</details>
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/tdfpy/centroiding.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">363</span>
+<span class="normal">364</span>
+<span class="normal">365</span>
+<span class="normal">366</span>
+<span class="normal">367</span>
+<span class="normal">368</span>
+<span class="normal">369</span>
+<span class="normal">370</span>
+<span class="normal">371</span>
+<span class="normal">372</span>
+<span class="normal">373</span>
+<span class="normal">374</span>
+<span class="normal">375</span>
+<span class="normal">376</span>
+<span class="normal">377</span>
+<span class="normal">378</span>
+<span class="normal">379</span>
+<span class="normal">380</span>
+<span class="normal">381</span>
+<span class="normal">382</span>
+<span class="normal">383</span>
+<span class="normal">384</span>
+<span class="normal">385</span>
+<span class="normal">386</span>
+<span class="normal">387</span>
+<span class="normal">388</span>
+<span class="normal">389</span>
+<span class="normal">390</span>
+<span class="normal">391</span>
+<span class="normal">392</span>
+<span class="normal">393</span>
+<span class="normal">394</span>
+<span class="normal">395</span>
+<span class="normal">396</span>
+<span class="normal">397</span>
+<span class="normal">398</span>
+<span class="normal">399</span>
+<span class="normal">400</span>
+<span class="normal">401</span>
+<span class="normal">402</span>
+<span class="normal">403</span>
+<span class="normal">404</span>
+<span class="normal">405</span>
+<span class="normal">406</span>
+<span class="normal">407</span>
+<span class="normal">408</span>
+<span class="normal">409</span>
+<span class="normal">410</span>
+<span class="normal">411</span>
+<span class="normal">412</span>
+<span class="normal">413</span>
+<span class="normal">414</span>
+<span class="normal">415</span>
+<span class="normal">416</span>
+<span class="normal">417</span>
+<span class="normal">418</span>
+<span class="normal">419</span>
+<span class="normal">420</span>
+<span class="normal">421</span>
+<span class="normal">422</span>
+<span class="normal">423</span>
+<span class="normal">424</span>
+<span class="normal">425</span>
+<span class="normal">426</span>
+<span class="normal">427</span>
+<span class="normal">428</span>
+<span class="normal">429</span>
+<span class="normal">430</span>
+<span class="normal">431</span>
+<span class="normal">432</span>
+<span class="normal">433</span>
+<span class="normal">434</span>
+<span class="normal">435</span>
+<span class="normal">436</span>
+<span class="normal">437</span>
+<span class="normal">438</span>
+<span class="normal">439</span>
+<span class="normal">440</span>
+<span class="normal">441</span>
+<span class="normal">442</span>
+<span class="normal">443</span>
+<span class="normal">444</span>
+<span class="normal">445</span>
+<span class="normal">446</span>
+<span class="normal">447</span>
+<span class="normal">448</span>
+<span class="normal">449</span>
+<span class="normal">450</span>
+<span class="normal">451</span>
+<span class="normal">452</span>
+<span class="normal">453</span>
+<span class="normal">454</span>
+<span class="normal">455</span>
+<span class="normal">456</span>
+<span class="normal">457</span>
+<span class="normal">458</span>
+<span class="normal">459</span>
+<span class="normal">460</span>
+<span class="normal">461</span>
+<span class="normal">462</span>
+<span class="normal">463</span>
+<span class="normal">464</span>
+<span class="normal">465</span>
+<span class="normal">466</span>
+<span class="normal">467</span>
+<span class="normal">468</span>
+<span class="normal">469</span>
+<span class="normal">470</span>
+<span class="normal">471</span>
+<span class="normal">472</span>
+<span class="normal">473</span>
+<span class="normal">474</span>
+<span class="normal">475</span>
+<span class="normal">476</span>
+<span class="normal">477</span>
+<span class="normal">478</span>
+<span class="normal">479</span>
+<span class="normal">480</span>
+<span class="normal">481</span>
+<span class="normal">482</span>
+<span class="normal">483</span>
+<span class="normal">484</span>
+<span class="normal">485</span>
+<span class="normal">486</span>
+<span class="normal">487</span>
+<span class="normal">488</span>
+<span class="normal">489</span>
+<span class="normal">490</span>
+<span class="normal">491</span>
+<span class="normal">492</span>
+<span class="normal">493</span>
+<span class="normal">494</span>
+<span class="normal">495</span>
+<span class="normal">496</span>
+<span class="normal">497</span>
+<span class="normal">498</span>
+<span class="normal">499</span>
+<span class="normal">500</span>
+<span class="normal">501</span>
+<span class="normal">502</span>
+<span class="normal">503</span>
+<span class="normal">504</span>
+<span class="normal">505</span>
+<span class="normal">506</span>
+<span class="normal">507</span>
+<span class="normal">508</span>
+<span class="normal">509</span>
+<span class="normal">510</span>
+<span class="normal">511</span>
+<span class="normal">512</span>
+<span class="normal">513</span>
+<span class="normal">514</span>
+<span class="normal">515</span>
+<span class="normal">516</span>
+<span class="normal">517</span>
+<span class="normal">518</span>
+<span class="normal">519</span>
+<span class="normal">520</span>
+<span class="normal">521</span>
+<span class="normal">522</span>
+<span class="normal">523</span>
+<span class="normal">524</span>
+<span class="normal">525</span>
+<span class="normal">526</span>
+<span class="normal">527</span>
+<span class="normal">528</span>
+<span class="normal">529</span>
+<span class="normal">530</span>
+<span class="normal">531</span>
+<span class="normal">532</span>
+<span class="normal">533</span>
+<span class="normal">534</span>
+<span class="normal">535</span>
+<span class="normal">536</span>
+<span class="normal">537</span>
+<span class="normal">538</span>
+<span class="normal">539</span>
+<span class="normal">540</span>
+<span class="normal">541</span>
+<span class="normal">542</span>
+<span class="normal">543</span>
+<span class="normal">544</span>
+<span class="normal">545</span>
+<span class="normal">546</span>
+<span class="normal">547</span>
+<span class="normal">548</span>
+<span class="normal">549</span>
+<span class="normal">550</span>
+<span class="normal">551</span>
+<span class="normal">552</span>
+<span class="normal">553</span>
+<span class="normal">554</span>
+<span class="normal">555</span>
+<span class="normal">556</span>
+<span class="normal">557</span>
+<span class="normal">558</span>
+<span class="normal">559</span>
+<span class="normal">560</span>
+<span class="normal">561</span>
+<span class="normal">562</span>
+<span class="normal">563</span>
+<span class="normal">564</span>
+<span class="normal">565</span>
+<span class="normal">566</span>
+<span class="normal">567</span>
+<span class="normal">568</span>
+<span class="normal">569</span>
+<span class="normal">570</span>
+<span class="normal">571</span>
+<span class="normal">572</span>
+<span class="normal">573</span>
+<span class="normal">574</span>
+<span class="normal">575</span>
+<span class="normal">576</span>
+<span class="normal">577</span>
+<span class="normal">578</span>
+<span class="normal">579</span>
+<span class="normal">580</span>
+<span class="normal">581</span>
+<span class="normal">582</span>
+<span class="normal">583</span>
+<span class="normal">584</span>
+<span class="normal">585</span>
+<span class="normal">586</span>
+<span class="normal">587</span>
+<span class="normal">588</span>
+<span class="normal">589</span>
+<span class="normal">590</span>
+<span class="normal">591</span>
+<span class="normal">592</span>
+<span class="normal">593</span>
+<span class="normal">594</span>
+<span class="normal">595</span>
+<span class="normal">596</span>
+<span class="normal">597</span>
+<span class="normal">598</span>
+<span class="normal">599</span>
+<span class="normal">600</span>
+<span class="normal">601</span>
+<span class="normal">602</span>
+<span class="normal">603</span>
+<span class="normal">604</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">get_centroided_spectrum</span><span class="p">(</span>
+    <span class="n">td</span><span class="p">:</span> <span class="n">TimsData</span><span class="p">,</span>
+    <span class="n">frame_id</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+    <span class="n">spectrum_index</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">ion_mobility_type</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;ook0&quot;</span><span class="p">,</span> <span class="s2">&quot;ccs&quot;</span><span class="p">,</span> <span class="s2">&quot;voltage&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;ook0&quot;</span><span class="p">,</span>
+    <span class="n">mz_tolerance</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">8.0</span><span class="p">,</span>
+    <span class="n">mz_tolerance_type</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;ppm&quot;</span><span class="p">,</span> <span class="s2">&quot;da&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;ppm&quot;</span><span class="p">,</span>
+    <span class="n">im_tolerance</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.05</span><span class="p">,</span>
+    <span class="n">im_tolerance_type</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;relative&quot;</span><span class="p">,</span> <span class="s2">&quot;absolute&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;relative&quot;</span><span class="p">,</span>
+    <span class="n">min_peaks</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">3</span><span class="p">,</span>
+    <span class="n">max_peaks</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">noise_filter</span><span class="p">:</span> <span class="kc">None</span>
+    <span class="o">|</span> <span class="p">(</span>
+        <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;mad&quot;</span><span class="p">,</span> <span class="s2">&quot;percentile&quot;</span><span class="p">,</span> <span class="s2">&quot;histogram&quot;</span><span class="p">,</span> <span class="s2">&quot;baseline&quot;</span><span class="p">,</span> <span class="s2">&quot;iterative_median&quot;</span><span class="p">]</span>
+        <span class="o">|</span> <span class="nb">float</span>
+        <span class="o">|</span> <span class="nb">int</span>
+    <span class="p">)</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">use_numba</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Extract a centroided MS1 spectrum for a single frame.</span>
+
+<span class="sd">    This function reads raw profile-like scans from the frame, converts indices to m/z values,</span>
+<span class="sd">    collects all raw peaks with their ion mobility values, and applies peak centroiding</span>
+<span class="sd">    based on m/z and ion mobility tolerances to produce a centroided spectrum.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        td: TimsData instance connected to the analysis directory</span>
+<span class="sd">        frame_id: Frame ID to extract</span>
+<span class="sd">        spectrum_index: Optional index for this spectrum (defaults to frame_id)</span>
+<span class="sd">        ion_mobility_type: Type of ion mobility to calculate and include for each peak</span>
+<span class="sd">                          - &quot;ook0&quot;: 1/K0 (reciprocal reduced mobility) [default]</span>
+<span class="sd">                          - &quot;ccs&quot;: Collision Cross Section in Ų (requires charge state estimation)</span>
+<span class="sd">        mz_tolerance: Tolerance for m/z matching during centroiding</span>
+<span class="sd">        mz_tolerance_type: Type of m/z tolerance - &quot;ppm&quot; or &quot;da&quot; (daltons)</span>
+<span class="sd">        im_tolerance: Tolerance for ion mobility matching during centroiding</span>
+<span class="sd">        im_tolerance_type: Type of ion mobility tolerance - &quot;relative&quot; or &quot;absolute&quot;</span>
+<span class="sd">        min_peaks: Minimum number of nearby raw peaks required to form a centroid (0 or 1 keeps all)</span>
+<span class="sd">        max_peaks: Maximum number of centroided peaks to return</span>
+<span class="sd">        noise_filter: Noise filtering method to apply before centroiding. Options:</span>
+<span class="sd">                     - None: No noise filtering (default)</span>
+<span class="sd">                     - &quot;mad&quot;: Median Absolute Deviation method</span>
+<span class="sd">                     - &quot;percentile&quot;: 75th percentile threshold</span>
+<span class="sd">                     - &quot;histogram&quot;: Histogram mode-based estimation</span>
+<span class="sd">                     - &quot;baseline&quot;: Bottom quartile statistics</span>
+<span class="sd">                     - &quot;iterative_median&quot;: Iterative median filtering</span>
+<span class="sd">                     - float/int: Direct intensity threshold value</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        np.ndarray: Array of shape (N, 3) containing centroided peaks.</span>
+<span class="sd">                   Columns are: [mz, intensity, ion_mobility]</span>
+
+<span class="sd">    Raises:</span>
+<span class="sd">        ValueError: If the frame_id doesn&#39;t exist or is not an MS1 frame</span>
+<span class="sd">        RuntimeError: If the TimsData connection is not open</span>
+
+<span class="sd">    Example:</span>
+<span class="sd">        ```python</span>
+<span class="sd">        with timsdata_connect(&#39;path/to/data.d&#39;) as td:</span>
+<span class="sd">            # Get centroided spectrum with 1/K0 (default)</span>
+<span class="sd">            peaks = get_centroided_ms1_spectrum(td, frame_id=1)</span>
+<span class="sd">            print(f&quot;Found {len(peaks)} centroided peaks&quot;)</span>
+
+<span class="sd">            # Get spectrum with CCS values</span>
+<span class="sd">            spectrum = get_centroided_ms1_spectrum(td, frame_id=1, ion_mobility_type=&quot;ccs&quot;)</span>
+
+<span class="sd">            # Custom centroiding tolerances</span>
+<span class="sd">            spectrum = get_centroided_ms1_spectrum(</span>
+<span class="sd">                td, frame_id=1, mz_tolerance=10, im_tolerance=0.1</span>
+<span class="sd">            )</span>
+
+<span class="sd">            # With noise filtering</span>
+<span class="sd">            spectrum = get_centroided_ms1_spectrum(td, frame_id=1, noise_filter=&quot;mad&quot;)</span>
+
+<span class="sd">            # With custom noise threshold</span>
+<span class="sd">            spectrum = get_centroided_ms1_spectrum(td, frame_id=1, noise_filter=1000.0)</span>
+<span class="sd">        ```</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span>
+        <span class="s2">&quot;Extracting MS1 spectrum for frame_id=</span><span class="si">%d</span><span class="s2">, noise_filter=</span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span>
+        <span class="n">frame_id</span><span class="p">,</span>
+        <span class="n">noise_filter</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">td</span><span class="o">.</span><span class="n">conn</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="s2">&quot;TimsData connection is not open&quot;</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s2">&quot;TimsData connection is not open&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Get frame metadata from the database</span>
+    <span class="n">cursor</span> <span class="o">=</span> <span class="n">td</span><span class="o">.</span><span class="n">conn</span><span class="o">.</span><span class="n">cursor</span><span class="p">()</span>
+    <span class="n">cursor</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+        <span class="s2">&quot;SELECT Time, NumScans, MsMsType FROM Frames WHERE Id = ?&quot;</span><span class="p">,</span> <span class="p">(</span><span class="n">frame_id</span><span class="p">,)</span>
+    <span class="p">)</span>
+    <span class="n">result</span> <span class="o">=</span> <span class="n">cursor</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()</span>
+
+    <span class="k">if</span> <span class="n">result</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="s2">&quot;Frame </span><span class="si">%d</span><span class="s2"> not found in database&quot;</span><span class="p">,</span> <span class="n">frame_id</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Frame </span><span class="si">{</span><span class="n">frame_id</span><span class="si">}</span><span class="s2"> not found in database&quot;</span><span class="p">)</span>
+
+    <span class="n">retention_time_sec</span><span class="p">,</span> <span class="n">num_scans</span><span class="p">,</span> <span class="n">msms_type</span> <span class="o">=</span> <span class="n">result</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span>
+        <span class="s2">&quot;Frame </span><span class="si">%d</span><span class="s2"> metadata: RT=</span><span class="si">%.2f</span><span class="s2">s, NumScans=</span><span class="si">%d</span><span class="s2">, MsMsType=</span><span class="si">%d</span><span class="s2">&quot;</span><span class="p">,</span>
+        <span class="n">frame_id</span><span class="p">,</span>
+        <span class="n">retention_time_sec</span><span class="p">,</span>
+        <span class="n">num_scans</span><span class="p">,</span>
+        <span class="n">msms_type</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="c1"># if msms_type != 0:</span>
+    <span class="c1">#    logger.error(&quot;Frame %d is not an MS1 frame (MsMsType=%d)&quot;, frame_id, msms_type)</span>
+    <span class="c1">#    raise ValueError(f&quot;Frame {frame_id} is not an MS1 frame (MsMsType={msms_type})&quot;)</span>
+
+    <span class="n">retention_time_min</span> <span class="o">=</span> <span class="n">retention_time_sec</span> <span class="o">/</span> <span class="mf">60.0</span>
+
+    <span class="k">if</span> <span class="n">num_scans</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">&quot;Frame </span><span class="si">%d</span><span class="s2"> has 0 scans, returning empty spectrum&quot;</span><span class="p">,</span> <span class="n">frame_id</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">((</span><span class="mi">0</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
+
+    <span class="c1"># Pre-compute ion mobility values for each scan (always required)</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span>
+        <span class="s2">&quot;Computing </span><span class="si">%s</span><span class="s2"> ion mobility values for </span><span class="si">%d</span><span class="s2"> scans&quot;</span><span class="p">,</span> <span class="n">ion_mobility_type</span><span class="p">,</span> <span class="n">num_scans</span>
+    <span class="p">)</span>
+    <span class="n">ion_mobility</span> <span class="o">=</span> <span class="n">td</span><span class="o">.</span><span class="n">scanNumToOneOverK0</span><span class="p">(</span><span class="n">frame_id</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">num_scans</span><span class="p">))</span>  <span class="c1"># type: ignore[call-arg]</span>
+
+    <span class="c1"># Read all scans at once</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;Reading </span><span class="si">%d</span><span class="s2"> scans from frame </span><span class="si">%d</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">num_scans</span><span class="p">,</span> <span class="n">frame_id</span><span class="p">)</span>
+    <span class="n">results</span> <span class="o">=</span> <span class="n">td</span><span class="o">.</span><span class="n">readScans</span><span class="p">(</span><span class="n">frame_id</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="n">num_scans</span><span class="p">)</span>
+
+    <span class="c1"># Pre-allocate arrays with estimated size</span>
+    <span class="n">total_peaks</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">idx</span><span class="p">)</span> <span class="k">for</span> <span class="n">idx</span><span class="p">,</span> <span class="n">_</span> <span class="ow">in</span> <span class="n">results</span><span class="p">)</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span>
+        <span class="s2">&quot;Frame </span><span class="si">%d</span><span class="s2"> contains </span><span class="si">%d</span><span class="s2"> total raw peaks across </span><span class="si">%d</span><span class="s2"> scans&quot;</span><span class="p">,</span>
+        <span class="n">frame_id</span><span class="p">,</span>
+        <span class="n">total_peaks</span><span class="p">,</span>
+        <span class="n">num_scans</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">total_peaks</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">&quot;Frame </span><span class="si">%d</span><span class="s2"> has 0 peaks, returning empty spectrum&quot;</span><span class="p">,</span> <span class="n">frame_id</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">((</span><span class="mi">0</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;Pre-allocating arrays for </span><span class="si">%d</span><span class="s2"> peaks&quot;</span><span class="p">,</span> <span class="n">total_peaks</span><span class="p">)</span>
+    <span class="n">mz_array</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">(</span><span class="n">total_peaks</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
+    <span class="n">intensity_array</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">(</span><span class="n">total_peaks</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
+    <span class="n">ion_mobility_array</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">(</span><span class="n">total_peaks</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
+
+    <span class="c1"># Collect all peaks from all scans</span>
+    <span class="n">offset</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;Starting scan iteration and m/z conversion (profile-like raw data)&quot;</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">scan_index</span><span class="p">,</span> <span class="p">(</span><span class="n">index_array</span><span class="p">,</span> <span class="n">intensity_scan</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">results</span><span class="p">):</span>
+        <span class="n">n_peaks</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">index_array</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">n_peaks</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">continue</span>
+
+        <span class="c1"># Convert indices to m/z in batch</span>
+        <span class="n">mz_values</span> <span class="o">=</span> <span class="n">td</span><span class="o">.</span><span class="n">indexToMz</span><span class="p">(</span><span class="n">frame_id</span><span class="p">,</span> <span class="n">index_array</span><span class="p">)</span>
+
+        <span class="c1"># Fill pre-allocated arrays</span>
+        <span class="n">mz_array</span><span class="p">[</span><span class="n">offset</span> <span class="p">:</span> <span class="n">offset</span> <span class="o">+</span> <span class="n">n_peaks</span><span class="p">]</span> <span class="o">=</span> <span class="n">mz_values</span>
+        <span class="n">intensity_array</span><span class="p">[</span><span class="n">offset</span> <span class="p">:</span> <span class="n">offset</span> <span class="o">+</span> <span class="n">n_peaks</span><span class="p">]</span> <span class="o">=</span> <span class="n">intensity_scan</span>
+        <span class="n">ion_mobility_array</span><span class="p">[</span><span class="n">offset</span> <span class="p">:</span> <span class="n">offset</span> <span class="o">+</span> <span class="n">n_peaks</span><span class="p">]</span> <span class="o">=</span> <span class="n">ion_mobility</span><span class="p">[</span><span class="n">scan_index</span><span class="p">]</span>
+        <span class="n">offset</span> <span class="o">+=</span> <span class="n">n_peaks</span>
+
+    <span class="c1"># Trim arrays to actual size</span>
+    <span class="n">mz_array</span> <span class="o">=</span> <span class="n">mz_array</span><span class="p">[:</span><span class="n">offset</span><span class="p">]</span>
+    <span class="n">intensity_array</span> <span class="o">=</span> <span class="n">intensity_array</span><span class="p">[:</span><span class="n">offset</span><span class="p">]</span>
+    <span class="n">ion_mobility_array</span> <span class="o">=</span> <span class="n">ion_mobility_array</span><span class="p">[:</span><span class="n">offset</span><span class="p">]</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;Collected </span><span class="si">%d</span><span class="s2"> raw profile-like peaks from all scans&quot;</span><span class="p">,</span> <span class="n">offset</span><span class="p">)</span>
+
+    <span class="c1"># Apply noise filtering if requested</span>
+    <span class="k">if</span> <span class="n">noise_filter</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;Applying noise filter: </span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">noise_filter</span><span class="p">)</span>
+        <span class="n">noise_threshold</span> <span class="o">=</span> <span class="n">estimate_noise_level</span><span class="p">(</span><span class="n">intensity_array</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="n">noise_filter</span><span class="p">)</span>
+        <span class="n">noise_mask</span> <span class="o">=</span> <span class="n">intensity_array</span> <span class="o">&gt;=</span> <span class="n">noise_threshold</span>
+
+        <span class="n">mz_array</span> <span class="o">=</span> <span class="n">mz_array</span><span class="p">[</span><span class="n">noise_mask</span><span class="p">]</span>
+        <span class="n">intensity_array</span> <span class="o">=</span> <span class="n">intensity_array</span><span class="p">[</span><span class="n">noise_mask</span><span class="p">]</span>
+        <span class="n">ion_mobility_array</span> <span class="o">=</span> <span class="n">ion_mobility_array</span><span class="p">[</span><span class="n">noise_mask</span><span class="p">]</span>
+
+        <span class="n">filtered_count</span> <span class="o">=</span> <span class="n">offset</span> <span class="o">-</span> <span class="nb">len</span><span class="p">(</span><span class="n">intensity_array</span><span class="p">)</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+            <span class="s2">&quot;Noise filtering complete: removed </span><span class="si">%d</span><span class="s2"> peaks below threshold </span><span class="si">%.2f</span><span class="s2"> (</span><span class="si">%d</span><span class="s2"> → </span><span class="si">%d</span><span class="s2"> peaks, </span><span class="si">%.1f%%</span><span class="s2"> removed)&quot;</span><span class="p">,</span>
+            <span class="n">filtered_count</span><span class="p">,</span>
+            <span class="n">noise_threshold</span><span class="p">,</span>
+            <span class="n">offset</span><span class="p">,</span>
+            <span class="nb">len</span><span class="p">(</span><span class="n">intensity_array</span><span class="p">),</span>
+            <span class="n">filtered_count</span> <span class="o">/</span> <span class="n">offset</span> <span class="o">*</span> <span class="mi">100</span><span class="p">,</span>
+        <span class="p">)</span>
+
+    <span class="c1"># Convert to CCS if requested</span>
+    <span class="k">if</span> <span class="n">ion_mobility_type</span> <span class="o">==</span> <span class="s2">&quot;ccs&quot;</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;Converting 1/K0 to CCS values (assuming charge +1)&quot;</span><span class="p">)</span>
+        <span class="c1"># Import conversion function</span>
+        <span class="n">ccs_array</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span>
+            <span class="p">[</span>
+                <span class="n">oneOverK0ToCCSforMz</span><span class="p">(</span><span class="n">ook0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">mz</span><span class="p">)</span>
+                <span class="k">for</span> <span class="n">ook0</span><span class="p">,</span> <span class="n">mz</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">ion_mobility_array</span><span class="p">,</span> <span class="n">mz_array</span><span class="p">)</span>
+            <span class="p">],</span>
+            <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">ion_mobility_array</span> <span class="o">=</span> <span class="n">ccs_array</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;Completed CCS conversion&quot;</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">ion_mobility_type</span> <span class="o">==</span> <span class="s2">&quot;voltage&quot;</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;Converting 1/K0 to voltage values&quot;</span><span class="p">)</span>
+        <span class="c1"># scanNumToVoltage</span>
+        <span class="n">voltage_array</span> <span class="o">=</span> <span class="n">td</span><span class="o">.</span><span class="n">scanNumToVoltage</span><span class="p">(</span><span class="n">frame_id</span><span class="p">,</span> <span class="n">ion_mobility_array</span><span class="p">)</span>
+        <span class="n">ion_mobility_array</span> <span class="o">=</span> <span class="n">voltage_array</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;Completed voltage conversion&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Apply peak centroiding</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;Starting peak centroiding algorithm&quot;</span><span class="p">)</span>
+    <span class="n">peaks</span> <span class="o">=</span> <span class="n">merge_peaks</span><span class="p">(</span>
+        <span class="n">mz_array</span><span class="o">=</span><span class="n">mz_array</span><span class="p">,</span>
+        <span class="n">intensity_array</span><span class="o">=</span><span class="n">intensity_array</span><span class="p">,</span>
+        <span class="n">ion_mobility_array</span><span class="o">=</span><span class="n">ion_mobility_array</span><span class="p">,</span>
+        <span class="n">mz_tolerance</span><span class="o">=</span><span class="n">mz_tolerance</span><span class="p">,</span>
+        <span class="n">mz_tolerance_type</span><span class="o">=</span><span class="n">mz_tolerance_type</span><span class="p">,</span>
+        <span class="n">im_tolerance</span><span class="o">=</span><span class="n">im_tolerance</span><span class="p">,</span>
+        <span class="n">im_tolerance_type</span><span class="o">=</span><span class="n">im_tolerance_type</span><span class="p">,</span>
+        <span class="n">min_peaks</span><span class="o">=</span><span class="n">min_peaks</span><span class="p">,</span>
+        <span class="n">max_peaks</span><span class="o">=</span><span class="n">max_peaks</span><span class="p">,</span>
+        <span class="n">use_numba</span><span class="o">=</span><span class="n">use_numba</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Apply max_peaks limit if specified (post-centroiding)</span>
+    <span class="k">if</span> <span class="n">max_peaks</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">peaks</span><span class="p">)</span> <span class="o">&gt;</span> <span class="n">max_peaks</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;Applying max_peaks filter: </span><span class="si">%d</span><span class="s2"> → </span><span class="si">%d</span><span class="s2">&quot;</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">peaks</span><span class="p">),</span> <span class="n">max_peaks</span><span class="p">)</span>
+        <span class="c1"># Sort by intensity (column 1) and take top N</span>
+        <span class="c1"># argsort is ascending, so we take from the end [::-1]</span>
+        <span class="n">sort_indices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">peaks</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">])[::</span><span class="o">-</span><span class="mi">1</span><span class="p">][:</span><span class="n">max_peaks</span><span class="p">]</span>
+        <span class="n">peaks</span> <span class="o">=</span> <span class="n">peaks</span><span class="p">[</span><span class="n">sort_indices</span><span class="p">]</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="s2">&quot;Extracted centroided MS1 spectrum: frame_id=</span><span class="si">%d</span><span class="s2">, RT=</span><span class="si">%.2f</span><span class="s2"> min, centroided_peaks=</span><span class="si">%d</span><span class="s2">, raw_peaks=</span><span class="si">%d</span><span class="s2">, ion_mobility_type=</span><span class="si">%s</span><span class="s2">&quot;</span><span class="p">,</span>
+        <span class="n">frame_id</span><span class="p">,</span>
+        <span class="n">retention_time_min</span><span class="p">,</span>
+        <span class="nb">len</span><span class="p">(</span><span class="n">peaks</span><span class="p">),</span>
+        <span class="n">total_peaks</span><span class="p">,</span>
+        <span class="n">ion_mobility_type</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">peaks</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h2 id="tdfpy.merge_peaks" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-function"></code>            <span class="doc doc-object-name doc-function-name">tdfpy.merge_peaks</span>
+
+
+</h2>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">merge_peaks</span><span class="p">(</span>
+    <span class="n">mz_array</span><span class="p">:</span> <span class="n"><span title="numpy">np</span></span><span class="o">.</span><span class="n"><span title="numpy.ndarray">ndarray</span></span><span class="p">,</span>
+    <span class="n">intensity_array</span><span class="p">:</span> <span class="n"><span title="numpy">np</span></span><span class="o">.</span><span class="n"><span title="numpy.ndarray">ndarray</span></span><span class="p">,</span>
+    <span class="n">ion_mobility_array</span><span class="p">:</span> <span class="n"><span title="numpy">np</span></span><span class="o">.</span><span class="n"><span title="numpy.ndarray">ndarray</span></span><span class="p">,</span>
+    <span class="n">mz_tolerance</span><span class="p">:</span> <span class="n"><span title="float">float</span></span> <span class="o">=</span> <span class="mf">8.0</span><span class="p">,</span>
+    <span class="n">mz_tolerance_type</span><span class="p">:</span> <span class="n"><span title="typing.Literal">Literal</span></span><span class="p">[</span><span class="s2">&quot;ppm&quot;</span><span class="p">,</span> <span class="s2">&quot;da&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;ppm&quot;</span><span class="p">,</span>
+    <span class="n">im_tolerance</span><span class="p">:</span> <span class="n"><span title="float">float</span></span> <span class="o">=</span> <span class="mf">0.05</span><span class="p">,</span>
+    <span class="n">im_tolerance_type</span><span class="p">:</span> <span class="n"><span title="typing.Literal">Literal</span></span><span class="p">[</span>
+        <span class="s2">&quot;relative&quot;</span><span class="p">,</span> <span class="s2">&quot;absolute&quot;</span>
+    <span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;relative&quot;</span><span class="p">,</span>
+    <span class="n">min_peaks</span><span class="p">:</span> <span class="n"><span title="int">int</span></span> <span class="o">=</span> <span class="mi">3</span><span class="p">,</span>
+    <span class="n">max_peaks</span><span class="p">:</span> <span class="n"><span title="int">int</span></span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">use_numba</span><span class="p">:</span> <span class="n"><span title="bool">bool</span></span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><span title="numpy">np</span></span><span class="o">.</span><span class="n"><span title="numpy.ndarray">ndarray</span></span>
+</code></pre></div>
+
+    <div class="doc doc-contents first">
+
+        <p>Centroid profile-like peaks using m/z and ion mobility tolerances.</p>
+<p>This function implements a greedy clustering algorithm that centroids raw peaks
+(similar to profile mode data) within specified m/z and ion mobility windows.
+Peaks are processed in descending order of intensity, and nearby peaks are
+combined using intensity-weighted averaging to produce centroided peaks.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>mz_array</code>
+            </td>
+            <td>
+                  <code><span title="numpy">np</span>.<span title="numpy.ndarray">ndarray</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Array of m/z values from raw/profile-like data</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>intensity_array</code>
+            </td>
+            <td>
+                  <code><span title="numpy">np</span>.<span title="numpy.ndarray">ndarray</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Array of intensity values</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>ion_mobility_array</code>
+            </td>
+            <td>
+                  <code><span title="numpy">np</span>.<span title="numpy.ndarray">ndarray</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Array of ion mobility values (1/K0 or CCS)</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>mz_tolerance</code>
+            </td>
+            <td>
+                  <code><span title="float">float</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Tolerance for m/z matching during centroiding</p>
+              </div>
+            </td>
+            <td>
+                  <code>8.0</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>mz_tolerance_type</code>
+            </td>
+            <td>
+                  <code><span title="typing.Literal">Literal</span>[&#39;ppm&#39;, &#39;da&#39;]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Type of m/z tolerance - "ppm" or "da" (daltons)</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#39;ppm&#39;</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>im_tolerance</code>
+            </td>
+            <td>
+                  <code><span title="float">float</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Tolerance for ion mobility matching during centroiding</p>
+              </div>
+            </td>
+            <td>
+                  <code>0.05</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>im_tolerance_type</code>
+            </td>
+            <td>
+                  <code><span title="typing.Literal">Literal</span>[&#39;relative&#39;, &#39;absolute&#39;]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Type of ion mobility tolerance - "relative" or "absolute"</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#39;relative&#39;</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>min_peaks</code>
+            </td>
+            <td>
+                  <code><span title="int">int</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Minimum number of nearby raw peaks required to form a centroid.
+      Set to 0 or 1 to keep all peaks (no filtering).</p>
+              </div>
+            </td>
+            <td>
+                  <code>3</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>max_peaks</code>
+            </td>
+            <td>
+                  <code><span title="int">int</span> | None</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Maximum number of centroided peaks to return (keeps highest intensity)</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="numpy">np</span>.<span title="numpy.ndarray">ndarray</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>np.ndarray: Array of shape (N, 3) containing centroided peaks.
+       Columns are: [mz, intensity, ion_mobility]</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<details class="example" open>
+  <summary>Example</summary>
+  <div class="highlight"><pre><span></span><code><span class="n">mz</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">100.0</span><span class="p">,</span> <span class="mf">100.001</span><span class="p">,</span> <span class="mf">200.0</span><span class="p">])</span>
+<span class="n">intensity</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">1000.0</span><span class="p">,</span> <span class="mf">500.0</span><span class="p">,</span> <span class="mf">2000.0</span><span class="p">])</span>
+<span class="n">im</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">0.8</span><span class="p">,</span> <span class="mf">0.8</span><span class="p">,</span> <span class="mf">0.9</span><span class="p">])</span>
+<span class="n">peaks</span> <span class="o">=</span> <span class="n">merge_peaks</span><span class="p">(</span><span class="n">mz</span><span class="p">,</span> <span class="n">intensity</span><span class="p">,</span> <span class="n">im</span><span class="p">,</span> <span class="n">mz_tolerance</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">mz_tolerance_type</span><span class="o">=</span><span class="s2">&quot;ppm&quot;</span><span class="p">)</span>
+</code></pre></div>
+</details>
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/tdfpy/centroiding.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">145</span>
+<span class="normal">146</span>
+<span class="normal">147</span>
+<span class="normal">148</span>
+<span class="normal">149</span>
+<span class="normal">150</span>
+<span class="normal">151</span>
+<span class="normal">152</span>
+<span class="normal">153</span>
+<span class="normal">154</span>
+<span class="normal">155</span>
+<span class="normal">156</span>
+<span class="normal">157</span>
+<span class="normal">158</span>
+<span class="normal">159</span>
+<span class="normal">160</span>
+<span class="normal">161</span>
+<span class="normal">162</span>
+<span class="normal">163</span>
+<span class="normal">164</span>
+<span class="normal">165</span>
+<span class="normal">166</span>
+<span class="normal">167</span>
+<span class="normal">168</span>
+<span class="normal">169</span>
+<span class="normal">170</span>
+<span class="normal">171</span>
+<span class="normal">172</span>
+<span class="normal">173</span>
+<span class="normal">174</span>
+<span class="normal">175</span>
+<span class="normal">176</span>
+<span class="normal">177</span>
+<span class="normal">178</span>
+<span class="normal">179</span>
+<span class="normal">180</span>
+<span class="normal">181</span>
+<span class="normal">182</span>
+<span class="normal">183</span>
+<span class="normal">184</span>
+<span class="normal">185</span>
+<span class="normal">186</span>
+<span class="normal">187</span>
+<span class="normal">188</span>
+<span class="normal">189</span>
+<span class="normal">190</span>
+<span class="normal">191</span>
+<span class="normal">192</span>
+<span class="normal">193</span>
+<span class="normal">194</span>
+<span class="normal">195</span>
+<span class="normal">196</span>
+<span class="normal">197</span>
+<span class="normal">198</span>
+<span class="normal">199</span>
+<span class="normal">200</span>
+<span class="normal">201</span>
+<span class="normal">202</span>
+<span class="normal">203</span>
+<span class="normal">204</span>
+<span class="normal">205</span>
+<span class="normal">206</span>
+<span class="normal">207</span>
+<span class="normal">208</span>
+<span class="normal">209</span>
+<span class="normal">210</span>
+<span class="normal">211</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">merge_peaks</span><span class="p">(</span>
+    <span class="n">mz_array</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">intensity_array</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">ion_mobility_array</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">mz_tolerance</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">8.0</span><span class="p">,</span>
+    <span class="n">mz_tolerance_type</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;ppm&quot;</span><span class="p">,</span> <span class="s2">&quot;da&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;ppm&quot;</span><span class="p">,</span>
+    <span class="n">im_tolerance</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.05</span><span class="p">,</span>
+    <span class="n">im_tolerance_type</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;relative&quot;</span><span class="p">,</span> <span class="s2">&quot;absolute&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;relative&quot;</span><span class="p">,</span>
+    <span class="n">min_peaks</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">3</span><span class="p">,</span>
+    <span class="n">max_peaks</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">use_numba</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Centroid profile-like peaks using m/z and ion mobility tolerances.</span>
+
+<span class="sd">    This function implements a greedy clustering algorithm that centroids raw peaks</span>
+<span class="sd">    (similar to profile mode data) within specified m/z and ion mobility windows.</span>
+<span class="sd">    Peaks are processed in descending order of intensity, and nearby peaks are</span>
+<span class="sd">    combined using intensity-weighted averaging to produce centroided peaks.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        mz_array: Array of m/z values from raw/profile-like data</span>
+<span class="sd">        intensity_array: Array of intensity values</span>
+<span class="sd">        ion_mobility_array: Array of ion mobility values (1/K0 or CCS)</span>
+<span class="sd">        mz_tolerance: Tolerance for m/z matching during centroiding</span>
+<span class="sd">        mz_tolerance_type: Type of m/z tolerance - &quot;ppm&quot; or &quot;da&quot; (daltons)</span>
+<span class="sd">        im_tolerance: Tolerance for ion mobility matching during centroiding</span>
+<span class="sd">        im_tolerance_type: Type of ion mobility tolerance - &quot;relative&quot; or &quot;absolute&quot;</span>
+<span class="sd">        min_peaks: Minimum number of nearby raw peaks required to form a centroid.</span>
+<span class="sd">                  Set to 0 or 1 to keep all peaks (no filtering).</span>
+<span class="sd">        max_peaks: Maximum number of centroided peaks to return (keeps highest intensity)</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        np.ndarray: Array of shape (N, 3) containing centroided peaks.</span>
+<span class="sd">                   Columns are: [mz, intensity, ion_mobility]</span>
+
+<span class="sd">    Example:</span>
+<span class="sd">        ```python</span>
+<span class="sd">        mz = np.array([100.0, 100.001, 200.0])</span>
+<span class="sd">        intensity = np.array([1000.0, 500.0, 2000.0])</span>
+<span class="sd">        im = np.array([0.8, 0.8, 0.9])</span>
+<span class="sd">        peaks = merge_peaks(mz, intensity, im, mz_tolerance=10, mz_tolerance_type=&quot;ppm&quot;)</span>
+<span class="sd">        ```</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Use Numba implementation if available</span>
+    <span class="k">if</span> <span class="n">_HAS_NUMBA</span> <span class="ow">and</span> <span class="n">use_numba</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">_merge_peaks_numba</span><span class="p">(</span>
+            <span class="n">mz_array</span><span class="p">,</span> <span class="n">intensity_array</span><span class="p">,</span> <span class="n">ion_mobility_array</span><span class="p">,</span>
+            <span class="n">mz_tolerance</span><span class="o">=</span><span class="n">mz_tolerance</span><span class="p">,</span>
+            <span class="n">mz_tolerance_type</span><span class="o">=</span><span class="n">mz_tolerance_type</span><span class="p">,</span>
+            <span class="n">im_tolerance</span><span class="o">=</span><span class="n">im_tolerance</span><span class="p">,</span>
+            <span class="n">im_tolerance_type</span><span class="o">=</span><span class="n">im_tolerance_type</span><span class="p">,</span>
+            <span class="n">min_peaks</span><span class="o">=</span><span class="n">min_peaks</span><span class="p">,</span>
+            <span class="n">max_peaks</span><span class="o">=</span><span class="n">max_peaks</span><span class="p">,</span>
+        <span class="p">)</span>
+
+    <span class="c1"># Fallback to Python implementation</span>
+    <span class="k">return</span> <span class="n">_merge_peaks_python</span><span class="p">(</span>
+        <span class="n">mz_array</span><span class="p">,</span>
+        <span class="n">intensity_array</span><span class="p">,</span>
+        <span class="n">ion_mobility_array</span><span class="p">,</span>
+        <span class="n">mz_tolerance</span><span class="p">,</span>
+        <span class="n">mz_tolerance_type</span><span class="p">,</span>
+        <span class="n">im_tolerance</span><span class="p">,</span>
+        <span class="n">im_tolerance_type</span><span class="p">,</span>
+        <span class="n">min_peaks</span><span class="p">,</span>
+        <span class="n">max_peaks</span><span class="p">,</span>
+    <span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.top", "content.code.copy", "search.highlight"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
