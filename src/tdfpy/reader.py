@@ -103,14 +103,18 @@ class _DFolder:
     def metadata(self) -> MetaData:
         """Global metadata about the acquisition."""
         if self._metadata is None:
-            self._metadata = MetaData(df=self.pandas_tdf.calibration_info)
+            self._metadata = MetaData(
+                df=self.pandas_tdf.global_metadata.set_index("Key")["Value"]
+            )
         return self._metadata
 
     @property
     def calibration(self) -> Calibration:
         """Calibration information."""
         if self._calibration is None:
-            self._calibration = Calibration(df=self.pandas_tdf.calibration_info)
+            self._calibration = Calibration(
+                df=self.pandas_tdf.calibration_info.set_index("KeyName")["Value"]
+            )
         return self._calibration
 
     @property
