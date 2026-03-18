@@ -12,6 +12,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - `libtimsdata.so` is now committed to git and negated in `.gitignore` so it is present during CI checkout and correctly included in the PyPI wheel.
 - Added wheel content check in CI to assert both `libtimsdata.so` and `timsdata.dll` are present in every built wheel.
+- `metadata` property was incorrectly loading `CalibrationInfo` instead of `GlobalMetadata`; `calibration` property was also missing the key-indexed Series transformation.
+- Suppressed `ty` `unresolved-import` diagnostic for optional `numba` dependency.
+
+### Added
+- Unit tests for `constants.py` (`PROTON_MASS`, `TableNames`), `noise.py` (all five `estimate_noise_level` strategies), `elems.py` (`MsMsType`, `Polarity.from_str`, `DiaWindowGroup` properties), and `centroiding.py` (`calculate_nmass`, `batch_iterator`).
+- `test_metadata.py` with 62 tests covering `MetaData` and `Calibration` properties, using a single module-scoped `DDA` fixture for fast execution.
+
+### Changed
+- `test_metadata.py` refactored to share a single `DDA` instance across all 62 tests (module-scoped fixture) instead of opening a new connection per test.
+- `just test-cov` now excludes `test_docs.py` from coverage measurement.
+- README expanded with overview, quick-start examples, lookup/query usage, and centroiding parameter documentation.
 
 ## [1.0.1]
 
