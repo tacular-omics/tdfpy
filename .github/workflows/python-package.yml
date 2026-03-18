@@ -71,7 +71,7 @@ jobs:
 
     - name: Generate JUnit test results
       if: ${{ !cancelled() }}
-      run: uv run pytest tests --junitxml=junit.xml -o junit_family=legacy
+      run: uv run pytest tests --ignore=tests/test_docs.py --junitxml=junit.xml -o junit_family=legacy
 
     - name: Upload test results to Codecov
       if: ${{ !cancelled() }}
