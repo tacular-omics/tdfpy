@@ -35,8 +35,9 @@ ty:
 # Run lint and tests
 check:
     just lint
-    just test
     just ty
+    just test
+
 
 
 # Build the package

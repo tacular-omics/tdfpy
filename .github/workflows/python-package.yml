@@ -2,11 +2,9 @@ name: Python package
 
 on:
   push:
-    paths:
-      - 'src/**'
-      - 'tests/**'
-      - 'justfile'
-      - 'pyproject.toml'
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
   workflow_dispatch:
 
 jobs:
@@ -63,15 +61,17 @@ jobs:
     - name: Test with pytest coverage
       run: just test-cov
 
-    - name: Test with pytest tests
-      run: just codecov-tests
-
     - name: Upload coverage reports to Codecov
       uses: codecov/codecov-action@v5
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
         slug: tacular-omics/tdfpy
+        files: coverage.xml
         fail_ci_if_error: false
+
+    - name: Generate JUnit test results
+      if: ${{ !cancelled() }}
+      run: uv run pytest tests --junitxml=junit.xml -o junit_family=legacy
 
     - name: Upload test results to Codecov
       if: ${{ !cancelled() }}
@@ -80,4 +80,5 @@ jobs:
         token: ${{ secrets.CODECOV_TOKEN }}
         slug: tacular-omics/tdfpy
         report_type: test_results
+        files: junit.xml
         fail_ci_if_error: false

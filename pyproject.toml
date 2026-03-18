@@ -22,11 +22,20 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "Topic :: Scientific/Engineering :: Chemistry",
+    "Intended Audience :: Science/Research",
+    "Typing :: Typed",
 ]
 readme = "README.md"
 requires-python = ">=3.12"
 license = {file = "LICENSE"}
-keywords = ["bruker", "timstof", "mass-spectrometry", "proteomics", "tdf"]
+keywords = ["bruker", "timstof", "mass-spectrometry", "proteomics", "tdf", "dia", "dda", "pasef", "ion-mobility"]
+
+[project.urls]
+Homepage = "https://tacular-omics.github.io/tdfpy/"
+Repository = "https://github.com/tacular-omics/tdfpy"
+"Bug Tracker" = "https://github.com/tacular-omics/tdfpy/issues"
+Changelog = "https://github.com/tacular-omics/tdfpy/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 numba = ["numba>=0.59"]
