@@ -17,7 +17,7 @@ from .timsdata import TimsData, oneOverK0ToCCSforMz
 
 # Try to import Numba for JIT-accelerated implementation
 try:
-    from numba import njit as _njit
+    from numba import njit as _njit  # ty: ignore[unresolved-import]
     _HAS_NUMBA = True
 except ImportError:
     _HAS_NUMBA = False
