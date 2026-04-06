@@ -15,6 +15,7 @@ from .timsdata import TimsData, oneOverK0ToCCSforMz
 
 class MsMsType(Enum):
     MS1 = 0
+    PRM_MS2 = 10
     DDA_MS2 = 8
     DIA_MS2 = 9
 
@@ -569,6 +570,184 @@ class DIAMs1Frame(Frame):
 
     dia_windows: tuple[DiaWindow, ...]
     """All DIA windows associated with this MS1 frame."""
+
+
+@dataclass
+class PrmTarget:
+    """A predefined PRM target ion from the `PrmTargets` table.
+
+    Defines the expected m/z, charge, retention time, and ion mobility for
+    a target analyte in a PRM acquisition.
+
+    | Field | Type | Description |
+    |---|---|---|
+    | `target_id` | `int` | Unique target ID |
+    | `external_id` | `str \\| None` | External identifier |
+    | `time` | `float` | Expected retention time in seconds |
+    | `one_over_k0` | `float` | Expected ion mobility (1/K0) |
+    | `monoisotopic_mz` | `float` | Target m/z |
+    | `charge` | `int` | Charge state |
+    | `description` | `str` | Target description |
+    | `transitions` | `tuple[PrmTransition, ...]` | Associated PRM transitions |
+    """
+
+    target_id: int
+    external_id: str | None
+    time: float
+    one_over_k0: float
+    monoisotopic_mz: float
+    charge: int
+    description: str
+    transitions: tuple["PrmTransition", ...] = ()
+
+
+@dataclass
+class PrmTransition(_TdfData):
+    """A PRM isolation window bound to a specific frame.
+
+    Each instance corresponds to one row in the `PrmFrameMsMsInfo` table:
+    a contiguous range of mobility scans acquired with a specific isolation
+    window and collision energy, linked to a PRM target.
+
+    | Field | Type | Description |
+    |---|---|---|
+    | `frame_id` | `int` | Frame ID |
+    | `scan_num_begin` | `int` | First mobility scan (inclusive) |
+    | `scan_num_end` | `int` | Last mobility scan (inclusive) |
+    | `isolation_mz` | `float` | Isolation window center m/z |
+    | `isolation_width` | `float` | Isolation window width in Th |
+    | `collision_energy` | `float` | Collision energy in eV |
+    | `target` | `PrmTarget` | Associated PRM target |
+    | `rt` | `float` | Retention time in seconds |
+    | `polarity` | `Polarity` | Ion polarity |
+    """
+
+    frame_id: int
+    scan_num_begin: int
+    scan_num_end: int
+    isolation_mz: float
+    isolation_width: float
+    collision_energy: float
+    target: PrmTarget
+    rt: float
+    polarity: Polarity
+
+    @property
+    def peaks(self) -> list[npt.NDArray[np.float64]]:
+        """Read raw peaks for this PRM transition and return as list of (mz, intensity) arrays."""
+        d: list[tuple[npt.NDArray[np.uint32], npt.NDArray[np.uint32]]] = (
+            self.timsdata.readScans(
+                self.frame_id, self.scan_num_begin, self.scan_num_end
+            )
+        )
+        mz_int_arrays = []
+        for index_array, int_array in d:
+            mz_array = self.timsdata.indexToMz(self.frame_id, index_array)
+            mz_int_arrays.append(
+                np.stack((mz_array, int_array), axis=-1).astype(np.float64)
+            )
+        return mz_int_arrays
+
+    def centroid(
+        self,
+        mz_tolerance: float = 8,
+        mz_tolerance_type: Literal["ppm", "da"] = "ppm",
+        im_tolerance: float = 0.05,
+        im_tolerance_type: Literal["relative", "absolute"] = "relative",
+        min_peaks: int = 3,
+        max_peaks: int | None = None,
+        noise_filter=None,
+        ion_mobility_type: Literal["ccs", "ook0", "voltage"] = "ook0",
+    ) -> np.ndarray:
+        """Centroid the spectrum for this PRM transition using the specified parameters."""
+        get_spectrum = partial(
+            get_centroided_spectrum,
+            self.timsdata,
+            frame_id=self.frame_id,
+            spectrum_index=None,
+            ion_mobility_type=ion_mobility_type,
+            mz_tolerance=mz_tolerance,
+            mz_tolerance_type=mz_tolerance_type,
+            im_tolerance=im_tolerance,
+            im_tolerance_type=im_tolerance_type,
+            min_peaks=min_peaks,
+            max_peaks=max_peaks,
+            noise_filter=noise_filter,
+        )
+
+        try:
+            return get_spectrum(use_numba=True)
+        except Exception:
+            warnings.warn(
+                f"Numba centroiding failed for frame {self.frame_id}. Falling back to Python implementation.",
+                UserWarning,
+                stacklevel=2,
+            )
+            return get_spectrum(use_numba=False)
+
+    @property
+    def scan_num_range(self) -> tuple[int, int]:
+        return (self.scan_num_begin, self.scan_num_end)
+
+    @property
+    def ook0_begin(self) -> float:
+        return self.timsdata.scanNumToOneOverK0(self.frame_id, [self.scan_num_begin])[0]
+
+    @property
+    def ook0_end(self) -> float:
+        return self.timsdata.scanNumToOneOverK0(self.frame_id, [self.scan_num_end])[0]
+
+    @property
+    def ook0_range(self) -> tuple[float, float]:
+        return (self.ook0_begin, self.ook0_end)
+
+    @property
+    def ccs_begin(self) -> float:
+        return oneOverK0ToCCSforMz(self.ook0_begin, 1, self.isolation_mz)
+
+    @property
+    def ccs_end(self) -> float:
+        return oneOverK0ToCCSforMz(self.ook0_end, 1, self.isolation_mz)
+
+    @property
+    def ccs_range(self) -> tuple[float, float]:
+        return (self.ccs_begin, self.ccs_end)
+
+    @property
+    def voltage_begin(self) -> float:
+        return self.timsdata.scanNumToVoltage(self.frame_id, [self.scan_num_begin])[0]
+
+    @property
+    def voltage_end(self) -> float:
+        return self.timsdata.scanNumToVoltage(self.frame_id, [self.scan_num_end])[0]
+
+    @property
+    def voltage_range(self) -> tuple[float, float]:
+        return (self.voltage_begin, self.voltage_end)
+
+    @property
+    def mz_begin(self) -> float:
+        return self.isolation_mz - self.isolation_width / 2
+
+    @property
+    def mz_end(self) -> float:
+        return self.isolation_mz + self.isolation_width / 2
+
+    @property
+    def mz_range(self) -> tuple[float, float]:
+        return (self.mz_begin, self.mz_end)
+
+
+@dataclass
+class PRMMs1Frame(Frame):
+    """An MS1 frame from a PRM acquisition.
+
+    Inherits all fields from `Frame`. The `prm_transitions` field lists the PRM
+    transitions from adjacent MS2 frames.
+    """
+
+    prm_transitions: tuple[PrmTransition, ...]
+    """All PRM transitions associated with this MS1 frame."""
 
 
 @dataclass
