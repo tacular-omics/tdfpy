@@ -88,6 +88,17 @@ def test_prm_transitions():
         assert len(transitions) == 3308
 
 
+def test_prm_target_transitions():
+    """Test that PrmTarget.transitions holds all transitions for that target."""
+    with PRM(D_PATH) as prm:
+        t1 = prm.targets[1]
+        assert len(t1.transitions) > 0
+        assert len(t1.transitions) == len(prm.transitions[1])
+        for tr in t1.transitions:
+            assert isinstance(tr, PrmTransition)
+            assert tr.target is t1
+
+
 def test_prm_transition_lookup_by_target():
     """Test PrmTransitionLookup indexing by target ID."""
     with PRM(D_PATH) as prm:

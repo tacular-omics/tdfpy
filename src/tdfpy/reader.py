@@ -546,6 +546,7 @@ class PRM(_DFolder):
 
         self._all_prm_transitions: list[PrmTransition] = []
         self._frame_to_transitions: dict[int, list[PrmTransition]] = {}
+        target_to_transitions: dict[int, list[PrmTransition]] = {}
         for _, row in self._prm_frame_msms_info_df.iterrows():
             frame_id = int(row["Frame"])
             target_id = int(row["Target"])
@@ -566,6 +567,13 @@ class PRM(_DFolder):
             if frame_id not in self._frame_to_transitions:
                 self._frame_to_transitions[frame_id] = []
             self._frame_to_transitions[frame_id].append(transition)
+            if target_id not in target_to_transitions:
+                target_to_transitions[target_id] = []
+            target_to_transitions[target_id].append(transition)
+
+        # populate target → transitions back-references
+        for target_id, target in self._prm_targets.items():
+            target.transitions = tuple(target_to_transitions.get(target_id, []))
 
         self._prm_transition_lookup = PrmTransitionLookup(self._all_prm_transitions)
 

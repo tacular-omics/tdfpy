@@ -588,6 +588,7 @@ class PrmTarget:
     | `monoisotopic_mz` | `float` | Target m/z |
     | `charge` | `int` | Charge state |
     | `description` | `str` | Target description |
+    | `transitions` | `tuple[PrmTransition, ...]` | Associated PRM transitions |
     """
 
     target_id: int
@@ -597,6 +598,7 @@ class PrmTarget:
     monoisotopic_mz: float
     charge: int
     description: str
+    transitions: tuple["PrmTransition", ...] = ()
 
 
 @dataclass
