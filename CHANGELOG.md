@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0]
+
+### Added
+- PRM (Parallel Reaction Monitoring) acquisition mode support: new `PRM` reader class, `PrmTarget`, `PrmTransition`, and `PRMMs1Frame` data elements, and `PrmTargetLookup` / `PrmTransitionLookup` lookup tables.
+- Comprehensive DIA acquisition mode support: `DIAMs1Frame`, `DiaWindow`, and `DiaWindowGroup` data elements, with `DIA` reader exposing per-window MS1/MS2 access.
+- `slice_d_folder` utility (`tdfpy.slicer`) for extracting a frame-range subset of a Bruker `.d` folder into a new `.d` folder, including the `FrameProperties` table.
+- Example DIA dataset under `tests/data/example_dia.d/` and tests covering DIA, PRM, and slicer behavior (`tests/test_dia.py`, `tests/test_prm.py`, `tests/test_slicer.py`).
+- Documentation pages `docs/api/prm.md` and `docs/utilities.md`, plus expanded `docs/api/centroiding.md`, `docs/api/lookup.md`, `docs/getting-started.md`, and `README.md`.
+
+### Changed
+- `slice_d_folder` now overwrites an existing destination directory rather than failing.
+
 ## [1.0.2]
 
 ### Fixed
