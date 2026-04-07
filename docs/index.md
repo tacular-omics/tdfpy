@@ -14,7 +14,7 @@ tdfpy provides an API that works with familiar objects — no need to think abou
 
 - **DDA** — MS1 spectra and precursors (MS2 spectra)
 - **DIA** — MS1 spectra and DIA windows
-- **PRM** — Work in progress
+- **PRM** — MS1 spectra, targets, and transitions
 - **MALDI** — Work in progress
 
 **MS1 Spectra** — MS1 objects include a Numba-accelerated centroiding function that returns a 3D NumPy array containing m/z, intensity, and 1/K0 values.
@@ -26,7 +26,7 @@ tdfpy provides an API that works with familiar objects — no need to think abou
 ## Quick Example
 
 ```python
-from tdfpy import DDA, DIA
+from tdfpy import DDA, DIA, PRM
 
 # DDA acquisition
 with DDA('data.d') as dda:
@@ -43,6 +43,14 @@ with DIA('data.d') as dia:
 
     for window in dia.windows:
         peaks = window.centroid()
+
+# PRM acquisition
+with PRM('data.d') as prm:
+    for target in prm.targets:
+        print(target.monoisotopic_mz, target.charge)
+
+    for transition in prm.transitions:
+        peaks = transition.peaks  # shape (N, 2): m/z, intensity
 ```
 
 ## Installation

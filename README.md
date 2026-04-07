@@ -32,7 +32,7 @@ Requires Python 3.12+. The Bruker `libtimsdata` native library is bundled in the
 ## Quick Start
 
 ```python
-from tdfpy import DDA, DIA
+from tdfpy import DDA, DIA, PRM
 
 # DDA acquisition
 with DDA("sample.d") as dda:
@@ -51,6 +51,15 @@ with DIA("sample.d") as dia:
     for window in dia.windows:
         print(window.isolation_mz, window.isolation_width)
         peaks = window.centroid()
+
+# PRM acquisition
+with PRM("sample.d") as prm:
+    for target in prm.targets:
+        print(target.monoisotopic_mz, target.charge)
+
+    for transition in prm.transitions:
+        print(transition.isolation_mz, transition.collision_energy)
+        peaks = transition.peaks  # shape (N, 2): [m/z, intensity]
 ```
 
 ## Lookups and Queries

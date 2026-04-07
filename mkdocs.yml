@@ -13,11 +13,13 @@ theme:
 nav:
   - Home: index.md
   - Getting Started: getting-started.md
+  - Utilities: utilities.md
   - API Reference:
     - Readers: api/readers.md
     - Frames: api/frames.md
     - Precursor: api/precursor.md
     - DIA Windows: api/windows.md
+    - PRM Data Elements: api/prm.md
     - Metadata: api/metadata.md
     - Lookups: api/lookup.md
     - Centroiding: api/centroiding.md

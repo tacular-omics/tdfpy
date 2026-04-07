@@ -60,6 +60,29 @@ with DIA(D_PATH) as dia:
         break
 ```
 
+## PRM Acquisitions
+
+```python
+from tdfpy import PRM
+
+with PRM(D_PATH) as prm:
+    # MS1 frames
+    for frame in prm.ms1:
+        peaks = frame.centroid()
+        break
+
+    # PRM targets (precursor ions being monitored)
+    for target in prm.targets:
+        print(f"Target {target.target_id}: {target.monoisotopic_mz:.4f} m/z, charge {target.charge}")
+        break
+
+    # PRM transitions (MS2 spectra linked to a target)
+    for transition in prm.transitions:
+        print(f"Transition frame {transition.frame_id}: isolation {transition.isolation_mz} m/z")
+        peaks = transition.peaks  # shape (N, 2): [m/z, intensity]
+        break
+```
+
 ## Lookups and Queries
 
 Access frames, precursors, or windows directly by ID or query by properties.

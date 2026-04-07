@@ -53,6 +53,7 @@ docs = [
     "mkdocstrings[python]>=0.25",
 ]
 dev = [
+    "numba>=0.59",
     "pytest>=7.0",
     "pytest-examples>=0.0.14",
     "ty>=0.0.9",
