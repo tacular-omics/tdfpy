@@ -32,12 +32,14 @@ with DDA(D_PATH) as dda:
         # Centroid the frame — returns shape (N, 3): [m/z, intensity, 1/K0]
         peaks = frame.centroid()
         print(f"  {len(peaks)} centroided peaks")
+        break
 
     # Iterate over precursors (MS2)
     for precursor in dda.precursors:
         print(f"Precursor {precursor.precursor_id}: {precursor.largest_peak_mz:.4f} m/z")
         # Raw centroided peaks from Bruker's algorithm
         peaks = precursor.peaks
+        break
 ```
 
 ## DIA Acquisitions
@@ -49,11 +51,13 @@ with DIA(D_PATH) as dia:
     # MS1 frames
     for frame in dia.ms1:
         peaks = frame.centroid()
+        break
 
     # DIA windows
     for window in dia.windows:
         print(f"Window group {window.window_group}: isolation {window.isolation_mz} m/z")
         peaks = window.centroid()
+        break
 ```
 
 ## Lookups and Queries
