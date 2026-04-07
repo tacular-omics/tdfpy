@@ -16,6 +16,7 @@ TDF_BIN_FILE = "analysis.tdf_bin"
 # Tables that reference frame IDs and need filtering.
 # Each entry is (table_name, column_name_referencing_frame_id).
 _FRAME_DEPENDENT_TABLES = [
+    ("FrameProperties", "Frame"),
     ("PasefFrameMsMsInfo", "Frame"),
     ("DiaFrameMsMsInfo", "Frame"),
     ("PrmFrameMsMsInfo", "Frame"),
@@ -55,6 +56,8 @@ def slice_d_folder(
 
     _validate_inputs(source_dir, dest_dir, frame_start, frame_end)
 
+    if dest_dir.exists():
+        shutil.rmtree(dest_dir)
     dest_dir.mkdir(parents=True)
 
     # Step 1: Copy SQLite database and read original offsets before filtering.
@@ -109,8 +112,6 @@ def _validate_inputs(
         raise ValueError(
             f"frame_start ({frame_start}) must be <= frame_end ({frame_end})"
         )
-    if dest_dir.exists():
-        raise FileExistsError(f"Destination already exists: {dest_dir}")
 
 
 def _rebuild_binary(
