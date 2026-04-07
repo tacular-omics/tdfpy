@@ -37,7 +37,7 @@ from .slicer import slice_d_folder
 from .tdf import PandasTdf
 from .timsdata import TimsData, timsdata_connect
 
-__version__ = "1.0.2"
+__version__ = "1.1.0"
 
 __all__ = [
     "PandasTdf",
