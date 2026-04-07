@@ -24,6 +24,7 @@ from .reader import (
     PRM,
     get_acquisition_type,
 )
+from .slicer import slice_d_folder
 from .tdf import PandasTdf
 from .timsdata import TimsData, timsdata_connect
 
@@ -51,4 +52,5 @@ __all__ = [
     "DiaWindowLookup",
     "Ms1FrameLookup",
     "PrecursorLookup",
+    "slice_d_folder",
 ]
