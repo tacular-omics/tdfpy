@@ -6,7 +6,7 @@ import pytest
 
 from tdfpy import DDA
 
-D_PATH = "tests/data/200ngHeLaPASEF_1min.d"
+D_PATH = "tests/data/example_dda.d"
 
 
 @pytest.fixture(scope="module")

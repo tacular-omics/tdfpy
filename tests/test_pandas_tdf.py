@@ -4,7 +4,7 @@ import pandas as pd
 
 from tdfpy import PandasTdf
 
-TDF_PATH = r"tests/data/200ngHeLaPASEF_1min.d/analysis.tdf"
+TDF_PATH = r"tests/data/example_dda.d/analysis.tdf"
 
 
 class TestPandasTDF(unittest.TestCase):

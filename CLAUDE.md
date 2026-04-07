@@ -46,7 +46,7 @@ src/tdfpy/
 
 ## Testing
 
-Tests require real Bruker `.d` data at `tests/data/200ngHeLaPASEF_1min.d`. Many tests are skipped if the data is absent.
+Tests require real Bruker `.d` data at `tests/data/example_dda.d` and `tests/data/example_prm.d`. Many tests are skipped if the data is absent.
 
 ```bash
 just test           # all tests

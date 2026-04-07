@@ -9,7 +9,7 @@ from tdfpy import (
 )
 from tdfpy.centroiding import _HAS_NUMBA, _merge_peaks_numba, _merge_peaks_python  # type: ignore[import]
 
-TDF_PATH = r"tests/data/200ngHeLaPASEF_1min.d"
+TDF_PATH = r"tests/data/example_dda.d"
 
 
 class TestSpectra(unittest.TestCase):

@@ -2,7 +2,7 @@ import pytest
 
 from tdfpy import PRM, PrmTarget, PrmTransition, get_acquisition_type
 
-D_PATH = "tests/data/20260328_IRT_DDA_30spd_MS_long_Method_v06_S1-E5_1_2345.d"
+D_PATH = "tests/data/example_prm.d"
 
 
 def test_get_acquisition_type_prm():
@@ -85,7 +85,7 @@ def test_prm_transitions():
     """Test that PRM transitions are loaded correctly."""
     with PRM(D_PATH) as prm:
         transitions = list(prm.transitions)
-        assert len(transitions) == 3308
+        assert len(transitions) == 226
 
 
 def test_prm_target_transitions():
@@ -162,7 +162,7 @@ def test_prm_ms1_frames():
     """Test that MS1 frames are loaded correctly."""
     with PRM(D_PATH) as prm:
         ms1_frames = list(prm.ms1)
-        assert len(ms1_frames) == 1714
+        assert len(ms1_frames) == 274
 
         # First MS1 frame
         f1 = prm.ms1[1]

@@ -2,7 +2,7 @@ import unittest
 
 from tdfpy import timsdata
 
-TDF_PATH = r"tests/data/200ngHeLaPASEF_1min.d"
+TDF_PATH = r"tests/data/example_dda.d"
 
 
 class TestTimsData(unittest.TestCase):

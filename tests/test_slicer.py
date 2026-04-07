@@ -7,7 +7,7 @@ import pytest
 
 from tdfpy.slicer import slice_d_folder
 
-TEST_DATA = Path("tests/data/200ngHeLaPASEF_1min.d")
+TEST_DATA = Path("tests/data/example_dda.d")
 SKIP_NO_DATA = pytest.mark.skipif(
     not TEST_DATA.exists(), reason="Test data not available"
 )
