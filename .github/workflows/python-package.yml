@@ -32,7 +32,7 @@ jobs:
       uses: extractions/setup-just@v2
 
     - name: Install dependencies
-      run: just install-dev
+      run: just install
 
     - name: Build wheel and verify native libraries
       run: |
