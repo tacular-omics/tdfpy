@@ -14,10 +14,19 @@ from .elems import (
     DiaWindowGroup,
     Frame,
     MetaData,
+    PRMMs1Frame,
     PasefFrameMsmsInfo,
     Precursor,
+    PrmTarget,
+    PrmTransition,
 )
-from .lookup import DiaWindowLookup, Ms1FrameLookup, PrecursorLookup
+from .lookup import (
+    DiaWindowLookup,
+    Ms1FrameLookup,
+    PrecursorLookup,
+    PrmTargetLookup,
+    PrmTransitionLookup,
+)
 from .reader import (
     DDA,
     DIA,
@@ -53,4 +62,9 @@ __all__ = [
     "Ms1FrameLookup",
     "PrecursorLookup",
     "slice_d_folder",
+    "PrmTarget",
+    "PrmTransition",
+    "PRMMs1Frame",
+    "PrmTargetLookup",
+    "PrmTransitionLookup",
 ]

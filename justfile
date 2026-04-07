@@ -4,11 +4,11 @@ default:
 
 # Install dependencies
 install:
-  uv sync --no-dev
+  uv sync 
 
 # Install with dev dependencies
-install-dev:
-  uv sync
+install-prod:
+  uv sync --no-dev
 
 # Alias for install
 sync:

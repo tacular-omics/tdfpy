@@ -13,11 +13,20 @@ from .elems import (
     Frame,
     MetaData,
     MsMsType,
+    PRMMs1Frame,
     PasefFrameMsmsInfo,
     Polarity,
     Precursor,
+    PrmTarget,
+    PrmTransition,
 )
-from .lookup import DiaWindowLookup, Ms1FrameLookup, PrecursorLookup
+from .lookup import (
+    DiaWindowLookup,
+    Ms1FrameLookup,
+    PrecursorLookup,
+    PrmTargetLookup,
+    PrmTransitionLookup,
+)
 from .tdf import PandasTdf
 from .timsdata import TimsData
 
@@ -57,8 +66,8 @@ def get_acquisition_type(analysis_dir: str) -> Literal["DDA", "DIA", "PRM", "Unk
     if MsMsType.DIA_MS2.value in msms_types:
         return "DIA"
 
-    # PRM shows as MsMsType 2
-    if 2 in msms_types:
+    # PRM detection via table presence (MsMsType 10)
+    if MsMsType.PRM_MS2.value in msms_types:
         return "PRM"
 
     return "Unknown"
@@ -473,11 +482,159 @@ class DIA(_DFolder):
 
 
 class PRM(_DFolder):
-    """PRM (Parallel Reaction Monitoring) acquisition mode.
+    """Open a PRM (Parallel Reaction Monitoring) `.d` folder.
 
-    Note:
-        Not yet implemented. Raises `NotImplementedError` on instantiation.
+    Use as a context manager to ensure the TimsData connection is closed when done.
+    Exposes MS1 frames via `ms1`, PRM targets via `targets`, and individual
+    transitions via `transitions`.
+
+    Args:
+        analysis_dir: Path to the `.d` folder containing `analysis.tdf` and `analysis.tdf_bin`.
+
+    Raises:
+        FileNotFoundError: If the `.d` folder or required files are missing.
+
+    Example:
+        ```python
+        with PRM("/path/to/data.d") as prm:
+            for target in prm.targets:
+                print(target.monoisotopic_mz, target.charge)
+            for transition in prm.transitions:
+                print(transition.frame_id, transition.target.target_id)
+        ```
     """
 
     def __init__(self, analysis_dir: str):
-        raise NotImplementedError("PRM acquisition mode is not yet supported.")
+        super().__init__(analysis_dir)
+
+        # frames
+        self._frames_df = PandasTdf(str(self.analysis_tdf_path)).frames
+
+        frame_id_to_rt: dict[int, float] = {}
+        for _, row in self._frames_df.iterrows():
+            frame_id = int(row["Id"])
+            frame_id_to_rt[frame_id] = float(row["Time"])
+
+        frame_id_to_polarity: dict[int, str] = {}
+        for _, row in self._frames_df.iterrows():
+            frame_id = int(row["Id"])
+            frame_id_to_polarity[frame_id] = str(row["Polarity"])
+
+        # targets
+        self._prm_targets_df = PandasTdf(str(self.analysis_tdf_path)).prm_targets
+
+        self._prm_targets: dict[int, PrmTarget] = {}
+        for _, row in self._prm_targets_df.iterrows():
+            target_id = int(row["Id"])
+            target = PrmTarget(
+                target_id=target_id,
+                external_id=str(row["ExternalId"]) if not pd.isna(row["ExternalId"]) else None,
+                time=float(row["Time"]),
+                one_over_k0=float(row["OneOverK0"]),
+                monoisotopic_mz=float(row["MonoisotopicMz"]),
+                charge=int(row["Charge"]),
+                description=str(row["Description"]) if not pd.isna(row["Description"]) else "",
+            )
+            self._prm_targets[target_id] = target
+
+        self._prm_target_lookup = PrmTargetLookup(self._prm_targets)
+
+        # transitions (PrmFrameMsMsInfo)
+        self._prm_frame_msms_info_df = PandasTdf(
+            str(self.analysis_tdf_path)
+        ).prm_frame_msms_info
+
+        self._all_prm_transitions: list[PrmTransition] = []
+        self._frame_to_transitions: dict[int, list[PrmTransition]] = {}
+        target_to_transitions: dict[int, list[PrmTransition]] = {}
+        for _, row in self._prm_frame_msms_info_df.iterrows():
+            frame_id = int(row["Frame"])
+            target_id = int(row["Target"])
+            target = self._prm_targets[target_id]
+            transition = PrmTransition(
+                _timsdata=self.timsdata,
+                frame_id=frame_id,
+                scan_num_begin=int(row["ScanNumBegin"]),
+                scan_num_end=int(row["ScanNumEnd"]),
+                isolation_mz=float(row["IsolationMz"]),
+                isolation_width=float(row["IsolationWidth"]),
+                collision_energy=float(row["CollisionEnergy"]),
+                target=target,
+                rt=frame_id_to_rt[frame_id],
+                polarity=Polarity.from_str(frame_id_to_polarity[frame_id]),
+            )
+            self._all_prm_transitions.append(transition)
+            if frame_id not in self._frame_to_transitions:
+                self._frame_to_transitions[frame_id] = []
+            self._frame_to_transitions[frame_id].append(transition)
+            if target_id not in target_to_transitions:
+                target_to_transitions[target_id] = []
+            target_to_transitions[target_id].append(transition)
+
+        # populate target → transitions back-references
+        for target_id, target in self._prm_targets.items():
+            target.transitions = tuple(target_to_transitions.get(target_id, []))
+
+        self._prm_transition_lookup = PrmTransitionLookup(self._all_prm_transitions)
+
+        # MS1 frames
+        self._frames: dict[int, Frame] = {}
+        self._ms1_frames: dict[int, PRMMs1Frame] = {}
+        for _, row in self._frames_df.iterrows():
+            frame_id = int(row["Id"])
+            msms_type = int(row["MsMsType"])
+            if msms_type == MsMsType.MS1.value:
+                frame = PRMMs1Frame(
+                    _timsdata=self.timsdata,
+                    frame_id=frame_id,
+                    time=float(row["Time"]),
+                    polarity=Polarity.from_str(str(row["Polarity"])),
+                    scan_mode=int(row["ScanMode"]),
+                    msms_type=msms_type,
+                    tims_id=int(row["TimsId"]) if not pd.isna(row["TimsId"]) else None,
+                    max_intensity=int(row["MaxIntensity"]),
+                    summed_intensities=int(row["SummedIntensities"]),
+                    num_scans=int(row["NumScans"]),
+                    num_peaks=int(row["NumPeaks"]),
+                    mz_calibration=int(row["MzCalibration"]),
+                    t1=float(row["T1"]),
+                    t2=float(row["T2"]),
+                    tims_calibration=int(row["TimsCalibration"]),
+                    property_group=int(row["PropertyGroup"])
+                    if not pd.isna(row["PropertyGroup"])
+                    else None,
+                    accumulation_time=float(row["AccumulationTime"]),
+                    ramp_time=float(row["RampTime"]),
+                    prm_transitions=tuple(self._frame_to_transitions.get(frame_id, [])),
+                )
+                self._ms1_frames[frame_id] = frame
+                self._frames[frame_id] = frame
+            elif msms_type == MsMsType.PRM_MS2.value:
+                pass
+            else:
+                raise ValueError(f"Unknown MsMsType {msms_type} for frame {frame_id}")
+
+        self._ms1_frames_lookup = Ms1FrameLookup(self._ms1_frames)
+
+        # remove unneeded dataframes to save memory
+        del self._frames_df
+        del self._prm_targets_df
+        del self._prm_frame_msms_info_df
+
+    @property
+    def ms1(self) -> Ms1FrameLookup[PRMMs1Frame]:
+        """Lookup for MS1 frames. Supports indexing by frame ID."""
+        self._check_open()
+        return self._ms1_frames_lookup
+
+    @property
+    def targets(self) -> PrmTargetLookup:
+        """Lookup for all PRM targets. Supports indexing by target ID and `.query()`."""
+        self._check_open()
+        return self._prm_target_lookup
+
+    @property
+    def transitions(self) -> PrmTransitionLookup:
+        """Lookup for all PRM transitions. Supports indexing by target ID and `.query()`."""
+        self._check_open()
+        return self._prm_transition_lookup
