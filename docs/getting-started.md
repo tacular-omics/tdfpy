@@ -88,10 +88,10 @@ from tdfpy import DIA
 
 with DIA(D_PATH) as dia:
     # Get all windows in a window group
-    group_windows = dia.windows[0]  # returns a list
+    group_windows = dia.windows[1]  # returns a list
 
     # Query windows by retention time
-    results = dia.windows.query(rt=1200.0, rt_tolerance=60.0)
+    results = dia.windows.query(rt=10.0, rt_tolerance=5.0)
     for w in results:
         print(w.window_group, w.isolation_mz)
 ```
