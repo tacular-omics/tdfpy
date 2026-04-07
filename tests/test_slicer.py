@@ -142,8 +142,14 @@ def test_slice_invalid_range(tmp_path):
 
 @SKIP_NO_DATA
 def test_slice_dest_already_exists(tmp_path):
-    """Should raise FileExistsError if dest already exists."""
+    """Should overwrite dest if it already exists."""
     dest = tmp_path / "sliced.d"
     dest.mkdir()
-    with pytest.raises(FileExistsError):
-        slice_d_folder(TEST_DATA, dest, 1, 10)
+    (dest / "stale.txt").write_text("stale")
+
+    result = slice_d_folder(TEST_DATA, dest, 1, 10)
+
+    assert result == dest
+    assert not (dest / "stale.txt").exists()
+    assert (dest / "analysis.tdf").exists()
+    assert (dest / "analysis.tdf_bin").exists()
