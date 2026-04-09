@@ -88,12 +88,32 @@ with DDA("sample.d") as dda:
 peaks = frame.centroid(
     mz_tolerance=8,               # ppm (default)
     mz_tolerance_type="ppm",      # or "da"
-    im_tolerance=0.05,            # relative (default)
+    im_tolerance=0.1,             # relative (default); fraction of the 1/K0 value
     im_tolerance_type="relative", # or "absolute"
     min_peaks=3,                  # minimum raw peaks to form a centroid
-    noise_filter="mad",           # optional: "mad", "percentile", "histogram", etc.
+    noise_filter=None,            # optional: "mad", "percentile", "histogram", etc.
     ion_mobility_type="ook0",     # or "ccs" / "voltage"
 )
+```
+
+### Noise filtering vs `min_peaks`
+
+The `noise_filter` option estimates a noise threshold from the intensity distribution and
+discards centroids below it. In practice this can be too aggressive: intensity-based methods
+like `"mad"` cannot distinguish low-abundance real signal from noise, and will remove both.
+
+A more reliable approach is to increase `min_peaks` instead. A centroid only forms when at
+least `min_peaks` raw peaks fall within the m/z and ion mobility window. Because electronic
+noise is typically a singleton in a single scan, raising `min_peaks` to `4` or `5` removes
+noise without penalising low-abundance peaks that appear consistently across scans.
+
+```python
+# Prefer this over noise_filter for removing noise
+peaks = frame.centroid(min_peaks=5)
+
+# Use noise_filter only when you have a calibrated threshold or a specific method
+# that suits your data, and verify it against a no-filter baseline first.
+peaks = frame.centroid(noise_filter="iterative_median", min_peaks=3)
 ```
 
 You can also call `merge_peaks` directly on your own arrays:

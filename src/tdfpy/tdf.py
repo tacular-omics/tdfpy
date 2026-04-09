@@ -6,6 +6,7 @@ file in the format of pandas dataframes
 import logging
 import sqlite3
 from dataclasses import dataclass
+from pathlib import Path
 
 import pandas as pd
 
@@ -14,18 +15,24 @@ from .constants import TableNames
 logger = logging.getLogger(__name__)
 
 
-def convert_table_to_df(db_path: str, table_name: str) -> pd.DataFrame:
+def convert_table_to_df(db_path: str | Path, table_name: str) -> pd.DataFrame:
     """
     Converts a table in an SQLite database to a pandas DataFrame.
 
     Args:
-        db_path (str): The path to the SQLite database.
+        db_path (str | Path): The path to the SQLite database.
         table_name (str): The name of the table to convert.
 
     Returns:
         pd.DataFrame: The converted table as a pandas DataFrame.
+
+    Raises:
+        FileNotFoundError: If the database file does not exist.
     """
-    logger.debug("Fetching " + table_name + " from " + db_path)
+    db_path = Path(db_path)
+    if not db_path.exists():
+        raise FileNotFoundError(f"TDF database not found: {db_path}")
+    logger.debug("Fetching " + table_name + " from " + str(db_path))
     try:
         with sqlite3.connect(str(db_path)) as conn:
             df = pd.read_sql_query(f"SELECT * FROM {table_name}", conn)
@@ -41,7 +48,11 @@ class PandasTdf:
     A class for working with TDF (Bruker Data File) using pandas DataFrames.
     """
 
-    db_path: str
+    db_path: str | Path
+
+    def __post_init__(self) -> None:
+        if not Path(self.db_path).exists():
+            raise FileNotFoundError(f"TDF database not found: {self.db_path}")
 
     @property
     def calibration_info(self) -> pd.DataFrame:

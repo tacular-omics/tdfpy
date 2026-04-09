@@ -412,7 +412,7 @@ class Frame(_TdfData):
         im_tolerance_type: Literal["relative", "absolute"] = "relative",
         min_peaks: int = 3,
         max_peaks: int | None = None,
-        noise_filter=None,
+        noise_filter: Literal["mad", "percentile", "histogram", "baseline", "iterative_median"] | float | None = None,
         ion_mobility_type: Literal["ccs", "ook0", "voltage"] = "ook0",
     ) -> np.ndarray:
         """Centroid the spectrum for this frame using the specified parameters."""
@@ -494,7 +494,7 @@ class DiaWindow(DiaWindowGroup, _TdfData):
         im_tolerance_type: Literal["relative", "absolute"] = "relative",
         min_peaks: int = 3,
         max_peaks: int | None = None,
-        noise_filter=None,
+        noise_filter: Literal["mad", "percentile", "histogram", "baseline", "iterative_median"] | float | None = None,
         ion_mobility_type: Literal["ccs", "ook0", "voltage"] = "ook0",
     ) -> np.ndarray:
         """Centroid the spectrum for this DIA window using the specified parameters."""
@@ -656,7 +656,7 @@ class PrmTransition(_TdfData):
         im_tolerance_type: Literal["relative", "absolute"] = "relative",
         min_peaks: int = 3,
         max_peaks: int | None = None,
-        noise_filter=None,
+        noise_filter: Literal["mad", "percentile", "histogram", "baseline", "iterative_median"] | float | None = None,
         ion_mobility_type: Literal["ccs", "ook0", "voltage"] = "ook0",
     ) -> np.ndarray:
         """Centroid the spectrum for this PRM transition using the specified parameters."""

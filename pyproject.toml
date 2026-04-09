@@ -39,6 +39,7 @@ Changelog = "https://github.com/tacular-omics/tdfpy/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 numba = ["numba>=0.59"]
+viz = ["matplotlib>=3.7"]
 
 [tool.hatch.version]
 path = "src/tdfpy/__init__.py"
@@ -62,4 +63,5 @@ dev = [
     "pandas>=2.3.3",
     "numpy>=2.3.4",
     "pytest-cov>=6.0.0",
+    "matplotlib>=3.7",
 ]

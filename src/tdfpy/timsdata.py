@@ -198,10 +198,10 @@ if dll is not None:
 
 
 @contextmanager
-def timsdata_connect(analysis_dir: str) -> Iterator["TimsData"]:
+def timsdata_connect(analysis_dir: str | os.PathLike[str]) -> Iterator["TimsData"]:
     td: TimsData | None = None
     try:
-        td = TimsData(analysis_dir)
+        td = TimsData(str(analysis_dir))
         yield td
     finally:
         if td:
@@ -244,17 +244,26 @@ class PressureCompensationStrategy(Enum):
 class TimsData:
     def __init__(
         self,
-        analysis_directory: str,
+        analysis_directory: str | os.PathLike[str],
         use_recalibrated_state: bool = False,
         pressure_compensation_strategy: PressureCompensationStrategy = PressureCompensationStrategy.NoPressureCompensation,
     ) -> None:
-        if not isinstance(analysis_directory, str):  # type: ignore[type-var]
-            raise ValueError("analysis_directory must be a string.")
+        analysis_directory = str(analysis_directory)
 
         if dll is None:
             raise ImportError(
                 f"libtimsdata native library could not be loaded: {_dll_load_error}"
             ) from _dll_load_error
+
+        if not os.path.isdir(analysis_directory):
+            raise FileNotFoundError(
+                f"Analysis directory not found: {analysis_directory!r}"
+            )
+        tdf_path = os.path.join(analysis_directory, "analysis.tdf")
+        if not os.path.exists(tdf_path):
+            raise FileNotFoundError(
+                f"analysis.tdf not found in {analysis_directory!r}"
+            )
 
         self.analysis_directory = analysis_directory
         self.dll: CDLL = dll

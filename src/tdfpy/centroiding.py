@@ -77,12 +77,40 @@ if _HAS_NUMBA:
             right_mz = mz_peak + mz_tol
             left_idx = np.searchsorted(mz_sorted, left_mz)
             right_idx = np.searchsorted(mz_sorted, right_mz, side='right')
+
+            # Dynamic IM region growing: start at seed, expand bounds outward
+            # one step at a time until no unused peak is within im_tolerance of
+            # the current lower or upper boundary.
+            # eps guards against floating-point edge cases where the gap is
+            # mathematically equal to the tolerance but represented as slightly
+            # larger (e.g. 1.01 - 1.0 > 0.01 in IEEE 754).
+            im_lo = im_peak
+            im_hi = im_peak
+            changed = True
+            while changed:
+                changed = False
+                for i in range(left_idx, right_idx):
+                    if used[i]:
+                        continue
+                    im_i = im_sorted[i]
+                    if im_i < im_lo:
+                        expand = im_lo * mob_tol_factor if im_is_relative else mob_tol_abs
+                        if im_lo - im_i <= expand * 1.0000001:
+                            im_lo = im_i
+                            changed = True
+                    elif im_i > im_hi:
+                        expand = im_hi * mob_tol_factor if im_is_relative else mob_tol_abs
+                        if im_i - im_hi <= expand * 1.0000001:
+                            im_hi = im_i
+                            changed = True
+
+            # Collect all unused peaks within the grown IM window
             total_int = 0.0
             weighted_mz = 0.0
             weighted_im = 0.0
             num_nearby = 0
             for i in range(left_idx, right_idx):
-                if not used[i] and abs(im_sorted[i] - im_peak) <= mob_tol:
+                if not used[i] and im_lo <= im_sorted[i] <= im_hi:
                     w = intensity_sorted[i]
                     total_int += w
                     weighted_mz += mz_sorted[i] * w
@@ -92,7 +120,7 @@ if _HAS_NUMBA:
                 used[peak_idx] = True
                 continue
             for i in range(left_idx, right_idx):
-                if not used[i] and abs(im_sorted[i] - im_peak) <= mob_tol:
+                if not used[i] and im_lo <= im_sorted[i] <= im_hi:
                     used[i] = True
             if total_int > 0.0:
                 out_mz[count] = weighted_mz / total_int
@@ -114,7 +142,7 @@ def _merge_peaks_numba(
     ion_mobility_array: np.ndarray,
     mz_tolerance: float = 8.0,
     mz_tolerance_type: Literal["ppm", "da"] = "ppm",
-    im_tolerance: float = 0.05,
+    im_tolerance: float = 0.1,
     im_tolerance_type: Literal["relative", "absolute"] = "relative",
     min_peaks: int = 3,
     max_peaks: int | None = None,
@@ -148,7 +176,7 @@ def merge_peaks(
     ion_mobility_array: np.ndarray,
     mz_tolerance: float = 8.0,
     mz_tolerance_type: Literal["ppm", "da"] = "ppm",
-    im_tolerance: float = 0.05,
+    im_tolerance: float = 0.1,
     im_tolerance_type: Literal["relative", "absolute"] = "relative",
     min_peaks: int = 3,
     max_peaks: int | None = None,
@@ -217,7 +245,7 @@ def _merge_peaks_python(
     ion_mobility_array: np.ndarray,
     mz_tolerance: float = 8.0,
     mz_tolerance_type: Literal["ppm", "da"] = "ppm",
-    im_tolerance: float = 0.05,
+    im_tolerance: float = 0.1,
     im_tolerance_type: Literal["relative", "absolute"] = "relative",
     min_peaks: int = 3,
     max_peaks: int | None = None,
@@ -293,16 +321,40 @@ def _merge_peaks_python(
         left_idx = int(np.searchsorted(mz_array, left_mz, side="left"))
         right_idx = int(np.searchsorted(mz_array, right_mz, side="right"))
 
-        # Only check mobility in the mz window
+        # Slice the mz window
         mobility_window = ion_mobility_array[left_idx:right_idx]
         intensity_window = intensity_array[left_idx:right_idx]
         mz_window = mz_array[left_idx:right_idx]
         used_window = used_mask[left_idx:right_idx]
 
-        # Find nearby peaks in mobility dimension (combined operation)
+        # Dynamic IM region growing: start bounds at seed, expand outward until
+        # no unused peak is within im_tolerance of the current boundary.
+        # The 1.0000001 factor guards against floating-point edge cases where the
+        # gap is mathematically equal to the tolerance but represented as slightly
+        # larger (e.g. 1.01 - 1.0 > 0.01 in IEEE 754).
+        im_lo = float(mobility_peak)
+        im_hi = float(mobility_peak)
+        changed = True
+        while changed:
+            changed = False
+            for i in range(len(mobility_window)):
+                if used_window[i]:
+                    continue
+                im_i = float(mobility_window[i])
+                if im_i < im_lo:
+                    expand = im_lo * mobility_tol_factor if im_tolerance_type == "relative" else mobility_tol_abs
+                    if im_lo - im_i <= expand * 1.0000001:
+                        im_lo = im_i
+                        changed = True
+                elif im_i > im_hi:
+                    expand = im_hi * mobility_tol_factor if im_tolerance_type == "relative" else mobility_tol_abs
+                    if im_i - im_hi <= expand * 1.0000001:
+                        im_hi = im_i
+                        changed = True
+
         nearby_mask = (
-            np.abs(mobility_window - mobility_peak) <= mobility_tol
-        ) & ~used_window
+            (mobility_window >= im_lo) & (mobility_window <= im_hi) & ~used_window
+        )
 
         # Get nearby intensities (need this for multiple operations)
         nearby_intensities = intensity_window[nearby_mask]
@@ -310,12 +362,10 @@ def _merge_peaks_python(
 
         # Check minimum peaks requirement
         if min_peaks > 0 and num_nearby < min_peaks:
-            # Not enough nearby raw peaks to form a centroid, skip
             used_mask[peak_idx] = True
             continue
 
         if num_nearby == 0:
-            # Edge case: no nearby raw peaks (shouldn't happen but be safe)
             merged_mz_list.append(float(mz_peak))
             merged_int_list.append(float(intensity_peak))
             merged_mob_list.append(float(mobility_peak))
@@ -323,7 +373,6 @@ def _merge_peaks_python(
             continue
 
         # Centroid peaks using intensity-weighted average
-        # Reuse already-sliced arrays to avoid re-indexing
         nearby_mz = mz_window[nearby_mask]
         nearby_mobility = mobility_window[nearby_mask]
         total_intensity = np.sum(nearby_intensities)
@@ -360,6 +409,83 @@ def _merge_peaks_python(
     return np.column_stack((merged_mz_list, merged_int_list, merged_mob_list))
 
 
+def get_raw_peaks(
+    td: TimsData,
+    frame_id: int,
+    ion_mobility_type: Literal["ook0", "ccs", "voltage"] = "ook0",
+) -> np.ndarray:
+    """Collect raw (un-centroided) peaks for a single frame.
+
+    Reads all scans, converts indices to m/z values and ion mobility, and
+    returns every raw data point without any filtering.  Noise filtering should
+    be applied to centroided peaks, not individual raw hits — see
+    :func:`get_centroided_spectrum`.
+
+    Args:
+        td: TimsData instance connected to the analysis directory.
+        frame_id: Frame ID to read.
+        ion_mobility_type: Ion mobility representation — ``"ook0"`` (1/K0),
+            ``"ccs"``, or ``"voltage"``.
+
+    Returns:
+        np.ndarray: Shape ``(N, 3)`` — columns ``[mz, intensity, ion_mobility]``.
+
+    Raises:
+        ValueError: If *frame_id* does not exist in the database.
+        RuntimeError: If the TimsData connection is not open.
+    """
+    if td.conn is None:
+        raise RuntimeError("TimsData connection is not open")
+
+    cursor = td.conn.cursor()
+    cursor.execute(
+        "SELECT NumScans FROM Frames WHERE Id = ?", (frame_id,)
+    )
+    result = cursor.fetchone()
+    if result is None:
+        raise ValueError(f"Frame {frame_id} not found in database")
+
+    (num_scans,) = result
+
+    if num_scans == 0:
+        return np.empty((0, 3), dtype=np.float64)
+
+    ion_mobility = td.scanNumToOneOverK0(frame_id, np.arange(0, num_scans))  # type: ignore[call-arg]
+    scans = td.readScans(frame_id, 0, num_scans)
+
+    total_peaks = sum(len(idx) for idx, _ in scans)
+    if total_peaks == 0:
+        return np.empty((0, 3), dtype=np.float64)
+
+    mz_array = np.empty(total_peaks, dtype=np.float64)
+    intensity_array = np.empty(total_peaks, dtype=np.float64)
+    ion_mobility_array = np.empty(total_peaks, dtype=np.float64)
+
+    offset = 0
+    for scan_index, (index_array, intensity_scan) in enumerate(scans):
+        n = len(index_array)
+        if n == 0:
+            continue
+        mz_array[offset : offset + n] = td.indexToMz(frame_id, index_array)
+        intensity_array[offset : offset + n] = intensity_scan
+        ion_mobility_array[offset : offset + n] = ion_mobility[scan_index]
+        offset += n
+
+    mz_array = mz_array[:offset]
+    intensity_array = intensity_array[:offset]
+    ion_mobility_array = ion_mobility_array[:offset]
+
+    if ion_mobility_type == "ccs":
+        ion_mobility_array = np.array(
+            [oneOverK0ToCCSforMz(ook0, 1, mz) for ook0, mz in zip(ion_mobility_array, mz_array)],
+            dtype=np.float64,
+        )
+    elif ion_mobility_type == "voltage":
+        ion_mobility_array = td.scanNumToVoltage(frame_id, ion_mobility_array)
+
+    return np.column_stack((mz_array, intensity_array, ion_mobility_array))
+
+
 def get_centroided_spectrum(
     td: TimsData,
     frame_id: int,
@@ -367,7 +493,7 @@ def get_centroided_spectrum(
     ion_mobility_type: Literal["ook0", "ccs", "voltage"] = "ook0",
     mz_tolerance: float = 8.0,
     mz_tolerance_type: Literal["ppm", "da"] = "ppm",
-    im_tolerance: float = 0.05,
+    im_tolerance: float = 0.1,
     im_tolerance_type: Literal["relative", "absolute"] = "relative",
     min_peaks: int = 3,
     max_peaks: int | None = None,
@@ -443,131 +569,19 @@ def get_centroided_spectrum(
         noise_filter,
     )
 
-    if td.conn is None:
-        logger.error("TimsData connection is not open")
-        raise RuntimeError("TimsData connection is not open")
-
-    # Get frame metadata from the database
-    cursor = td.conn.cursor()
-    cursor.execute(
-        "SELECT Time, NumScans, MsMsType FROM Frames WHERE Id = ?", (frame_id,)
-    )
-    result = cursor.fetchone()
-
-    if result is None:
-        logger.error("Frame %d not found in database", frame_id)
-        raise ValueError(f"Frame {frame_id} not found in database")
-
-    retention_time_sec, num_scans, msms_type = result
-    logger.debug(
-        "Frame %d metadata: RT=%.2fs, NumScans=%d, MsMsType=%d",
-        frame_id,
-        retention_time_sec,
-        num_scans,
-        msms_type,
-    )
-
-    # if msms_type != 0:
-    #    logger.error("Frame %d is not an MS1 frame (MsMsType=%d)", frame_id, msms_type)
-    #    raise ValueError(f"Frame {frame_id} is not an MS1 frame (MsMsType={msms_type})")
-
-    retention_time_min = retention_time_sec / 60.0
-
-    if num_scans == 0:
-        logger.warning("Frame %d has 0 scans, returning empty spectrum", frame_id)
-        return np.empty((0, 3), dtype=np.float64)
-
-    # Pre-compute ion mobility values for each scan (always required)
-    logger.debug(
-        "Computing %s ion mobility values for %d scans", ion_mobility_type, num_scans
-    )
-    ion_mobility = td.scanNumToOneOverK0(frame_id, np.arange(0, num_scans))  # type: ignore[call-arg]
-
-    # Read all scans at once
-    logger.debug("Reading %d scans from frame %d", num_scans, frame_id)
-    results = td.readScans(frame_id, 0, num_scans)
-
-    # Pre-allocate arrays with estimated size
-    total_peaks = sum(len(idx) for idx, _ in results)
-    logger.debug(
-        "Frame %d contains %d total raw peaks across %d scans",
-        frame_id,
-        total_peaks,
-        num_scans,
-    )
-
-    if total_peaks == 0:
+    raw = get_raw_peaks(td, frame_id, ion_mobility_type=ion_mobility_type)
+    if len(raw) == 0:
         logger.warning("Frame %d has 0 peaks, returning empty spectrum", frame_id)
-        return np.empty((0, 3), dtype=np.float64)
+        return raw
 
-    logger.debug("Pre-allocating arrays for %d peaks", total_peaks)
-    mz_array = np.empty(total_peaks, dtype=np.float64)
-    intensity_array = np.empty(total_peaks, dtype=np.float64)
-    ion_mobility_array = np.empty(total_peaks, dtype=np.float64)
+    mz_array = raw[:, 0]
+    intensity_array = raw[:, 1]
+    ion_mobility_array = raw[:, 2]
+    total_peaks = len(raw)
 
-    # Collect all peaks from all scans
-    offset = 0
-    logger.debug("Starting scan iteration and m/z conversion (profile-like raw data)")
-    for scan_index, (index_array, intensity_scan) in enumerate(results):
-        n_peaks = len(index_array)
-        if n_peaks == 0:
-            continue
-
-        # Convert indices to m/z in batch
-        mz_values = td.indexToMz(frame_id, index_array)
-
-        # Fill pre-allocated arrays
-        mz_array[offset : offset + n_peaks] = mz_values
-        intensity_array[offset : offset + n_peaks] = intensity_scan
-        ion_mobility_array[offset : offset + n_peaks] = ion_mobility[scan_index]
-        offset += n_peaks
-
-    # Trim arrays to actual size
-    mz_array = mz_array[:offset]
-    intensity_array = intensity_array[:offset]
-    ion_mobility_array = ion_mobility_array[:offset]
-    logger.debug("Collected %d raw profile-like peaks from all scans", offset)
-
-    # Apply noise filtering if requested
-    if noise_filter is not None:
-        logger.debug("Applying noise filter: %s", noise_filter)
-        noise_threshold = estimate_noise_level(intensity_array, method=noise_filter)
-        noise_mask = intensity_array >= noise_threshold
-
-        mz_array = mz_array[noise_mask]
-        intensity_array = intensity_array[noise_mask]
-        ion_mobility_array = ion_mobility_array[noise_mask]
-
-        filtered_count = offset - len(intensity_array)
-        logger.info(
-            "Noise filtering complete: removed %d peaks below threshold %.2f (%d → %d peaks, %.1f%% removed)",
-            filtered_count,
-            noise_threshold,
-            offset,
-            len(intensity_array),
-            filtered_count / offset * 100,
-        )
-
-    # Convert to CCS if requested
-    if ion_mobility_type == "ccs":
-        logger.debug("Converting 1/K0 to CCS values (assuming charge +1)")
-        # Import conversion function
-        ccs_array = np.array(
-            [
-                oneOverK0ToCCSforMz(ook0, 1, mz)
-                for ook0, mz in zip(ion_mobility_array, mz_array)
-            ],
-            dtype=np.float64,
-        )
-        ion_mobility_array = ccs_array
-        logger.debug("Completed CCS conversion")
-
-    if ion_mobility_type == "voltage":
-        logger.debug("Converting 1/K0 to voltage values")
-        # scanNumToVoltage
-        voltage_array = td.scanNumToVoltage(frame_id, ion_mobility_array)
-        ion_mobility_array = voltage_array
-        logger.debug("Completed voltage conversion")
+    cursor = td.conn.cursor()  # type: ignore[union-attr]
+    cursor.execute("SELECT Time FROM Frames WHERE Id = ?", (frame_id,))
+    retention_time_min = cursor.fetchone()[0] / 60.0
 
     # Apply peak centroiding
     logger.debug("Starting peak centroiding algorithm")
@@ -584,11 +598,22 @@ def get_centroided_spectrum(
         use_numba=use_numba,
     )
 
+    # Apply noise filter on centroided intensities — after merging so the
+    # summed cluster intensity is compared against the threshold, not individual
+    # raw hit intensities.
+    if noise_filter is not None and len(peaks) > 0:
+        logger.debug("Applying noise filter to centroided peaks: %s", noise_filter)
+        threshold = estimate_noise_level(peaks[:, 1], method=noise_filter)
+        before = len(peaks)
+        peaks = peaks[peaks[:, 1] >= threshold]
+        logger.info(
+            "Noise filter removed %d centroided peaks below threshold %.2f (%d → %d)",
+            before - len(peaks), threshold, before, len(peaks),
+        )
+
     # Apply max_peaks limit if specified (post-centroiding)
     if max_peaks and len(peaks) > max_peaks:
         logger.debug("Applying max_peaks filter: %d → %d", len(peaks), max_peaks)
-        # Sort by intensity (column 1) and take top N
-        # argsort is ascending, so we take from the end [::-1]
         sort_indices = np.argsort(peaks[:, 1])[::-1][:max_peaks]
         peaks = peaks[sort_indices]
 
