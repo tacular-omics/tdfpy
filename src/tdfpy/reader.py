@@ -31,7 +31,7 @@ from .tdf import PandasTdf
 from .timsdata import TimsData
 
 
-def get_acquisition_type(analysis_dir: str) -> Literal["DDA", "DIA", "PRM", "Unknown"]:
+def get_acquisition_type(analysis_dir: str | Path) -> Literal["DDA", "DIA", "PRM", "Unknown"]:
     """
     Determine the acquisition type (DDA or DIA) of a .d folder by examining
     the MsMsType values in the Frames table.
@@ -75,8 +75,8 @@ def get_acquisition_type(analysis_dir: str) -> Literal["DDA", "DIA", "PRM", "Unk
 
 # abstract base class for DFolder and DDA_Dfolder
 class _DFolder:
-    def __init__(self, analysis_dir: str):
-        self._analysis_dir = analysis_dir
+    def __init__(self, analysis_dir: str | Path):
+        self._analysis_dir = str(analysis_dir)
         self._closed = False
 
         # assert paths exist
@@ -149,8 +149,9 @@ class _DFolder:
 
     def close(self) -> None:
         """Close the TimsData connection."""
-        if not self._closed:
-            self.timsdata.close()
+        if not getattr(self, "_closed", True):
+            if getattr(self, "_timsdata", None) is not None:
+                self._timsdata.close()
             self._closed = True
 
     def __enter__(self) -> Self:
@@ -186,7 +187,7 @@ class DDA(_DFolder):
         ```
     """
 
-    def __init__(self, analysis_dir: str):
+    def __init__(self, analysis_dir: str | Path):
         super().__init__(analysis_dir)
 
         self._precursor_df = PandasTdf(str(self.analysis_tdf_path)).precursors
@@ -344,7 +345,7 @@ class DIA(_DFolder):
         ```
     """
 
-    def __init__(self, analysis_dir: str):
+    def __init__(self, analysis_dir: str | Path):
         super().__init__(analysis_dir)
 
         # frames
@@ -504,7 +505,7 @@ class PRM(_DFolder):
         ```
     """
 
-    def __init__(self, analysis_dir: str):
+    def __init__(self, analysis_dir: str | Path):
         super().__init__(analysis_dir)
 
         # frames

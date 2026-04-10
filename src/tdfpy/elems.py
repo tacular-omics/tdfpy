@@ -408,11 +408,11 @@ class Frame(_TdfData):
         self,
         mz_tolerance: float = 8,
         mz_tolerance_type: Literal["ppm", "da"] = "ppm",
-        im_tolerance: float = 0.05,
+        im_tolerance: float = 0.1,
         im_tolerance_type: Literal["relative", "absolute"] = "relative",
         min_peaks: int = 3,
         max_peaks: int | None = None,
-        noise_filter=None,
+        noise_filter: Literal["mad", "percentile", "histogram", "baseline", "iterative_median"] | float | None = None,
         ion_mobility_type: Literal["ccs", "ook0", "voltage"] = "ook0",
     ) -> np.ndarray:
         """Centroid the spectrum for this frame using the specified parameters."""
@@ -433,7 +433,7 @@ class Frame(_TdfData):
 
         try:
             return get_spectrum(use_numba=True)
-        except Exception:
+        except (ImportError, RuntimeError, TypeError, ValueError):
             warnings.warn(
                 f"Numba centroiding failed for frame {self.frame_id}. Falling back to Python implementation.",
                 UserWarning,
@@ -490,11 +490,11 @@ class DiaWindow(DiaWindowGroup, _TdfData):
         self,
         mz_tolerance: float = 8,
         mz_tolerance_type: Literal["ppm", "da"] = "ppm",
-        im_tolerance: float = 0.05,
+        im_tolerance: float = 0.1,
         im_tolerance_type: Literal["relative", "absolute"] = "relative",
         min_peaks: int = 3,
         max_peaks: int | None = None,
-        noise_filter=None,
+        noise_filter: Literal["mad", "percentile", "histogram", "baseline", "iterative_median"] | float | None = None,
         ion_mobility_type: Literal["ccs", "ook0", "voltage"] = "ook0",
     ) -> np.ndarray:
         """Centroid the spectrum for this DIA window using the specified parameters."""
@@ -515,7 +515,7 @@ class DiaWindow(DiaWindowGroup, _TdfData):
 
         try:
             return get_spectrum(use_numba=True)
-        except Exception:
+        except (ImportError, RuntimeError, TypeError, ValueError):
             warnings.warn(
                 f"Numba centroiding failed for frame {self.frame_id}. Falling back to Python implementation.",
                 UserWarning,
@@ -652,11 +652,11 @@ class PrmTransition(_TdfData):
         self,
         mz_tolerance: float = 8,
         mz_tolerance_type: Literal["ppm", "da"] = "ppm",
-        im_tolerance: float = 0.05,
+        im_tolerance: float = 0.1,
         im_tolerance_type: Literal["relative", "absolute"] = "relative",
         min_peaks: int = 3,
         max_peaks: int | None = None,
-        noise_filter=None,
+        noise_filter: Literal["mad", "percentile", "histogram", "baseline", "iterative_median"] | float | None = None,
         ion_mobility_type: Literal["ccs", "ook0", "voltage"] = "ook0",
     ) -> np.ndarray:
         """Centroid the spectrum for this PRM transition using the specified parameters."""
@@ -677,7 +677,7 @@ class PrmTransition(_TdfData):
 
         try:
             return get_spectrum(use_numba=True)
-        except Exception:
+        except (ImportError, RuntimeError, TypeError, ValueError):
             warnings.warn(
                 f"Numba centroiding failed for frame {self.frame_id}. Falling back to Python implementation.",
                 UserWarning,

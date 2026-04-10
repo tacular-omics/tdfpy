@@ -88,7 +88,7 @@ are marked as used and skipped in subsequent iterations.
 |---|---|---|
 | `mz_tolerance` | `8.0` | Width of the m/z matching window |
 | `mz_tolerance_type` | `"ppm"` | `"ppm"` or `"da"` |
-| `im_tolerance` | `0.05` | Width of the ion mobility window |
+| `im_tolerance` | `0.1` | Width of the ion mobility window |
 | `im_tolerance_type` | `"relative"` | `"relative"` (fraction of 1/K0) or `"absolute"` |
 | `min_peaks` | `3` | Raw peaks required to form a centroid; set to `0` or `1` to keep all |
 | `max_peaks` | `None` | Cap on output peaks (highest-intensity first) |
@@ -106,5 +106,32 @@ peaks = merge_peaks(mz, inten, im, mz_tolerance=10.0, min_peaks=2)
 print(peaks)
 # shape (2, 3): two centroided peaks, columns [m/z, intensity, 1/K0]
 ```
+
+### Noise filtering vs `min_peaks`
+
+The `noise_filter` parameter (available on both `get_centroided_spectrum` and `.centroid()`)
+estimates a threshold from the intensity distribution and discards centroids below it.
+While convenient, **intensity-based noise estimation has a fundamental limitation**: it cannot
+distinguish low-abundance real signal from electronic noise, and will discard both equally.
+Methods such as `"mad"` are anchored to the median of all centroid intensities — if your
+sample has sparse signal, the threshold can rise above legitimate low-abundance peaks.
+
+A more reliable strategy is to increase `min_peaks` instead:
+
+```python
+# Prefer: raise min_peaks to filter noise without discarding low-abundance signal
+peaks = merge_peaks(mz, intensity, im, min_peaks=5)
+
+# Noise arises from single scans; real peaks appear across multiple scans.
+# min_peaks=5 means a centroid must be supported by at least 5 raw measurements.
+```
+
+Because electronic noise typically manifests as a singleton in a single scan, requiring
+several supporting raw peaks is a structural filter — it targets the *origin* of noise
+rather than its intensity. Low-abundance real peaks that appear consistently across scans
+will survive, whereas noise will not.
+
+Use `noise_filter` only if you have a calibrated threshold or a specific method validated
+for your acquisition settings, and always verify against a `noise_filter=None` baseline first.
 
 ::: tdfpy.merge_peaks

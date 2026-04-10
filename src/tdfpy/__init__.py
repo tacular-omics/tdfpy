@@ -4,6 +4,7 @@ Package for working with TDF (Bruker Data File) data.
 
 from .centroiding import (
     get_centroided_spectrum,
+    get_raw_peaks,
     merge_peaks,
 )
 from .elems import (
@@ -34,10 +35,11 @@ from .reader import (
     get_acquisition_type,
 )
 from .slicer import slice_d_folder
+from .viz import plot_centroiding
 from .tdf import PandasTdf
 from .timsdata import TimsData, timsdata_connect
 
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 
 __all__ = [
     "PandasTdf",
@@ -45,6 +47,8 @@ __all__ = [
     "timsdata_connect",
     "merge_peaks",
     "get_centroided_spectrum",
+    "get_raw_peaks",
+    "plot_centroiding",
     "DDA",
     "DIA",
     "PRM",

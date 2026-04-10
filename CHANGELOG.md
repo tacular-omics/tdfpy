@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0]
+
+### Added
+- `viz` module with `plot_centroiding()` for visual inspection of centroiding quality (2x2 panel: raw peaks, centroids, noise-rejected, 1D spectrum comparison).
+- `plot_centroiding` exported from the top-level `tdfpy` namespace.
+- Example DDA and PRM datasets under `tests/data/`.
+
+### Changed
+- Centroiding now uses dynamic IM region growing instead of a fixed-radius tolerance, improving peak grouping for adjacent ion mobility peaks.
+- Default `im_tolerance` changed from `0.05` to `0.1` across all centroiding functions and `centroid()` methods.
+
+### Fixed
+- Centroiding edge cases where floating-point precision caused peaks at the exact tolerance boundary to be excluded.
+- `timsdata.dll` now included in wheel artifacts for Windows support.
+- Validated SQL table names in `convert_table_to_df()` against `TableNames` enum.
+- Replaced `assert` with explicit `ValueError` in centroiding data integrity check.
+- Narrowed overly broad `except Exception` in Numba fallback paths.
+- Improved error message for unsupported platforms in `timsdata.py`.
+- Added minimum version bounds (`>=2.0`) for numpy and pandas dependencies.
+
 ## [1.1.0]
 
 ### Added
