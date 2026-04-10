@@ -1311,8 +1311,8 @@ docs = [
 requires-dist = [
     { name = "matplotlib", marker = "extra == 'viz'", specifier = ">=3.7" },
     { name = "numba", marker = "extra == 'numba'", specifier = ">=0.59" },
-    { name = "numpy" },
-    { name = "pandas" },
+    { name = "numpy", specifier = ">=2.0" },
+    { name = "pandas", specifier = ">=2.0" },
 ]
 provides-extras = ["numba", "viz"]
 

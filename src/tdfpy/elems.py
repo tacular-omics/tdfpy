@@ -408,7 +408,7 @@ class Frame(_TdfData):
         self,
         mz_tolerance: float = 8,
         mz_tolerance_type: Literal["ppm", "da"] = "ppm",
-        im_tolerance: float = 0.05,
+        im_tolerance: float = 0.1,
         im_tolerance_type: Literal["relative", "absolute"] = "relative",
         min_peaks: int = 3,
         max_peaks: int | None = None,
@@ -433,7 +433,7 @@ class Frame(_TdfData):
 
         try:
             return get_spectrum(use_numba=True)
-        except Exception:
+        except (ImportError, RuntimeError, TypeError, ValueError):
             warnings.warn(
                 f"Numba centroiding failed for frame {self.frame_id}. Falling back to Python implementation.",
                 UserWarning,
@@ -490,7 +490,7 @@ class DiaWindow(DiaWindowGroup, _TdfData):
         self,
         mz_tolerance: float = 8,
         mz_tolerance_type: Literal["ppm", "da"] = "ppm",
-        im_tolerance: float = 0.05,
+        im_tolerance: float = 0.1,
         im_tolerance_type: Literal["relative", "absolute"] = "relative",
         min_peaks: int = 3,
         max_peaks: int | None = None,
@@ -515,7 +515,7 @@ class DiaWindow(DiaWindowGroup, _TdfData):
 
         try:
             return get_spectrum(use_numba=True)
-        except Exception:
+        except (ImportError, RuntimeError, TypeError, ValueError):
             warnings.warn(
                 f"Numba centroiding failed for frame {self.frame_id}. Falling back to Python implementation.",
                 UserWarning,
@@ -652,7 +652,7 @@ class PrmTransition(_TdfData):
         self,
         mz_tolerance: float = 8,
         mz_tolerance_type: Literal["ppm", "da"] = "ppm",
-        im_tolerance: float = 0.05,
+        im_tolerance: float = 0.1,
         im_tolerance_type: Literal["relative", "absolute"] = "relative",
         min_peaks: int = 3,
         max_peaks: int | None = None,
@@ -677,7 +677,7 @@ class PrmTransition(_TdfData):
 
         try:
             return get_spectrum(use_numba=True)
-        except Exception:
+        except (ImportError, RuntimeError, TypeError, ValueError):
             warnings.warn(
                 f"Numba centroiding failed for frame {self.frame_id}. Falling back to Python implementation.",
                 UserWarning,
