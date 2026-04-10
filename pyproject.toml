@@ -10,8 +10,8 @@ authors = [
     {name = "Patrick Garrett", email = "pgarrett@scripps.edu"},
 ]
 dependencies = [
-    "numpy",
-    "pandas",
+    "numpy>=2.0",
+    "pandas>=2.0",
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
@@ -46,7 +46,7 @@ path = "src/tdfpy/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/tdfpy"]
-artifacts = ["src/tdfpy/libtimsdata.so"]
+artifacts = ["src/tdfpy/libtimsdata.so", "src/tdfpy/timsdata.dll"]
 
 [dependency-groups]
 docs = [

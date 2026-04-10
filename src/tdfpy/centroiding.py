@@ -69,10 +69,6 @@ if _HAS_NUMBA:
                 mz_tol = mz_peak * mz_tol_factor
             else:
                 mz_tol = mz_tol_abs
-            if im_is_relative:
-                mob_tol = im_peak * mob_tol_factor
-            else:
-                mob_tol = mob_tol_abs
             left_mz = mz_peak - mz_tol
             right_mz = mz_peak + mz_tol
             left_idx = np.searchsorted(mz_sorted, left_mz)
@@ -309,11 +305,6 @@ def _merge_peaks_python(
 
         # Calculate tolerances
         mz_tol = mz_peak * mz_tol_factor if mz_tolerance_type == "ppm" else mz_tol_abs
-        mobility_tol = (
-            mobility_peak * mobility_tol_factor
-            if im_tolerance_type == "relative"
-            else mobility_tol_abs
-        )
 
         # Binary search for mz range
         left_mz = mz_peak - mz_tol
@@ -656,7 +647,12 @@ def get_tdf_df(td: TimsData) -> pd.DataFrame:
     pasef_frame_msms_info_df = pasef_frame_msms_info_df.drop_duplicates(
         subset="Precursor", keep="first"
     )
-    assert len(pasef_frame_msms_info_df) == len(merged_df)
+    if len(pasef_frame_msms_info_df) != len(merged_df):
+        raise ValueError(
+            f"PASEF frame MS/MS info row count ({len(pasef_frame_msms_info_df)}) "
+            f"does not match precursor/frame merge count ({len(merged_df)}). "
+            f"This indicates a data integrity issue in the .tdf file."
+        )
 
     merged_df = pd.merge(
         merged_df,

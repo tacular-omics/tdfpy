@@ -45,7 +45,10 @@ def get_lib_name(platform: str) -> str:
     for key, value in platform_lib_map.items():
         if platform.startswith(key):
             return value
-    raise Exception("Unsupported platform.")
+    raise OSError(
+        f"Unsupported platform: {platform!r}. "
+        "Bruker's native timsdata library is only available for Linux and Windows."
+    )
 
 
 # Get library name based on the platform

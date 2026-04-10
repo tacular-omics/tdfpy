@@ -28,7 +28,13 @@ def convert_table_to_df(db_path: str | Path, table_name: str) -> pd.DataFrame:
 
     Raises:
         FileNotFoundError: If the database file does not exist.
+        ValueError: If the table name is not a recognized TDF table.
     """
+    valid_names = {tn.value for tn in TableNames}
+    if table_name not in valid_names:
+        raise ValueError(
+            f"Invalid table name: {table_name!r}. Must be one of: {sorted(valid_names)}"
+        )
     db_path = Path(db_path)
     if not db_path.exists():
         raise FileNotFoundError(f"TDF database not found: {db_path}")
@@ -39,7 +45,7 @@ def convert_table_to_df(db_path: str | Path, table_name: str) -> pd.DataFrame:
             return df
     except Exception as e:
         logger.error(f"Error fetching table {table_name} from {db_path}: {e}")
-        raise e
+        raise
 
 
 @dataclass
