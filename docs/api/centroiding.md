@@ -58,20 +58,35 @@ with timsdata_connect("experiment.d") as td:
         im_tolerance=0.03,
     )
 
-    # Noise filtering before centroiding
-    peaks = get_centroided_spectrum(
-        td,
-        frame_id=1,
-        noise_filter="mad",   # median absolute deviation
-    )
+    # Noise filtering before centroiding (string shorthand)
+    peaks = get_centroided_spectrum(td, frame_id=1, noise="mad")
 
     # Hard intensity threshold
-    peaks = get_centroided_spectrum(td, frame_id=1, noise_filter=500.0)
+    peaks = get_centroided_spectrum(td, frame_id=1, noise=500.0)
+
+    # Composed pipeline + region exclusion + tuned filter
+    from tdfpy import ChargeStateRegion, MadThreshold, VerticalNoiseFilter
+    peaks = get_centroided_spectrum(
+        td, frame_id=1,
+        exclude=ChargeStateRegion(),
+        noise=[VerticalNoiseFilter(min_streak_scans=5), MadThreshold(k=3)],
+    )
+
+    # Watershed centroider (integer-index space, no float-m/z binning)
+    from tdfpy import WatershedCentroider
+    peaks = get_centroided_spectrum(
+        td, frame_id=1,
+        centroid=WatershedCentroider(attach_scan_half_width=10, attach_mz_idx_half_width=3),
+    )
 ```
 
-Available `noise_filter` options: `"mad"`, `"percentile"`, `"histogram"`, `"baseline"`,
-`"iterative_median"`, or any `float`/`int` as a direct threshold. Pass `None` to skip
-filtering (the default).
+The `noise=` parameter accepts the string shorthand (`"mad"`, `"percentile"`,
+`"histogram"`, `"baseline"`, `"iterative_median"`), a numeric absolute
+threshold, or any `NoiseFilter` instance / list — see
+[Noise filters](noise.md) for the full hierarchy. The `exclude=` parameter
+accepts a [`ChargeStateRegion`](regions.md). The `centroid=` parameter
+swaps the centroiding algorithm — see
+[Pipeline → Centroiders](pipeline.md#centroiders).
 
 ::: tdfpy.get_centroided_spectrum
 
@@ -109,12 +124,15 @@ print(peaks)
 
 ### Noise filtering vs `min_peaks`
 
-The `noise_filter` parameter (available on both `get_centroided_spectrum` and `.centroid()`)
-estimates a threshold from the intensity distribution and discards centroids below it.
-While convenient, **intensity-based noise estimation has a fundamental limitation**: it cannot
-distinguish low-abundance real signal from electronic noise, and will discard both equally.
-Methods such as `"mad"` are anchored to the median of all centroid intensities — if your
-sample has sparse signal, the threshold can rise above legitimate low-abundance peaks.
+The `noise=` parameter (available on `get_centroided_spectrum`,
+`.centroid()`, and `get_raw_peaks`) chains noise filters before the
+centroider runs — intensity thresholds, the
+[vertical-IM streak filter](noise.md#tdfpy.VerticalNoiseFilter), or any
+combination. Intensity-based estimators have a fundamental limitation:
+they can't distinguish low-abundance real signal from electronic noise.
+Methods like `MadThreshold` are anchored to the median of the
+intensity distribution — if your sample has sparse signal, the
+threshold can rise above legitimate low-abundance peaks.
 
 A more reliable strategy is to increase `min_peaks` instead:
 
@@ -126,12 +144,15 @@ peaks = merge_peaks(mz, intensity, im, min_peaks=5)
 # min_peaks=5 means a centroid must be supported by at least 5 raw measurements.
 ```
 
-Because electronic noise typically manifests as a singleton in a single scan, requiring
-several supporting raw peaks is a structural filter — it targets the *origin* of noise
-rather than its intensity. Low-abundance real peaks that appear consistently across scans
-will survive, whereas noise will not.
+Because electronic noise typically manifests as a singleton in a single
+scan, requiring several supporting raw peaks is a *structural* filter —
+it targets the *origin* of noise rather than its intensity. The
+[`VerticalNoiseFilter`](noise.md#tdfpy.VerticalNoiseFilter) extends this idea
+to the IM axis, requiring peaks to appear as vertical streaks across
+consecutive mobility scans.
 
-Use `noise_filter` only if you have a calibrated threshold or a specific method validated
-for your acquisition settings, and always verify against a `noise_filter=None` baseline first.
+Use intensity-based `noise=` filters only if you have a calibrated
+threshold or a method validated for your acquisition; always verify
+against `noise=None` first.
 
 ::: tdfpy.merge_peaks

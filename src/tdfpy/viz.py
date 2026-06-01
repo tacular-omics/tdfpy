@@ -14,6 +14,7 @@ import numpy as np
 if TYPE_CHECKING:
     from matplotlib.figure import Figure
 
+    from .noise import NoiseSpec
     from .timsdata import TimsData
 
 
@@ -28,9 +29,7 @@ def plot_centroiding(
     im_tolerance_type: Literal["relative", "absolute"] = "relative",
     min_peaks: int = 3,
     max_peaks: int | None = None,
-    noise_filter: Literal["mad", "percentile", "histogram", "baseline", "iterative_median"]
-    | float
-    | None = None,
+    noise: "NoiseSpec" = None,
     mz_range: tuple[float, float] | None = None,
     im_range: tuple[float, float] | None = None,
 ) -> Figure:
@@ -64,8 +63,8 @@ def plot_centroiding(
         im_tolerance_type: ``"relative"`` or ``"absolute"``.
         min_peaks: Minimum raw peaks required to form a centroid.
         max_peaks: Maximum centroids to return (``None`` = unlimited).
-        noise_filter: Pre-centroiding noise filter — method name or numeric
-            threshold (see :func:`~tdfpy.noise.estimate_noise_level`).
+        noise: Pre-centroiding noise filter pipeline — see
+            :func:`tdfpy.noise.coerce_filters` for accepted forms.
         mz_range: Optional ``(min_mz, max_mz)`` to restrict the plot axes.
         im_range: Optional ``(min_im, max_im)`` to restrict the plot axes.
 
@@ -82,7 +81,7 @@ def plot_centroiding(
         from tdfpy.viz import plot_centroiding
 
         with tdfpy.timsdata_connect("experiment.d") as td:
-            fig = plot_centroiding(td, frame_id=100, noise_filter="mad")
+            fig = plot_centroiding(td, frame_id=100, noise="mad")
             fig.savefig("centroiding_check.png", dpi=150)
         ```
     """
@@ -94,23 +93,48 @@ def plot_centroiding(
             "matplotlib is required for visualization: pip install matplotlib"
         ) from exc
 
-    from .centroiding import get_raw_peaks, merge_peaks
-    from .noise import estimate_noise_level
+    from .centroiding import merge_peaks
+    from .noise import coerce_filters
+    from .pipeline import apply_noise, convert, read_spectrum
 
     # --- collect data ----------------------------------------------------------
-    raw = get_raw_peaks(td, frame_id, ion_mobility_type=ion_mobility_type)
-
-    if len(raw) == 0:
+    # Read raw peaks once. If a noise filter is given, apply it pre-centroid
+    # and record which raw peaks it rejected so the third panel can show them.
+    spectrum = read_spectrum(td, frame_id)
+    if len(spectrum) == 0:
         fig, ax = plt.subplots()
         ax.text(0.5, 0.5, f"Frame {frame_id}: no peaks found", ha="center", va="center")
         return fig
+
+    raw_all = convert(spectrum, td, frame_id, ion_mobility_type=ion_mobility_type)
+
+    filters = coerce_filters(noise)
+    if filters:
+        kept_spectrum = apply_noise(spectrum, filters, td=td, frame_id=frame_id)
+    else:
+        kept_spectrum = spectrum
+
+    raw = convert(kept_spectrum, td, frame_id, ion_mobility_type=ion_mobility_type)
+
+    # The "rejected" raw peaks are the set-difference between raw_all and raw.
+    # Since both come from the same RawSpectrum in the same order, the kept
+    # rows are a strict subset — compute the rejected rows via a row-mask.
+    if filters and len(raw) < len(raw_all):
+        kept_keys = set(zip(kept_spectrum.scan_indices.tolist(), kept_spectrum.mz_indices.tolist()))
+        rejected_mask = np.array(
+            [(int(s), int(m)) not in kept_keys for s, m in zip(spectrum.scan_indices, spectrum.mz_indices)],
+            dtype=bool,
+        )
+        rejected_raw = raw_all[rejected_mask]
+    else:
+        rejected_raw = np.empty((0, 3), dtype=np.float64)
 
     mz_raw = raw[:, 0]
     int_raw = raw[:, 1]
     im_raw = raw[:, 2]
 
-    # Centroid all raw peaks first (no noise filter yet)
-    all_centroids = merge_peaks(
+    # Centroid the (possibly filtered) raw peaks
+    centroided = merge_peaks(
         mz_array=mz_raw,
         intensity_array=int_raw,
         ion_mobility_array=im_raw,
@@ -122,23 +146,13 @@ def plot_centroiding(
         max_peaks=max_peaks,
     )
 
-    # Then apply noise filter to centroided intensities
-    if noise_filter is not None and len(all_centroids) > 0:
-        threshold = estimate_noise_level(all_centroids[:, 1], method=noise_filter)
-        noise_mask = all_centroids[:, 1] >= threshold
-        centroided = all_centroids[noise_mask]
-        noise_rejected = all_centroids[~noise_mask]
-    else:
-        centroided = all_centroids
-        noise_rejected = np.empty((0, 3), dtype=np.float64)
-
     mz_c = centroided[:, 0]
     int_c = centroided[:, 1]
     im_c = centroided[:, 2]
 
-    mz_nr = noise_rejected[:, 0]
-    int_nr = noise_rejected[:, 1]
-    im_nr = noise_rejected[:, 2]
+    mz_nr = rejected_raw[:, 0] if rejected_raw.size else np.empty(0)
+    int_nr = rejected_raw[:, 1] if rejected_raw.size else np.empty(0)
+    im_nr = rejected_raw[:, 2] if rejected_raw.size else np.empty(0)
 
     # --- stats ----------------------------------------------------------------
     total_raw_int = float(int_raw.sum())
@@ -208,11 +222,11 @@ def plot_centroiding(
     ax_cent.set_xlabel("m/z")
     ax_cent.set_title(f"Centroided  (n={len(mz_c_p):,})")
 
-    # Panel 3 — noise-rejected centroids
+    # Panel 3 — noise-rejected raw peaks (filters operate pre-centroid now)
     nr_title = (
-        f"Noise-rejected centroids  (n={len(mz_nr_p):,},  {lost_pct:.1f}% of intensity)"
-        if noise_filter is not None
-        else "Noise-rejected centroids  (no noise_filter set)"
+        f"Noise-rejected raw peaks  (n={len(mz_nr_p):,},  {lost_pct:.1f}% of intensity)"
+        if filters
+        else "Noise-rejected raw peaks  (no `noise` set)"
     )
     if len(mz_nr_p) > 0:
         sc_nr = ax_lost.scatter(
@@ -223,7 +237,7 @@ def plot_centroiding(
         cb3 = fig.colorbar(sc_nr, ax=ax_lost, pad=0.02)
         cb3.set_label("log(intensity + 1)", fontsize=8)
     else:
-        ax_lost.text(0.5, 0.5, "No noise-rejected centroids" if noise_filter is not None else "Set noise_filter to see\nrejected centroids",
+        ax_lost.text(0.5, 0.5, "No noise-rejected raw peaks" if filters else "Set `noise=` to see\nrejected peaks",
                      ha="center", va="center", transform=ax_lost.transAxes, fontsize=10, color="grey")
     ax_lost.set_xlabel("m/z")
     ax_lost.set_ylabel(im_label)
@@ -268,11 +282,11 @@ def plot_centroiding(
     # --- stats box ------------------------------------------------------------
     stats = (
         f"Frame {frame_id}  |  "
-        f"raw={len(mz_raw):,}  centroided={len(mz_c):,}  noise-rejected={len(noise_rejected):,}\n"
+        f"raw={len(mz_raw):,}  centroided={len(mz_c):,}  noise-rejected={len(rejected_raw):,}\n"
         f"Intensity retained: {retention_pct:.1f}%   noise-rejected: {lost_pct:.1f}%\n"
         f"mz_tol={mz_tolerance} {mz_tolerance_type}   "
         f"im_tol={im_tolerance} {im_tolerance_type}   "
-        f"min_peaks={min_peaks}   noise_filter={noise_filter}"
+        f"min_peaks={min_peaks}   noise={noise}"
     )
     fig.text(
         0.5, 0.97, stats,

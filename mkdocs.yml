@@ -23,6 +23,9 @@ nav:
     - Metadata: api/metadata.md
     - Lookups: api/lookup.md
     - Centroiding: api/centroiding.md
+    - Pipeline: api/pipeline.md
+    - Noise filters: api/noise.md
+    - Region exclusion: api/regions.md
     - PandasTDF: api/low-level.md
 
 plugins:

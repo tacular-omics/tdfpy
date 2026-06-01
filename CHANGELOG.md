@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Pipeline module (`tdfpy.pipeline`).** Composable ops for raw peak extraction and centroiding — `RawSpectrum` data carrier plus `read_spectrum`, `subset_scans`, `exclude_region`, `smooth`, `box_smooth_intensities`, `apply_noise`, `convert`, `centroid_peaks`. The convenience `get_raw_peaks` and `get_centroided_spectrum` are now thin orchestrators over these ops; custom pipelines call the ops directly. See [docs/api/pipeline.md](docs/api/pipeline.md).
+- **Noise filter subpackage (`tdfpy.noise`).** `NoiseFilter` ABC plus per-method `IntensityThreshold` subclasses (`AbsoluteThreshold`, `MadThreshold`, `PercentileThreshold`, `HistogramThreshold`, `BaselineThreshold`, `IterativeMedianThreshold`) and the structural `VerticalNoiseFilter`. Each filter exposes its tunable knobs as dataclass fields; frozen so they're hashable (Streamlit-cacheable). String/numeric shorthand (`noise="mad"`, `noise=500.0`) coerced via `coerce_filters`. Filters compose: `noise=[VerticalNoiseFilter(...), MadThreshold(k=3)]`.
+- **Region exclusion (`tdfpy.regions`).** New `ChargeStateRegion` dataclass for dropping the singly-charged contamination band in timsTOF MS1 — defined by a `(m/z, 1/K0)` line, capped at the upper endpoint. Applied in integer TOF-index space (one vectorized comparison, no per-peak unit conversion). Distinct from noise filters — answers "which part of the data plane?" rather than "what's real signal?". See [docs/api/regions.md](docs/api/regions.md).
+- **Centroider hierarchy.** New `Centroider` ABC with two implementations:
+  - `MergePeaksCentroider` (default, replaces `CentroidConfig`) — wraps the existing greedy tolerance-based centroider.
+  - `WatershedCentroider` — intensity-ordered region growing in integer index space, ported from `apps/ALGORITHM.md` Stage 3. Avoids float-m/z binning; Numba-JIT'd kernel (~2.5× faster than pure Python on real frames).
+- **Scan-range subsetting.** New `scan_range=(begin, end)` parameter on `get_raw_peaks` / `get_centroided_spectrum`, exposed automatically by `DiaWindow.centroid()` and `PrmTransition.centroid()` — fixes a long-standing bug where those methods centroided the entire parent frame instead of just the isolation window.
+- **`VerticalNoiseDiagnostics`** returned by `VerticalNoiseFilter.run(..., diagnostics=True)`. Carries the keep-mask plus per-pass attrition trace, column counts, and feature-intensity histogram — used by the IM-feature-filter dashboard.
+- **PEP 561 `py.typed` marker.** Downstream type checkers now pick up tdfpy's annotations.
+
+### Changed
+
+- **`get_centroided_spectrum`, `get_raw_peaks`, `Frame.centroid()`, `Frame.raw_peaks()`, `DiaWindow.centroid()`, `PrmTransition.centroid()` API.** Old kwargs collapsed into the new composable system. **Breaking** for the affected call sites:
+
+  | Old | New |
+  |---|---|
+  | `noise_filter="mad" \| float \| None` | `noise="mad" \| MadThreshold(k=3) \| 500.0 \| [filters] \| None` |
+  | `min_intensity="mad" \| float \| None` (on `get_raw_peaks`) | `noise=…` (same as above) |
+  | `ms1_filter=((350.0, 0.7), (1200.0, 1.4))` | `exclude=ChargeStateRegion()` (defaults to that line) |
+  | `centroid=CentroidConfig(mz_tolerance=10)` | `centroid=MergePeaksCentroider(mz_tolerance=10)` |
+  | post-centroid `noise_filter` on `get_centroided_spectrum` | **dropped** — chain filters via `noise=` (pre-centroid) instead |
+  | `Frame.centroid(mz_tolerance=10, ...)` flat kwargs | `Frame.centroid(centroid=MergePeaksCentroider(mz_tolerance=10, ...))` |
+- **`DiaWindow.centroid()` / `PrmTransition.centroid()` now honor `scan_num_begin/end`** — previously they centroided the whole parent frame. Output will differ for these classes; MS1 (`Frame.centroid()`) is unaffected.
+- **`apps/_im_filter.py` removed.** The vertical-noise filter algorithm is now canonical in `tdfpy.noise.structural`. Both dashboards rewired to use `VerticalNoiseFilter.run(..., diagnostics=True)`.
+- **`VerticalNoiseFilter` / `WatershedCentroider` field names normalized.** Every Chebyshev half-extent on the scan or TOF-index axis now follows `<purpose>_<axis>_half_width` (`mz_idx_half_width`, `attach_scan_half_width`, `smooth_scan_half_width`, `attach_mz_idx_half_width`, `smooth_mz_idx_half_width`). Streak length / gap fields renamed to `min_streak_scans` / `max_gap_scans` / `min_streak_intensity`. `min_centroid_total` renamed to `min_centroid_intensity`. **Breaking** for any code that constructed these dataclasses by keyword.
+- **`VerticalNoiseFilter` defaults shifted.** `mz_idx_half_width` now `3` (was `2`), `min_streak_intensity` now `50.0` (was `0.0`), `num_iterations` now `2` (was `1`). Pass explicit values to keep the previous behaviour.
+- **`WatershedCentroider` defaults shifted.** Box smoothing is now on by default — `smooth_scan_half_width=5`, `smooth_mz_idx_half_width=3` (previously `0`, off). `max_mz_idx_from_seed` now defaults to `10` (previously `None`, unbounded). Pass `smooth_scan_half_width=0` and `max_mz_idx_from_seed=None` to disable.
+
+### Removed
+
+- **`tdfpy.noise.estimate_noise_level`** (single-file module). Replaced by the `tdfpy.noise` subpackage's `IntensityThreshold` subclasses + `coerce_filters`. The five string-method names (`"mad"`, `"percentile"`, `"histogram"`, `"baseline"`, `"iterative_median"`) still work as shorthand wherever `noise=` is accepted.
+- Post-centroid noise filtering on `get_centroided_spectrum` — noise filters now run pre-centroid via `noise=`, where they more usefully suppress satellites before the centroider sees them.
+- **Convolution-style smoothing.** The `smooth()` pipeline op and the `im_smoothing_window` / `mz_smoothing_window` kwargs on `get_raw_peaks` / `get_centroided_spectrum` / `Frame.raw_peaks()` / `Frame.centroid()` are gone. Reason: expand-and-aggregate created new positions whenever the window > 1, ballooning the point count for big windows. The position-preserving box-mean smoothing inside `WatershedCentroider` (`smooth_scan_half_width` / `smooth_mz_idx_half_width`) is the supported smoothing path.
+- **`VerticalNoiseFilter.min_window_intensity`** field. Was a per-scan summed-intensity floor inside the column window — confusingly named and rarely tuned (defaulted to 0). The `min_streak_intensity` total-intensity floor is the kept knob.
+- **Public `box_smooth_intensities` pipeline op.** The underlying kernel remains as a private helper used by `WatershedCentroider`. If you specifically need to box-smooth a `RawSpectrum` outside the watershed, instantiate a `WatershedCentroider` with the smoothing fields set.
+
+### Fixed
+
+- DIA / PRM centroiding now scopes to the isolation window's scan range. Previously every `DiaWindow.centroid()` and `PrmTransition.centroid()` call read the whole parent frame.
+
 ## [1.2.0]
 
 ### Added

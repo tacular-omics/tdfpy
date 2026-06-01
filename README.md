@@ -18,8 +18,11 @@ tdfpy provides a high-level Python API for reading Bruker timsTOF `.d` folders. 
 
 - **DDA** — iterate MS1 frames and precursors (MS2 spectra)
 - **DIA** — iterate MS1 frames and DIA isolation windows
-- **Centroiding** — Numba-accelerated peak merging across the m/z and ion mobility dimensions, returning `(N, 3)` arrays of `[m/z, intensity, 1/K0]`
-- **Lazy spectral access** — frame metadata is loaded upfront; raw peak data is only read when you call `.peaks` or `.centroid()`
+- **PRM** — iterate targets and their transitions
+- **Composable peak pipeline** — `read_spectrum` → optional region exclusion / smoothing / noise-filter chain → centroider. Returns `(N, 3)` `[m/z, intensity, 1/K0]` arrays
+- **Two centroiders** — `MergePeaksCentroider` (default, Numba-JIT'd greedy merge in float m/z) and `WatershedCentroider` (intensity-ordered region growing in integer TOF-index space)
+- **Composable noise filters** — chain `MadThreshold`, `VerticalNoiseFilter`, and others via `noise=[…]`. String shorthand (`noise="mad"`) preserved for terseness
+- **Lazy spectral access** — frame metadata is loaded upfront; raw peak data is only read when you call `.peaks`, `.raw_peaks()`, or `.centroid()`
 
 ## Installation
 
@@ -80,50 +83,84 @@ with DDA("sample.d") as dda:
     )
 ```
 
-## Centroiding Options
+## Peak extraction
 
-`frame.centroid()` and `window.centroid()` accept parameters to control the peak merging:
+Every frame-element method (`Frame.raw_peaks()`, `Frame.centroid()`, and the matching
+methods on `DiaWindow` and `PrmTransition`) accepts the same composable arguments:
+
+```python
+from tdfpy import (
+    ChargeStateRegion, MadThreshold, VerticalNoiseFilter,
+    MergePeaksCentroider, WatershedCentroider,
+)
+
+peaks = frame.centroid(
+    # Region exclusion: drop the singly-charged contamination band
+    exclude=ChargeStateRegion(),
+
+    # Noise filter pipeline (applied in order, pre-centroid)
+    noise=[
+        VerticalNoiseFilter(min_streak_scans=5, num_iterations=2),
+        MadThreshold(k=3),
+    ],
+
+    # Centroider — swap algorithms without changing the surrounding code
+    centroid=MergePeaksCentroider(mz_tolerance=8, mz_tolerance_type="ppm", min_peaks=3),
+    # or:  WatershedCentroider(attach_scan_half_width=10, attach_mz_idx_half_width=3)
+)
+```
+
+Terser shorthand still works for common cases:
+
+```python
+peaks = frame.centroid()                       # all defaults
+peaks = frame.centroid(noise="mad")            # MAD-based intensity floor
+peaks = frame.centroid(noise=500.0)            # absolute threshold
+```
+
+### Watershed centroider
+
+The watershed centroider works in integer `(scan, TOF-index)` space — avoiding the
+float-m/z binning that the greedy merger does. Useful when peaks are closely spaced
+or when seed selection needs to be robust to noisy spikes:
 
 ```python
 peaks = frame.centroid(
-    mz_tolerance=8,               # ppm (default)
-    mz_tolerance_type="ppm",      # or "da"
-    im_tolerance=0.1,             # relative (default); fraction of the 1/K0 value
-    im_tolerance_type="relative", # or "absolute"
-    min_peaks=3,                  # minimum raw peaks to form a centroid
-    noise_filter=None,            # optional: "mad", "percentile", "histogram", etc.
-    ion_mobility_type="ook0",     # or "ccs" / "voltage"
+    centroid=WatershedCentroider(
+        attach_scan_half_width=10, attach_mz_idx_half_width=3,
+        min_seed_intensity=50.0,
+        # Position-preserving intensity smoothing before seed selection (on by default)
+        smooth_scan_half_width=5, smooth_mz_idx_half_width=3,
+    ),
 )
+```
+
+### Custom pipelines
+
+For ordering or transformations beyond what the convenience methods cover, call the
+[pipeline ops](https://tacular-omics.github.io/tdfpy/api/pipeline/) directly:
+
+```python
+from tdfpy import (
+    read_spectrum, exclude_region, smooth, apply_noise, convert,
+    ChargeStateRegion, MadThreshold,
+)
+
+s = read_spectrum(td, frame_id)
+s = exclude_region(s, ChargeStateRegion(), td=td, frame_id=frame_id)
+s = smooth(s, im_window=3)
+s = apply_noise(s, (MadThreshold(k=3),), td=td, frame_id=frame_id)
+peaks = convert(s, td, frame_id)
 ```
 
 ### Noise filtering vs `min_peaks`
 
-The `noise_filter` option estimates a noise threshold from the intensity distribution and
-discards centroids below it. In practice this can be too aggressive: intensity-based methods
-like `"mad"` cannot distinguish low-abundance real signal from noise, and will remove both.
-
-A more reliable approach is to increase `min_peaks` instead. A centroid only forms when at
-least `min_peaks` raw peaks fall within the m/z and ion mobility window. Because electronic
-noise is typically a singleton in a single scan, raising `min_peaks` to `4` or `5` removes
-noise without penalising low-abundance peaks that appear consistently across scans.
-
-```python
-# Prefer this over noise_filter for removing noise
-peaks = frame.centroid(min_peaks=5)
-
-# Use noise_filter only when you have a calibrated threshold or a specific method
-# that suits your data, and verify it against a no-filter baseline first.
-peaks = frame.centroid(noise_filter="iterative_median", min_peaks=3)
-```
-
-You can also call `merge_peaks` directly on your own arrays:
-
-```python
-from tdfpy import merge_peaks
-import numpy as np
-
-peaks = merge_peaks(mz_array, intensity_array, ion_mobility_array, mz_tolerance=10)
-```
+Intensity-based noise filters (`MadThreshold`, `PercentileThreshold`, etc.) can be
+too aggressive: they cannot distinguish low-abundance real signal from electronic
+noise. Raising `min_peaks` on the centroider is often a more reliable filter, since
+electronic noise typically manifests as singletons while real peaks appear across
+multiple scans. The structural [`VerticalNoiseFilter`](https://tacular-omics.github.io/tdfpy/api/noise/)
+extends this idea to the IM axis.
 
 ## Documentation
 

@@ -172,6 +172,152 @@ class TestSpectra(unittest.TestCase):
                     np.testing.assert_allclose(py_peaks[:, 1], numba_peaks[:, 1], rtol=1e-6)
                     np.testing.assert_allclose(py_peaks[:, 2], numba_peaks[:, 2], rtol=1e-6)
 
+    def test_peak_noise_filter_off_is_noop(self):
+        """peak_noise_filter=False should produce identical output to omitting it."""
+        rng = np.random.default_rng(42)
+        mz = np.sort(rng.uniform(100.0, 105.0, size=200))
+        intensity = rng.uniform(10.0, 1000.0, size=200)
+        im = rng.uniform(0.8, 0.9, size=200)
+
+        baseline = merge_peaks(
+            mz, intensity, im,
+            mz_tolerance=20, mz_tolerance_type="ppm",
+            im_tolerance=0.02, im_tolerance_type="absolute",
+            min_peaks=1,
+        )
+        with_flag_off = merge_peaks(
+            mz, intensity, im,
+            mz_tolerance=20, mz_tolerance_type="ppm",
+            im_tolerance=0.02, im_tolerance_type="absolute",
+            min_peaks=1,
+            peak_noise_filter=False,
+        )
+        np.testing.assert_array_equal(baseline, with_flag_off)
+
+    def test_peak_noise_filter_suppresses_satellites(self):
+        """Low-intensity raw points within the noise window should get filtered."""
+        # One tall anchor at 500.0 (intensity 10000), surrounded by 6 low-intensity
+        # satellite points at 0.02 Da spacing on each side. With end_fraction=0.1
+        # over a 0.1 Da window, threshold at d=0.02 is 10000 * (1 - 0.2*0.9) = 8200,
+        # so all 100-intensity satellites (well below) get suppressed.
+        mz = np.array([
+            500.00 - 0.06, 500.00 - 0.04, 500.00 - 0.02,
+            500.00,
+            500.00 + 0.02, 500.00 + 0.04, 500.00 + 0.06,
+        ])
+        intensity = np.array([100.0, 100.0, 100.0, 10000.0, 100.0, 100.0, 100.0])
+        im = np.full(7, 0.85)
+
+        # Use a tight centroid tolerance so satellites are NOT part of the centroid.
+        without_filter = merge_peaks(
+            mz, intensity, im,
+            mz_tolerance=5, mz_tolerance_type="ppm",
+            im_tolerance=0.001, im_tolerance_type="absolute",
+            min_peaks=1,
+        )
+        with_filter = merge_peaks(
+            mz, intensity, im,
+            mz_tolerance=5, mz_tolerance_type="ppm",
+            im_tolerance=0.001, im_tolerance_type="absolute",
+            min_peaks=1,
+            peak_noise_filter=True,
+            peak_noise_window=0.1,
+            peak_noise_end_fraction=0.1,
+        )
+
+        # Without filter: 7 centroids (one per point). With filter: only the anchor.
+        self.assertEqual(len(without_filter), 7)
+        self.assertEqual(len(with_filter), 1)
+        np.testing.assert_allclose(with_filter[0, 0], 500.0, atol=1e-9)
+        np.testing.assert_allclose(with_filter[0, 1], 10000.0)
+
+    def test_peak_noise_filter_preserves_real_neighbor(self):
+        """A second tall peak inside the noise window should NOT be filtered."""
+        # Tall anchor at 500.0 (10000), real peak at 500.05 (5000), noise at 500.02 (100).
+        # Threshold at d=0.05: 10000 * (1 - 0.5*0.9) = 5500 → 5000 < 5500, so the
+        # "real" neighbor at 5000 is below threshold here. Use a brighter neighbor:
+        # 6000 → 6000 > 5500, survives.
+        mz = np.array([500.00, 500.02, 500.05])
+        intensity = np.array([10000.0, 100.0, 6000.0])
+        im = np.full(3, 0.85)
+
+        with_filter = merge_peaks(
+            mz, intensity, im,
+            mz_tolerance=5, mz_tolerance_type="ppm",
+            im_tolerance=0.001, im_tolerance_type="absolute",
+            min_peaks=1,
+            peak_noise_filter=True,
+            peak_noise_window=0.1,
+            peak_noise_end_fraction=0.1,
+        )
+
+        # The 100-intensity satellite gets killed; the 6000 neighbor survives.
+        self.assertEqual(len(with_filter), 2)
+        mzs = np.sort(with_filter[:, 0])
+        np.testing.assert_allclose(mzs[0], 500.0, atol=1e-9)
+        np.testing.assert_allclose(mzs[1], 500.05, atol=1e-9)
+
+    def test_peak_noise_filter_respects_im_window(self):
+        """Satellites at a different ion mobility should NOT be suppressed."""
+        # Tall anchor at (500.0, 0.85, 10000); a low point at (500.02, 0.95, 100).
+        # The 0.10 IM gap is way outside the centroid's IM window (0.001 abs),
+        # so it should survive the noise filter.
+        mz = np.array([500.00, 500.02])
+        intensity = np.array([10000.0, 100.0])
+        im = np.array([0.85, 0.95])
+
+        with_filter = merge_peaks(
+            mz, intensity, im,
+            mz_tolerance=5, mz_tolerance_type="ppm",
+            im_tolerance=0.001, im_tolerance_type="absolute",
+            min_peaks=1,
+            peak_noise_filter=True,
+            peak_noise_window=0.1,
+            peak_noise_end_fraction=0.1,
+        )
+        self.assertEqual(len(with_filter), 2)
+
+    @unittest.skipIf(not _HAS_NUMBA, "Numba not available")
+    def test_peak_noise_filter_numba_python_equivalence(self):
+        """Numba and Python paths should agree when the peak-noise filter is on."""
+        rng = np.random.default_rng(7)
+        # Build a synthetic spectrum: a handful of tall anchors plus dense
+        # low-intensity satellites around each, so the filter has real work to do.
+        anchors_mz = np.array([300.0, 500.0, 750.0, 1000.0])
+        anchors_int = np.array([20000.0, 15000.0, 30000.0, 8000.0])
+        anchors_im = np.array([0.80, 0.85, 0.90, 0.95])
+
+        sat_mz = []
+        sat_int = []
+        sat_im = []
+        for a_mz, a_im in zip(anchors_mz, anchors_im):
+            offsets = rng.uniform(-0.09, 0.09, size=30)
+            sat_mz.extend((a_mz + offsets).tolist())
+            sat_int.extend(rng.uniform(50.0, 500.0, size=30).tolist())
+            sat_im.extend(np.full(30, a_im).tolist())
+
+        mz = np.concatenate([anchors_mz, np.asarray(sat_mz)])
+        intensity = np.concatenate([anchors_int, np.asarray(sat_int)])
+        im = np.concatenate([anchors_im, np.asarray(sat_im)])
+
+        params = dict(
+            mz_tolerance=10, mz_tolerance_type="ppm",
+            im_tolerance=0.001, im_tolerance_type="absolute",
+            min_peaks=1,
+            peak_noise_filter=True,
+            peak_noise_window=0.1,
+            peak_noise_end_fraction=0.1,
+        )
+        py_peaks = _merge_peaks_python(mz, intensity, im, **params)
+        nb_peaks = _merge_peaks_numba(mz, intensity, im, **params)
+
+        self.assertEqual(len(py_peaks), len(nb_peaks))
+        order_py = np.argsort(py_peaks[:, 0])
+        order_nb = np.argsort(nb_peaks[:, 0])
+        np.testing.assert_allclose(py_peaks[order_py, 0], nb_peaks[order_nb, 0], rtol=1e-9)
+        np.testing.assert_allclose(py_peaks[order_py, 1], nb_peaks[order_nb, 1], rtol=1e-9)
+        np.testing.assert_allclose(py_peaks[order_py, 2], nb_peaks[order_nb, 2], rtol=1e-9)
+
 
 if __name__ == "__main__":
     unittest.main()

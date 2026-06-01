@@ -2,15 +2,85 @@ import datetime
 import warnings
 from dataclasses import dataclass
 from enum import Enum, StrEnum
-from functools import partial
 from typing import Any, Literal
 
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
 
-from .centroiding import get_centroided_spectrum
+from .centroiding import get_centroided_spectrum, get_raw_peaks
+from .noise import NoiseSpec
+from .pipeline import Centroider, MergePeaksCentroider
+from .regions import ChargeStateRegion
 from .timsdata import TimsData, oneOverK0ToCCSforMz
+
+
+def _frame_raw_peaks(
+    td: TimsData,
+    frame_id: int,
+    *,
+    scan_range: tuple[int, int] | None,
+    exclude: ChargeStateRegion | None,
+    noise: NoiseSpec,
+    ion_mobility_type: Literal["ook0", "ccs", "voltage"],
+) -> np.ndarray:
+    """Shared body for the ``raw_peaks`` methods across frame elements."""
+    return get_raw_peaks(
+        td,
+        frame_id,
+        scan_range=scan_range,
+        exclude=exclude,
+        noise=noise,
+        ion_mobility_type=ion_mobility_type,
+    )
+
+
+def _frame_centroid(
+    td: TimsData,
+    frame_id: int,
+    *,
+    scan_range: tuple[int, int] | None,
+    exclude: ChargeStateRegion | None,
+    noise: NoiseSpec,
+    ion_mobility_type: Literal["ook0", "ccs", "voltage"],
+    centroid: Centroider | None,
+) -> np.ndarray:
+    """Shared body for the ``centroid`` methods across frame elements.
+
+    For :class:`~tdfpy.pipeline.MergePeaksCentroider` (the default): tries
+    Numba first, falls back to pure Python on failure. Other centroiders
+    are called once with no fallback.
+    """
+    cfg: Centroider = centroid if centroid is not None else MergePeaksCentroider()
+    try:
+        return get_centroided_spectrum(
+            td,
+            frame_id,
+            scan_range=scan_range,
+            exclude=exclude,
+            noise=noise,
+            ion_mobility_type=ion_mobility_type,
+            centroid=cfg,
+        )
+    except (ImportError, RuntimeError, TypeError, ValueError):
+        if not isinstance(cfg, MergePeaksCentroider) or not cfg.use_numba:
+            raise
+        warnings.warn(
+            f"Numba centroiding failed for frame {frame_id}. Falling back to Python implementation.",
+            UserWarning,
+            stacklevel=3,
+        )
+        from dataclasses import replace
+
+        return get_centroided_spectrum(
+            td,
+            frame_id,
+            scan_range=scan_range,
+            exclude=exclude,
+            noise=noise,
+            ion_mobility_type=ion_mobility_type,
+            centroid=replace(cfg, use_numba=False),
+        )
 
 
 class MsMsType(Enum):
@@ -404,42 +474,51 @@ class Frame(_TdfData):
             )
         return mz_int_arrays
 
-    def centroid(
+    def raw_peaks(
         self,
-        mz_tolerance: float = 8,
-        mz_tolerance_type: Literal["ppm", "da"] = "ppm",
-        im_tolerance: float = 0.1,
-        im_tolerance_type: Literal["relative", "absolute"] = "relative",
-        min_peaks: int = 3,
-        max_peaks: int | None = None,
-        noise_filter: Literal["mad", "percentile", "histogram", "baseline", "iterative_median"] | float | None = None,
-        ion_mobility_type: Literal["ccs", "ook0", "voltage"] = "ook0",
+        *,
+        exclude: ChargeStateRegion | None = None,
+        noise: NoiseSpec = None,
+        ion_mobility_type: Literal["ook0", "ccs", "voltage"] = "ook0",
     ) -> np.ndarray:
-        """Centroid the spectrum for this frame using the specified parameters."""
-        get_spectrum = partial(
-            get_centroided_spectrum,
+        """Return raw peaks as ``(N, 3)`` ``[mz, intensity, ion_mobility]``.
+
+        Higher-level pythonic wrapper around :func:`tdfpy.get_raw_peaks`. See
+        that function for the meaning of each kwarg.
+        """
+        return _frame_raw_peaks(
             self.timsdata,
-            frame_id=self.frame_id,
-            spectrum_index=None,
+            self.frame_id,
+            scan_range=None,
+            exclude=exclude,
+            noise=noise,
             ion_mobility_type=ion_mobility_type,
-            mz_tolerance=mz_tolerance,
-            mz_tolerance_type=mz_tolerance_type,
-            im_tolerance=im_tolerance,
-            im_tolerance_type=im_tolerance_type,
-            min_peaks=min_peaks,
-            max_peaks=max_peaks,
-            noise_filter=noise_filter,
         )
 
-        try:
-            return get_spectrum(use_numba=True)
-        except (ImportError, RuntimeError, TypeError, ValueError):
-            warnings.warn(
-                f"Numba centroiding failed for frame {self.frame_id}. Falling back to Python implementation.",
-                UserWarning,
-                stacklevel=2,
-            )
-            return get_spectrum(use_numba=False)
+    def centroid(
+        self,
+        *,
+        exclude: ChargeStateRegion | None = None,
+        noise: NoiseSpec = None,
+        ion_mobility_type: Literal["ook0", "ccs", "voltage"] = "ook0",
+        centroid: Centroider | None = None,
+    ) -> np.ndarray:
+        """Centroid the spectrum for this frame.
+
+        Pre-centroid raw-peak knobs (``exclude``, ``noise``, smoothing,
+        ``ion_mobility_type``) are forwarded to
+        :func:`tdfpy.get_raw_peaks`. Centroider-specific knobs live on
+        :class:`~tdfpy.pipeline.Centroider`.
+        """
+        return _frame_centroid(
+            self.timsdata,
+            self.frame_id,
+            scan_range=None,
+            exclude=exclude,
+            noise=noise,
+            ion_mobility_type=ion_mobility_type,
+            centroid=centroid,
+        )
 
 
 @dataclass
@@ -486,42 +565,49 @@ class DiaWindow(DiaWindowGroup, _TdfData):
             )
         return mz_int_arrays
 
-    def centroid(
+    def raw_peaks(
         self,
-        mz_tolerance: float = 8,
-        mz_tolerance_type: Literal["ppm", "da"] = "ppm",
-        im_tolerance: float = 0.1,
-        im_tolerance_type: Literal["relative", "absolute"] = "relative",
-        min_peaks: int = 3,
-        max_peaks: int | None = None,
-        noise_filter: Literal["mad", "percentile", "histogram", "baseline", "iterative_median"] | float | None = None,
-        ion_mobility_type: Literal["ccs", "ook0", "voltage"] = "ook0",
+        *,
+        exclude: ChargeStateRegion | None = None,
+        noise: NoiseSpec = None,
+        ion_mobility_type: Literal["ook0", "ccs", "voltage"] = "ook0",
     ) -> np.ndarray:
-        """Centroid the spectrum for this DIA window using the specified parameters."""
-        get_spectrum = partial(
-            get_centroided_spectrum,
+        """Return raw peaks for this DIA window — restricted to the
+        window's scan range ``[scan_num_begin, scan_num_end)``.
+
+        Mirrors :meth:`Frame.raw_peaks`.
+        """
+        return _frame_raw_peaks(
             self.timsdata,
-            frame_id=self.frame_id,
-            spectrum_index=None,
+            self.frame_id,
+            scan_range=(self.scan_num_begin, self.scan_num_end),
+            exclude=exclude,
+            noise=noise,
             ion_mobility_type=ion_mobility_type,
-            mz_tolerance=mz_tolerance,
-            mz_tolerance_type=mz_tolerance_type,
-            im_tolerance=im_tolerance,
-            im_tolerance_type=im_tolerance_type,
-            min_peaks=min_peaks,
-            max_peaks=max_peaks,
-            noise_filter=noise_filter,
         )
 
-        try:
-            return get_spectrum(use_numba=True)
-        except (ImportError, RuntimeError, TypeError, ValueError):
-            warnings.warn(
-                f"Numba centroiding failed for frame {self.frame_id}. Falling back to Python implementation.",
-                UserWarning,
-                stacklevel=2,
-            )
-            return get_spectrum(use_numba=False)
+    def centroid(
+        self,
+        *,
+        exclude: ChargeStateRegion | None = None,
+        noise: NoiseSpec = None,
+        ion_mobility_type: Literal["ook0", "ccs", "voltage"] = "ook0",
+        centroid: Centroider | None = None,
+    ) -> np.ndarray:
+        """Centroid the spectrum for this DIA window — restricted to the
+        window's scan range ``[scan_num_begin, scan_num_end)``.
+
+        Mirrors :meth:`Frame.centroid`.
+        """
+        return _frame_centroid(
+            self.timsdata,
+            self.frame_id,
+            scan_range=(self.scan_num_begin, self.scan_num_end),
+            exclude=exclude,
+            noise=noise,
+            ion_mobility_type=ion_mobility_type,
+            centroid=centroid,
+        )
 
     @property
     def ook0_begin(self) -> float:
@@ -648,42 +734,49 @@ class PrmTransition(_TdfData):
             )
         return mz_int_arrays
 
-    def centroid(
+    def raw_peaks(
         self,
-        mz_tolerance: float = 8,
-        mz_tolerance_type: Literal["ppm", "da"] = "ppm",
-        im_tolerance: float = 0.1,
-        im_tolerance_type: Literal["relative", "absolute"] = "relative",
-        min_peaks: int = 3,
-        max_peaks: int | None = None,
-        noise_filter: Literal["mad", "percentile", "histogram", "baseline", "iterative_median"] | float | None = None,
-        ion_mobility_type: Literal["ccs", "ook0", "voltage"] = "ook0",
+        *,
+        exclude: ChargeStateRegion | None = None,
+        noise: NoiseSpec = None,
+        ion_mobility_type: Literal["ook0", "ccs", "voltage"] = "ook0",
     ) -> np.ndarray:
-        """Centroid the spectrum for this PRM transition using the specified parameters."""
-        get_spectrum = partial(
-            get_centroided_spectrum,
+        """Return raw peaks for this PRM transition — restricted to its
+        scan range ``[scan_num_begin, scan_num_end)``.
+
+        Mirrors :meth:`Frame.raw_peaks`.
+        """
+        return _frame_raw_peaks(
             self.timsdata,
-            frame_id=self.frame_id,
-            spectrum_index=None,
+            self.frame_id,
+            scan_range=(self.scan_num_begin, self.scan_num_end),
+            exclude=exclude,
+            noise=noise,
             ion_mobility_type=ion_mobility_type,
-            mz_tolerance=mz_tolerance,
-            mz_tolerance_type=mz_tolerance_type,
-            im_tolerance=im_tolerance,
-            im_tolerance_type=im_tolerance_type,
-            min_peaks=min_peaks,
-            max_peaks=max_peaks,
-            noise_filter=noise_filter,
         )
 
-        try:
-            return get_spectrum(use_numba=True)
-        except (ImportError, RuntimeError, TypeError, ValueError):
-            warnings.warn(
-                f"Numba centroiding failed for frame {self.frame_id}. Falling back to Python implementation.",
-                UserWarning,
-                stacklevel=2,
-            )
-            return get_spectrum(use_numba=False)
+    def centroid(
+        self,
+        *,
+        exclude: ChargeStateRegion | None = None,
+        noise: NoiseSpec = None,
+        ion_mobility_type: Literal["ook0", "ccs", "voltage"] = "ook0",
+        centroid: Centroider | None = None,
+    ) -> np.ndarray:
+        """Centroid the spectrum for this PRM transition — restricted to
+        its scan range ``[scan_num_begin, scan_num_end)``.
+
+        Mirrors :meth:`Frame.centroid`.
+        """
+        return _frame_centroid(
+            self.timsdata,
+            self.frame_id,
+            scan_range=(self.scan_num_begin, self.scan_num_end),
+            exclude=exclude,
+            noise=noise,
+            ion_mobility_type=ion_mobility_type,
+            centroid=centroid,
+        )
 
     @property
     def scan_num_range(self) -> tuple[int, int]:

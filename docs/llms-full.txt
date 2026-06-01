@@ -1,0 +1,1030 @@
+# tdfpy — Full Documentation Bundle
+
+This file concatenates the tdfpy docs into a single plaintext bundle for
+one-shot loading into an LLM context. It is generated from the MkDocs
+sources by ``scripts/build_llms_full.py`` and committed to the repo so it
+ships with the deployed docs site at /llms-full.txt.
+
+For a curated index instead of the full text, see /llms.txt.
+
+
+==============================================================================
+# index.md
+==============================================================================
+
+# tdfpy
+
+[![Python package](https://github.com/tacular-omics/tdfpy/actions/workflows/python-package.yml/badge.svg)](https://github.com/tacular-omics/tdfpy/actions/workflows/python-package.yml)
+[![codecov](https://codecov.io/gh/tacular-omics/tdfpy/graph/badge.svg?token=RMUiW11IR2)](https://codecov.io/gh/tacular-omics/tdfpy)
+[![PyPI version](https://badge.fury.io/py/tdfpy.svg)](https://badge.fury.io/py/tdfpy)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-g.svg)](https://opensource.org/licenses/MIT)
+
+A Python package for extracting data from Bruker timsTOF data files (`.tdf` and `.tdf_bin`). Includes a Numba-accelerated centroiding algorithm for efficient extraction of ion mobility data.
+
+## Overview
+
+tdfpy provides an API that works with familiar objects — no need to think about PASEF frames.
+
+- **DDA** — MS1 spectra and precursors (MS2 spectra)
+- **DIA** — MS1 spectra and DIA windows
+- **PRM** — MS1 spectra, targets, and transitions
+- **MALDI** — Work in progress
+
+**MS1 Spectra** — MS1 objects include a Numba-accelerated centroiding function that returns a 3D NumPy array containing m/z, intensity, and 1/K0 values.
+
+**Precursors (DDA)** — Precursors are already centroided using Bruker's built-in C extensions.
+
+**Windows (DIA)** — DIA windows also have access to the centroiding function. Note that the ion mobility dimension in DIA frames corresponds to precursor ions from the MS1 frame, not fragment ions (TIMS components are positioned before the fragmentation cell).
+
+## Quick Example
+
+```python
+from tdfpy import DDA, DIA, PRM
+
+# DDA acquisition
+with DDA('data.d') as dda:
+    for frame in dda.ms1:
+        peaks = frame.centroid()  # shape (N, 3): m/z, intensity, 1/K0
+
+    for precursor in dda.precursors:
+        print(precursor.largest_peak_mz, precursor.peaks)
+
+# DIA acquisition
+with DIA('data.d') as dia:
+    for frame in dia.ms1:
+        peaks = frame.centroid()
+
+    for window in dia.windows:
+        peaks = window.centroid()
+
+# PRM acquisition
+with PRM('data.d') as prm:
+    for target in prm.targets:
+        print(target.monoisotopic_mz, target.charge)
+
+    for transition in prm.transitions:
+        peaks = transition.peaks  # shape (N, 2): m/z, intensity
+```
+
+## Installation
+
+```bash
+pip install tdfpy
+```
+
+See [Getting Started](getting-started.md) for a full walkthrough.
+
+
+==============================================================================
+# getting-started.md
+==============================================================================
+
+# Getting Started
+
+## Installation
+
+```bash
+pip install tdfpy
+```
+
+Requires Python 3.12+.
+
+## Detecting Acquisition Type
+
+Before loading data, you can inspect the acquisition type of a `.d` folder:
+
+```python
+from tdfpy import get_acquisition_type
+
+acq_type = get_acquisition_type(D_PATH)
+# Returns one of: "DDA", "DIA", "PRM", "Unknown"
+print(acq_type)
+```
+
+## DDA Acquisitions
+
+```python
+from tdfpy import DDA
+
+with DDA(D_PATH) as dda:
+    # Iterate over MS1 frames
+    for frame in dda.ms1:
+        print(f"Frame {frame.frame_id} at RT {frame.time:.1f}s")
+        # Centroid the frame — returns shape (N, 3): [m/z, intensity, 1/K0]
+        peaks = frame.centroid()
+        print(f"  {len(peaks)} centroided peaks")
+        break
+
+    # Iterate over precursors (MS2)
+    for precursor in dda.precursors:
+        print(f"Precursor {precursor.precursor_id}: {precursor.largest_peak_mz:.4f} m/z")
+        # Raw centroided peaks from Bruker's algorithm
+        peaks = precursor.peaks
+        break
+```
+
+## DIA Acquisitions
+
+```python
+from tdfpy import DIA
+
+with DIA(D_PATH) as dia:
+    # MS1 frames
+    for frame in dia.ms1:
+        peaks = frame.centroid()
+        break
+
+    # DIA windows
+    for window in dia.windows:
+        print(f"Window group {window.window_group}: isolation {window.isolation_mz} m/z")
+        peaks = window.centroid()
+        break
+```
+
+## PRM Acquisitions
+
+```python
+from tdfpy import PRM
+
+with PRM(D_PATH) as prm:
+    # MS1 frames
+    for frame in prm.ms1:
+        peaks = frame.centroid()
+        break
+
+    # PRM targets (precursor ions being monitored)
+    for target in prm.targets:
+        print(f"Target {target.target_id}: {target.monoisotopic_mz:.4f} m/z, charge {target.charge}")
+        break
+
+    # PRM transitions (MS2 spectra linked to a target)
+    for transition in prm.transitions:
+        print(f"Transition frame {transition.frame_id}: isolation {transition.isolation_mz} m/z")
+        peaks = transition.peaks  # shape (N, 2): [m/z, intensity]
+        break
+```
+
+## Lookups and Queries
+
+Access frames, precursors, or windows directly by ID or query by properties.
+
+```python
+from tdfpy import DDA
+
+with DDA(D_PATH) as dda:
+    # Access by ID
+    frame = dda.ms1[1]
+    precursor = dda.precursors[1]
+
+    # Query precursors by m/z and retention time
+    results = dda.precursors.query(
+        mz=1292.63,
+        mz_tolerance=20.0,       # ppm by default
+        rt=2400.0,               # seconds
+        rt_tolerance=30.0,       # seconds
+    )
+    for p in results:
+        print(p.precursor_id, p.largest_peak_mz)
+```
+
+```python
+from tdfpy import DIA
+
+with DIA(D_PATH) as dia:
+    # Get all windows in a window group
+    group_windows = dia.windows[1]  # returns a list
+
+    # Query windows by retention time
+    results = dia.windows.query(rt=10.0, rt_tolerance=5.0)
+    for w in results:
+        print(w.window_group, w.isolation_mz)
+```
+
+## How Data Access Works
+
+A `.d` folder contains two files: `analysis.tdf` (a SQLite database with metadata) and
+`analysis.tdf_bin` (a binary file with the raw spectral data).
+
+When you open a `DDA` or `DIA` reader, it immediately:
+
+1. Opens a connection to the binary file
+2. Reads all frame and precursor metadata from the SQLite database into memory
+
+The objects you get back — `Frame`, `Precursor`, `DiaWindow`, etc. — all hold a reference
+to that open connection. Their fields (`frame_id`, `rt`, `monoisotopic_mz`, etc.) are
+available immediately. **Spectral data is fetched lazily**: calling `.peaks` or `.centroid()`
+reads from the binary file at that moment.
+
+This means objects cannot be used after the reader closes:
+
+```python
+from tdfpy import DDA
+
+with DDA(D_PATH) as dda:
+    frame = dda.ms1[1]
+    peaks = frame.centroid()  # fine — connection is open
+
+# peaks = frame.centroid()  # RuntimeError: connection is closed
+```
+
+## Development
+
+The project uses `uv` for dependency management and `just` as a task runner.
+
+```bash
+just install-dev     # install with dev dependencies
+just test            # run tests
+just lint            # ruff linter
+just check           # lint + test + type check
+```
+
+To serve the docs locally:
+
+```bash
+uv run --group docs mkdocs serve
+```
+
+
+==============================================================================
+# utilities.md
+==============================================================================
+
+# Utilities
+
+## `slice_d_folder` — Extracting a time range from a `.d` folder
+
+`slice_d_folder` creates a smaller, self-contained `.d` folder from an existing one by keeping
+only a contiguous range of frames. The output is a fully valid Bruker `.d` folder: both the
+SQLite metadata (`analysis.tdf`) and the binary scan data (`analysis.tdf_bin`) are rebuilt so
+that downstream tools — including tdfpy's own readers — can open the result directly.
+
+This is useful for:
+
+- Creating small test datasets from a large acquisition
+- Isolating a chromatographic peak or retention time window for focused analysis
+- Reducing file size before sharing or archiving
+
+### What gets filtered
+
+The slicer keeps all frames whose `Id` falls within `[frame_start, frame_end]` (inclusive,
+1-based) and removes everything else:
+
+| Table | Behaviour |
+|---|---|
+| `Frames` | Rows outside the range are deleted |
+| `PasefFrameMsMsInfo` | Rows referencing deleted frames are deleted |
+| `DiaFrameMsMsInfo` | Rows referencing deleted frames are deleted |
+| `PrmFrameMsMsInfo` | Rows referencing deleted frames are deleted |
+| `Precursors` | Orphaned rows (parent frame deleted) are removed |
+| `DiaFrameMsMsWindows` | Orphaned window groups are removed |
+| `analysis.tdf_bin` | Rebuilt from scratch — only kept frames' blobs are written |
+
+The `TimsId` offsets in the `Frames` table are updated to point to the correct positions in
+the new binary file, so the output can be opened immediately with `DDA`, `DIA`, `PRM`, or
+any Bruker-compatible tool.
+
+!!! note "Frame IDs vs retention time"
+    `frame_start` and `frame_end` are raw frame IDs (the `Id` column in the `Frames` table),
+    not retention times. If you need to slice by time, open the `.d` folder first and look up
+    frame IDs using `dda.ms1` or `dia.ms1`.
+
+### Basic usage
+
+```python
+from tdfpy import slice_d_folder
+
+out = slice_d_folder(
+    source_dir="experiment.d",
+    dest_dir="experiment_slice.d",
+    frame_start=100,
+    frame_end=300,
+)
+print(out)  # PosixPath('experiment_slice.d')
+```
+
+The destination directory is created automatically. If it already exists it is overwritten.
+
+### Slicing by retention time
+
+Open the source file first to map retention time to frame IDs:
+
+```python
+from tdfpy import DDA, slice_d_folder
+
+with DDA("experiment.d") as dda:
+    # Find frames within a retention time window (seconds)
+    rt_min, rt_max = 600.0, 900.0  # 10 – 15 min
+    frame_ids = [
+        frame.frame_id
+        for frame in dda.ms1
+        if rt_min <= frame.time <= rt_max
+    ]
+
+first_frame = min(frame_ids)
+last_frame = max(frame_ids)
+
+slice_d_folder(
+    source_dir="experiment.d",
+    dest_dir="experiment_10to15min.d",
+    frame_start=first_frame,
+    frame_end=last_frame,
+)
+```
+
+### Opening the result
+
+The sliced folder can be opened with any tdfpy reader exactly like the original:
+
+```python
+from tdfpy import DDA
+
+with DDA("experiment_slice.d") as dda:
+    for frame in dda.ms1:
+        peaks = frame.centroid()
+        print(frame.frame_id, len(peaks))
+```
+
+::: tdfpy.slice_d_folder
+    options:
+      docstring_style: numpy
+
+
+==============================================================================
+# api/readers.md
+==============================================================================
+
+# Readers
+
+High-level entry points for opening timsTOF `.d` acquisitions.
+
+::: tdfpy.get_acquisition_type
+
+::: tdfpy.DDA
+
+::: tdfpy.DIA
+
+::: tdfpy.PRM
+
+
+==============================================================================
+# api/frames.md
+==============================================================================
+
+# Frames
+
+`Frame` is the base class for all MS1 frames. `DDAMs1Frame`, `DIAMs1Frame`, and `PRMMs1Frame`
+inherit every field and method listed under `Frame` — only their additional fields are shown
+below each subclass.
+
+::: tdfpy.Frame
+
+::: tdfpy.DDAMs1Frame
+    options:
+      inherited_members: false
+      members: [precursors]
+
+::: tdfpy.DIAMs1Frame
+    options:
+      inherited_members: false
+      members: [dia_windows]
+
+## PRM MS1 Frame
+
+In a PRM acquisition, each MS1 frame carries references to the `PrmTransition` objects
+that were being collected in nearby MS2 frames. This lets you correlate survey scans with
+the targeted transitions acquired in the same run.
+
+::: tdfpy.PRMMs1Frame
+    options:
+      inherited_members: false
+      members: [prm_transitions]
+
+
+==============================================================================
+# api/precursor.md
+==============================================================================
+
+# Precursor
+
+::: tdfpy.Precursor
+
+::: tdfpy.PasefFrameMsmsInfo
+
+
+==============================================================================
+# api/windows.md
+==============================================================================
+
+# DIA Windows
+
+::: tdfpy.DiaWindow
+
+::: tdfpy.DiaWindowGroup
+
+
+==============================================================================
+# api/prm.md
+==============================================================================
+
+# PRM Data Elements
+
+Parallel Reaction Monitoring (PRM) experiments select a predefined list of precursor ions
+and collect high-resolution MS2 spectra for each across the chromatographic run.
+The two classes on this page represent those two levels of structure.
+
+## PrmTarget
+
+A `PrmTarget` represents one entry in the instrument's target list — a single analyte
+defined by its m/z, charge state, expected retention time, and expected ion mobility.
+The instrument uses these values to schedule isolation windows and select the correct
+mobility range during data collection.
+
+Each target accumulates back-references to all `PrmTransition` objects collected for it
+via the `transitions` field.
+
+```python
+from tdfpy import PRM
+
+with PRM("experiment.d") as prm:
+    for target in prm.targets:
+        print(
+            f"Target {target.target_id}: "
+            f"{target.monoisotopic_mz:.4f} m/z, "
+            f"charge {target.charge}, "
+            f"RT {target.time:.1f} s, "
+            f"1/K0 {target.one_over_k0:.3f}"
+        )
+        # All transitions collected for this target
+        for tr in target.transitions:
+            print(f"  Frame {tr.frame_id}, RT {tr.rt:.1f} s")
+```
+
+::: tdfpy.PrmTarget
+
+---
+
+## PrmTransition
+
+A `PrmTransition` represents a single MS2 acquisition event for a PRM target — one
+isolation window applied to a specific frame and mobility scan range. Multiple transitions
+are collected for each target as the analyte elutes across time.
+
+`PrmTransition` provides `.peaks` for raw scan data and `.centroid()` for processed spectra,
+consistent with the `DiaWindow` and `PasefFrameMsmsInfo` APIs.
+
+```python
+from tdfpy import PRM
+
+with PRM("experiment.d") as prm:
+    for transition in prm.transitions:
+        print(
+            f"Frame {transition.frame_id}, "
+            f"target {transition.target.target_id}, "
+            f"isolation {transition.isolation_mz:.3f} m/z, "
+            f"CE {transition.collision_energy:.1f} eV"
+        )
+        # Centroided MS2 spectrum — shape (N, 3): [m/z, intensity, 1/K0]
+        peaks = transition.centroid()
+        break
+```
+
+::: tdfpy.PrmTransition
+
+
+==============================================================================
+# api/metadata.md
+==============================================================================
+
+# Metadata
+
+::: tdfpy.MetaData
+
+::: tdfpy.Calibration
+
+::: tdfpy.elems.Polarity
+
+
+==============================================================================
+# api/lookup.md
+==============================================================================
+
+# Lookups
+
+Lookup classes provide iteration, index access, and query methods over collections
+of frames, precursors, DIA windows, or PRM targets and transitions. All lookup objects
+support:
+
+- **Iteration** — `for item in lookup:`
+- **Index access** — `lookup[id]`
+- **Length** — `len(lookup)`
+- **`.get(id)`** — returns `None` (or a default) instead of raising on a missing ID
+- **`.query()`** — filter by m/z, retention time, or ion mobility with tolerances
+
+---
+
+## MS1 Frame Lookup
+
+::: tdfpy.Ms1FrameLookup
+
+---
+
+## Precursor Lookup
+
+::: tdfpy.PrecursorLookup
+
+---
+
+## DIA Window Lookup
+
+`DiaWindowLookup` groups windows by `window_group`. Because a single window group
+definition repeats across many frames, indexing by `window_group_id` returns a **list**
+of `DiaWindow` objects — one per frame that used that group.
+
+```python
+from tdfpy import DIA
+
+with DIA("experiment.d") as dia:
+    # Iterate over all windows across all frames
+    for window in dia.windows:
+        print(window.frame_id, window.isolation_mz, window.rt)
+
+    # All windows belonging to window group 3 (one per frame)
+    group3 = dia.windows[3]
+
+    # Query by retention time (±30 s default)
+    for window in dia.windows.query(rt=600.0, rt_tolerance=15.0):
+        print(window.window_group, window.isolation_mz)
+
+    # Query by window group AND retention time
+    for window in dia.windows.query(window_group_index=5, rt=600.0, rt_tolerance=10.0):
+        peaks = window.centroid()
+```
+
+::: tdfpy.DiaWindowLookup
+
+---
+
+## PRM Lookups
+
+In a PRM experiment the instrument cycles through a list of **targets** (predefined
+precursor ions) and collects MS2 spectra for each. The two lookup classes below reflect
+that structure:
+
+- `PrmTargetLookup` — the list of analytes being monitored (one entry per analyte)
+- `PrmTransitionLookup` — the individual MS2 acquisitions (many per target, spread across
+  the chromatographic run)
+
+### PRM Target Lookup
+
+`PrmTargetLookup` gives direct access to `PrmTarget` objects by their integer `target_id`.
+Use `.query()` to filter targets by m/z, expected retention time, or ion mobility (1/K0).
+
+```python
+from tdfpy import PRM
+
+with PRM("experiment.d") as prm:
+    # Iterate over all targets
+    for target in prm.targets:
+        print(target.target_id, target.monoisotopic_mz, target.charge)
+
+    # Access a specific target by ID
+    t = prm.targets[1]
+    print(t.description, t.time, t.one_over_k0)
+
+    # Query by m/z (20 ppm window)
+    for target in prm.targets.query(mz=565.3189, mz_tolerance=20.0):
+        print(target.target_id, target.monoisotopic_mz)
+
+    # Query by m/z and expected RT (±30 s)
+    for target in prm.targets.query(mz=565.3189, rt=480.0, rt_tolerance=30.0):
+        print(target.target_id, target.description)
+
+    # Query by 1/K0 (ion mobility)
+    for target in prm.targets.query(ook0=0.92, ook0_tolerance=0.05):
+        print(target.target_id, target.one_over_k0)
+```
+
+::: tdfpy.PrmTargetLookup
+
+### PRM Transition Lookup
+
+`PrmTransitionLookup` gives access to `PrmTransition` objects — the individual MS2
+acquisitions captured during the run. Indexing by `target_id` returns a **list** of all
+transitions collected for that target across the chromatographic run.
+
+```python
+from tdfpy import PRM
+
+with PRM("experiment.d") as prm:
+    # All transitions for target 1 (list — one per MS2 frame)
+    transitions = prm.transitions[1]
+    for t in transitions:
+        print(t.frame_id, t.rt, t.collision_energy)
+        peaks = t.peaks  # list of (mz, intensity) arrays per mobility scan
+
+    # Query transitions for a specific target near a retention time
+    for tr in prm.transitions.query(target=1, rt=480.0, rt_tolerance=30.0):
+        centroided = tr.centroid()  # shape (N, 3): [m/z, intensity, 1/K0]
+
+    # Query using a PrmTarget object directly
+    target = prm.targets[1]
+    for tr in prm.transitions.query(target=target, rt=target.time, rt_tolerance=20.0):
+        print(tr.frame_id, tr.isolation_mz)
+```
+
+::: tdfpy.PrmTransitionLookup
+
+
+==============================================================================
+# api/centroiding.md
+==============================================================================
+
+# Centroiding
+
+timsTOF raw data is profile-like: the binary file stores one intensity value per scan per
+m/z index, spread across hundreds of mobility bins. Centroiding collapses that cloud of raw
+measurements into a compact list of peaks — each with a single m/z, intensity, and ion
+mobility value.
+
+tdfpy provides two centroiding functions:
+
+- **`get_centroided_spectrum`** — high-level: reads a full frame from disk, applies optional
+  noise filtering, and returns centroided peaks in one call.
+- **`merge_peaks`** — low-level: centroids pre-assembled NumPy arrays of m/z, intensity, and
+  ion mobility values. Use this when you already have the raw arrays or need fine-grained
+  control.
+
+In practice, most workflows should call `.centroid()` directly on a `Frame`, `DiaWindow`, or
+`PrmTransition` object — that method delegates to `get_centroided_spectrum` internally.
+
+## Numba JIT backend
+
+When [Numba](https://numba.pydata.org/) is installed (it is included in the default
+`tdfpy` dependencies), the core clustering loop runs as a JIT-compiled native function
+(`_merge_peaks_numba_kernel`). This is typically 5–20× faster than the pure-Python
+fallback for large frames. The backend is selected automatically:
+
+```python
+# Numba used if available (default)
+peaks = merge_peaks(mz, intensity, im)
+
+# Force the Python fallback (useful for debugging or environments without Numba)
+peaks = merge_peaks(mz, intensity, im, use_numba=False)
+```
+
+The first call after import triggers Numba's JIT compilation — expect a few seconds of
+overhead. Subsequent calls use the cached compiled kernel.
+
+---
+
+## `get_centroided_spectrum`
+
+Reads frame `frame_id` from the open `TimsData` connection, converts m/z indices to
+m/z values, assembles the raw peak arrays, optionally filters noise, and runs centroiding.
+
+```python
+from tdfpy import timsdata_connect, get_centroided_spectrum
+
+with timsdata_connect("experiment.d") as td:
+    # Default: 1/K0 ion mobility, 8 ppm m/z tolerance
+    peaks = get_centroided_spectrum(td, frame_id=1)
+    print(peaks.shape)   # (N, 3) — columns: [m/z, intensity, 1/K0]
+
+    # Tighter tolerances, CCS instead of 1/K0
+    peaks = get_centroided_spectrum(
+        td,
+        frame_id=1,
+        ion_mobility_type="ccs",
+        mz_tolerance=5.0,
+        im_tolerance=0.03,
+    )
+
+    # Noise filtering before centroiding (string shorthand)
+    peaks = get_centroided_spectrum(td, frame_id=1, noise="mad")
+
+    # Hard intensity threshold
+    peaks = get_centroided_spectrum(td, frame_id=1, noise=500.0)
+
+    # Composed pipeline + region exclusion + tuned filter
+    from tdfpy import ChargeStateRegion, MadThreshold, VerticalNoiseFilter
+    peaks = get_centroided_spectrum(
+        td, frame_id=1,
+        exclude=ChargeStateRegion(),
+        noise=[VerticalNoiseFilter(min_streak_scans=5), MadThreshold(k=3)],
+    )
+
+    # Watershed centroider (integer-index space, no float-m/z binning)
+    from tdfpy import WatershedCentroider
+    peaks = get_centroided_spectrum(
+        td, frame_id=1,
+        centroid=WatershedCentroider(attach_scan_half_width=10, attach_mz_idx_half_width=3),
+    )
+```
+
+The `noise=` parameter accepts the string shorthand (`"mad"`, `"percentile"`,
+`"histogram"`, `"baseline"`, `"iterative_median"`), a numeric absolute
+threshold, or any `NoiseFilter` instance / list — see
+[Noise filters](noise.md) for the full hierarchy. The `exclude=` parameter
+accepts a [`ChargeStateRegion`](regions.md). The `centroid=` parameter
+swaps the centroiding algorithm — see
+[Pipeline → Centroiders](pipeline.md#centroiders).
+
+::: tdfpy.get_centroided_spectrum
+
+---
+
+## `merge_peaks`
+
+Centroids pre-assembled arrays. The algorithm is a greedy intensity-ordered scan: starting
+from the highest-intensity raw peak, every neighbouring peak within the m/z and ion mobility
+tolerances is merged into a single centroid via intensity-weighted averaging. Merged peaks
+are marked as used and skipped in subsequent iterations.
+
+| Parameter | Default | Notes |
+|---|---|---|
+| `mz_tolerance` | `8.0` | Width of the m/z matching window |
+| `mz_tolerance_type` | `"ppm"` | `"ppm"` or `"da"` |
+| `im_tolerance` | `0.1` | Width of the ion mobility window |
+| `im_tolerance_type` | `"relative"` | `"relative"` (fraction of 1/K0) or `"absolute"` |
+| `min_peaks` | `3` | Raw peaks required to form a centroid; set to `0` or `1` to keep all |
+| `max_peaks` | `None` | Cap on output peaks (highest-intensity first) |
+| `use_numba` | `True` | Set to `False` to force the Python fallback |
+
+```python
+import numpy as np
+from tdfpy import merge_peaks
+
+mz  = np.array([500.001, 500.002, 700.005, 700.006, 700.007])
+inten = np.array([8000.0,  4000.0,  6000.0,  5000.0,  3000.0])
+im  = np.array([0.85,     0.85,    0.92,    0.92,    0.92])
+
+peaks = merge_peaks(mz, inten, im, mz_tolerance=10.0, min_peaks=2)
+print(peaks)
+# shape (2, 3): two centroided peaks, columns [m/z, intensity, 1/K0]
+```
+
+### Noise filtering vs `min_peaks`
+
+The `noise=` parameter (available on `get_centroided_spectrum`,
+`.centroid()`, and `get_raw_peaks`) chains noise filters before the
+centroider runs — intensity thresholds, the
+[vertical-IM streak filter](noise.md#tdfpy.VerticalNoiseFilter), or any
+combination. Intensity-based estimators have a fundamental limitation:
+they can't distinguish low-abundance real signal from electronic noise.
+Methods like `MadThreshold` are anchored to the median of the
+intensity distribution — if your sample has sparse signal, the
+threshold can rise above legitimate low-abundance peaks.
+
+A more reliable strategy is to increase `min_peaks` instead:
+
+```python
+# Prefer: raise min_peaks to filter noise without discarding low-abundance signal
+peaks = merge_peaks(mz, intensity, im, min_peaks=5)
+
+# Noise arises from single scans; real peaks appear across multiple scans.
+# min_peaks=5 means a centroid must be supported by at least 5 raw measurements.
+```
+
+Because electronic noise typically manifests as a singleton in a single
+scan, requiring several supporting raw peaks is a *structural* filter —
+it targets the *origin* of noise rather than its intensity. The
+[`VerticalNoiseFilter`](noise.md#tdfpy.VerticalNoiseFilter) extends this idea
+to the IM axis, requiring peaks to appear as vertical streaks across
+consecutive mobility scans.
+
+Use intensity-based `noise=` filters only if you have a calibrated
+threshold or a method validated for your acquisition; always verify
+against `noise=None` first.
+
+::: tdfpy.merge_peaks
+
+
+==============================================================================
+# api/pipeline.md
+==============================================================================
+
+# Pipeline
+
+The pipeline module exposes the composable ops behind `get_raw_peaks` and
+`get_centroided_spectrum`. Each op takes (and most return) a
+[`RawSpectrum`](#tdfpy.RawSpectrum) — raw peaks in their native
+``(scan_number, TOF_index, intensity)`` integer form.
+
+Use the convenience entry points for common workflows; reach into the ops
+when you need a custom ordering, want to plug in a transformation, or
+want to skip a step.
+
+```python
+from tdfpy import (
+    read_spectrum, subset_scans, exclude_region,
+    apply_noise, convert, centroid_peaks,
+    ChargeStateRegion, MadThreshold, WatershedCentroider,
+)
+
+with tdfpy.timsdata_connect("data.d") as td:
+    s = read_spectrum(td, frame_id=1)
+    s = subset_scans(s, scan_num_begin=0, scan_num_end=400)
+    s = exclude_region(s, ChargeStateRegion(), td=td, frame_id=1)
+    s = apply_noise(s, (MadThreshold(k=3),), td=td, frame_id=1)
+    centroids = WatershedCentroider(
+        attach_scan_half_width=10, attach_mz_idx_half_width=3
+    )(s, td, 1)
+```
+
+`WatershedCentroider` accepts an optional per-group "leash" via
+`max_scan_from_seed` and `max_mz_idx_from_seed` — bounds on how far any
+group member can be from its seed. Useful for stopping chain-grown
+groups from wandering across the data. `max_mz_idx_from_seed` defaults
+to `10`; `max_scan_from_seed` defaults to `None` (no bound on that axis).
+
+```python
+# Cap group span at ±20 TOF indices from the seed
+WatershedCentroider(
+    attach_scan_half_width=10, attach_mz_idx_half_width=3,
+    max_mz_idx_from_seed=20,
+)
+```
+
+Position-preserving intensity smoothing runs before seed selection by
+default, controlled by `WatershedCentroider`'s `smooth_scan_half_width` /
+`smooth_mz_idx_half_width` fields (defaults `5` and `3`). Set either to
+`0` to disable. There is no standalone smoothing pipeline op — the
+convolution-style `smooth()` was removed because it expanded the point
+set, often dramatically. The watershed's box-mean smoothing rewrites
+intensities in place and is the canonical smoothing path.
+
+---
+
+## Data carrier
+
+::: tdfpy.RawSpectrum
+
+---
+
+## Reading
+
+::: tdfpy.read_spectrum
+
+---
+
+## Scoping
+
+::: tdfpy.subset_scans
+
+::: tdfpy.exclude_region
+
+---
+
+## Noise filtering
+
+::: tdfpy.apply_noise
+
+---
+
+## Conversion
+
+::: tdfpy.convert
+
+---
+
+## Centroiders
+
+The two centroiders share an [`Centroider`](#tdfpy.Centroider) ABC.
+`MergePeaksCentroider` (default) operates on float m/z values via a greedy
+tolerance-based merge; `WatershedCentroider` works in integer index space
+via intensity-ordered region growing.
+
+::: tdfpy.Centroider
+
+::: tdfpy.MergePeaksCentroider
+
+::: tdfpy.WatershedCentroider
+
+::: tdfpy.centroid_peaks
+
+
+==============================================================================
+# api/noise.md
+==============================================================================
+
+# Noise filters
+
+Composable noise filters live in `tdfpy.noise`. A pipeline of filters is
+applied in order; each takes raw `(scan_indices, mz_indices, intensities)`
+and returns a boolean keep-mask. Frozen dataclasses make them hashable
+(suitable for caching) and `dataclasses.replace`-tweakable.
+
+```python
+from tdfpy import MadThreshold, VerticalNoiseFilter, get_raw_peaks
+
+peaks = get_raw_peaks(
+    td, frame_id,
+    noise=[
+        VerticalNoiseFilter(min_streak_scans=5, num_iterations=2),
+        MadThreshold(k=3),
+    ],
+)
+```
+
+User-facing APIs (`get_raw_peaks`, `get_centroided_spectrum`,
+`Frame.raw_peaks`, etc.) also accept the string shorthand for terseness:
+`noise="mad"`, `noise="iterative_median"`, `noise=500.0`, etc. See
+[`coerce_filters`](#tdfpy.coerce_filters) for the accepted forms.
+
+---
+
+## Base class & coercion
+
+::: tdfpy.NoiseFilter
+
+::: tdfpy.coerce_filters
+
+---
+
+## Intensity-threshold filters
+
+Each subclass exposes the knobs of its estimator as dataclass fields.
+
+::: tdfpy.IntensityThreshold
+
+::: tdfpy.AbsoluteThreshold
+
+::: tdfpy.MadThreshold
+
+::: tdfpy.PercentileThreshold
+
+::: tdfpy.HistogramThreshold
+
+::: tdfpy.BaselineThreshold
+
+::: tdfpy.IterativeMedianThreshold
+
+---
+
+## Structural filters
+
+::: tdfpy.VerticalNoiseFilter
+    options:
+      members:
+        - keep_mask
+        - run
+
+::: tdfpy.noise.VerticalNoiseDiagnostics
+
+
+==============================================================================
+# api/regions.md
+==============================================================================
+
+# Region exclusion
+
+A region is a known area of the (m/z, 1/K0) plane that you want to drop
+wholesale — typically based on physical knowledge of the acquisition
+rather than from estimating noise. The canonical example is the
+singly-charged / polymer contamination band in timsTOF MS1.
+
+Conceptually distinct from [noise filters](noise.md): region exclusion
+answers *"which part of the data plane are we even interested in?"*,
+while noise filtering answers *"of what's left, what's real signal?"*.
+
+```python
+from tdfpy import ChargeStateRegion, get_raw_peaks
+
+# Drop the typical singly-charged region
+peaks = get_raw_peaks(td, frame_id, exclude=ChargeStateRegion())
+
+# Custom line + cap
+peaks = get_raw_peaks(
+    td, frame_id,
+    exclude=ChargeStateRegion(
+        line=((400.0, 0.75), (1200.0, 1.5)),
+        cap_at_upper_endpoint=True,
+    ),
+)
+```
+
+The line is converted to a per-scan TOF-index cutoff once per frame, so
+exclusion happens via a single vectorized integer comparison.
+
+---
+
+::: tdfpy.ChargeStateRegion
+
+
+==============================================================================
+# api/low-level.md
+==============================================================================
+
+# PandasTDF
+
+Low-level classes for direct access to the `.tdf` SQLite database and the Bruker
+TimsData C library. Prefer the high-level `DDA`/`DIA` API unless you need raw
+frame or scan data.
+
+::: tdfpy.PandasTdf
+
+::: tdfpy.TimsData
+
+::: tdfpy.timsdata_connect
+

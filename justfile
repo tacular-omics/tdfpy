@@ -65,6 +65,11 @@ docs:
 docs-build:
     uv run --group docs mkdocs build
 
+# Regenerate docs/llms-full.txt from the markdown docs (committed to repo;
+# shipped at /llms-full.txt on the deployed docs site)
+llms-full:
+    uv run python scripts/build_llms_full.py
+
 # Publish to PyPI (requires UV_PUBLISH_TOKEN or interactive auth)
 publish: build
   uv publish

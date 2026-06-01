@@ -28,47 +28,103 @@ from .lookup import (
     PrmTargetLookup,
     PrmTransitionLookup,
 )
+from .noise import (
+    AbsoluteThreshold,
+    BaselineThreshold,
+    HistogramThreshold,
+    IntensityThreshold,
+    IterativeMedianThreshold,
+    MadThreshold,
+    NoiseFilter,
+    NoiseSpec,
+    PercentileThreshold,
+    VerticalNoiseFilter,
+    coerce_filters,
+)
+from .pipeline import (
+    Centroider,
+    MergePeaksCentroider,
+    RawSpectrum,
+    WatershedCentroider,
+    apply_noise,
+    centroid_peaks,
+    convert,
+    exclude_region,
+    read_spectrum,
+    subset_scans,
+)
 from .reader import (
     DDA,
     DIA,
     PRM,
     get_acquisition_type,
 )
+from .regions import ChargeStateRegion
 from .slicer import slice_d_folder
-from .viz import plot_centroiding
 from .tdf import PandasTdf
 from .timsdata import TimsData, timsdata_connect
+from .viz import plot_centroiding
 
 __version__ = "1.2.0"
 
 __all__ = [
+    # I/O
     "PandasTdf",
     "TimsData",
     "timsdata_connect",
-    "merge_peaks",
-    "get_centroided_spectrum",
-    "get_raw_peaks",
-    "plot_centroiding",
     "DDA",
     "DIA",
     "PRM",
     "get_acquisition_type",
-    "MetaData",
-    "Calibration",
+    "slice_d_folder",
+    # Frame elements
     "Frame",
+    "DDAMs1Frame",
     "DIAMs1Frame",
+    "PRMMs1Frame",
     "DiaWindow",
     "DiaWindowGroup",
-    "DDAMs1Frame",
     "Precursor",
     "PasefFrameMsmsInfo",
+    "PrmTarget",
+    "PrmTransition",
+    "MetaData",
+    "Calibration",
     "DiaWindowLookup",
     "Ms1FrameLookup",
     "PrecursorLookup",
-    "slice_d_folder",
-    "PrmTarget",
-    "PrmTransition",
-    "PRMMs1Frame",
     "PrmTargetLookup",
     "PrmTransitionLookup",
+    # Convenience peak extraction
+    "get_raw_peaks",
+    "get_centroided_spectrum",
+    "merge_peaks",
+    # Pipeline ops (power-user composable API)
+    "RawSpectrum",
+    "read_spectrum",
+    "subset_scans",
+    "exclude_region",
+    "apply_noise",
+    "convert",
+    "centroid_peaks",
+    # Centroiders
+    "Centroider",
+    "MergePeaksCentroider",
+    "WatershedCentroider",
+    # Region exclusion
+    "ChargeStateRegion",
+    # Noise filters
+    "NoiseFilter",
+    "NoiseSpec",
+    "coerce_filters",
+    "IntensityThreshold",
+    "AbsoluteThreshold",
+    "MadThreshold",
+    "PercentileThreshold",
+    "HistogramThreshold",
+    "BaselineThreshold",
+    "IterativeMedianThreshold",
+    "VerticalNoiseFilter",
+    # Visualization
+    "plot_centroiding",
 ]

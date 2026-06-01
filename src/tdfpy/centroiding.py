@@ -11,9 +11,19 @@ from typing import Any, Literal, NamedTuple
 import numpy as np
 import pandas as pd  # type: ignore
 
-from .noise import estimate_noise_level
+from .noise import NoiseSpec, coerce_filters
+from .pipeline import (
+    Centroider,
+    MergePeaksCentroider,
+    apply_noise,
+    convert,
+    exclude_region,
+    read_spectrum,
+    subset_scans,
+)
+from .regions import ChargeStateRegion
 from .tdf import PandasTdf
-from .timsdata import TimsData, oneOverK0ToCCSforMz
+from .timsdata import TimsData
 
 # Try to import Numba for JIT-accelerated implementation
 try:
@@ -52,6 +62,7 @@ if _HAS_NUMBA:
         mz_sorted, intensity_sorted, im_sorted, intensity_order,
         mz_tol_factor, mz_tol_abs, mob_tol_factor, mob_tol_abs,
         mz_is_ppm, im_is_relative, min_peaks, max_peaks,
+        peak_noise_filter, peak_noise_window, peak_noise_end_fraction,
     ):
         n = len(mz_sorted)
         out_mz = np.empty(n, dtype=np.float64)
@@ -59,6 +70,8 @@ if _HAS_NUMBA:
         out_im = np.empty(n, dtype=np.float64)
         used = np.zeros(n, dtype=np.bool_)
         count = 0
+        noise_inv_window = 1.0 / peak_noise_window if peak_noise_window > 0.0 else 0.0
+        noise_one_minus_end = 1.0 - peak_noise_end_fraction
         for order_idx in range(len(intensity_order)):
             peak_idx = intensity_order[order_idx]
             if used[peak_idx]:
@@ -127,6 +140,32 @@ if _HAS_NUMBA:
                 out_intensity[count] = intensity_sorted[peak_idx]
                 out_im[count] = im_peak
             count += 1
+
+            # Peak-satellite noise filter: within ±peak_noise_window Da of the
+            # anchor m/z and inside the centroid's IM window, suppress raw
+            # points whose intensity falls below a linear ramp that decays from
+            # the anchor's raw intensity at d=0 to (anchor * end_fraction) at
+            # d=window. Marking them used prevents them from seeding their own
+            # centroids. Real peaks above the ramp survive.
+            if peak_noise_filter and peak_noise_window > 0.0:
+                anchor_int = intensity_sorted[peak_idx]
+                noise_left_mz = mz_peak - peak_noise_window
+                noise_right_mz = mz_peak + peak_noise_window
+                noise_left_idx = np.searchsorted(mz_sorted, noise_left_mz)
+                noise_right_idx = np.searchsorted(mz_sorted, noise_right_mz, side='right')
+                for i in range(noise_left_idx, noise_right_idx):
+                    if used[i]:
+                        continue
+                    im_i = im_sorted[i]
+                    if im_i < im_lo or im_i > im_hi:
+                        continue
+                    d = mz_sorted[i] - mz_peak
+                    if d < 0.0:
+                        d = -d
+                    threshold = anchor_int * (1.0 - d * noise_inv_window * noise_one_minus_end)
+                    if intensity_sorted[i] < threshold:
+                        used[i] = True
+
             if max_peaks != -1 and count >= max_peaks:
                 break
         return out_mz[:count], out_intensity[:count], out_im[:count]
@@ -142,6 +181,9 @@ def _merge_peaks_numba(
     im_tolerance_type: Literal["relative", "absolute"] = "relative",
     min_peaks: int = 3,
     max_peaks: int | None = None,
+    peak_noise_filter: bool = False,
+    peak_noise_window: float = 0.1,
+    peak_noise_end_fraction: float = 0.1,
 ) -> np.ndarray:
     """Numba JIT-accelerated implementation of merge_peaks."""
     if len(mz_array) == 0:
@@ -162,6 +204,9 @@ def _merge_peaks_numba(
         mz_s, int_s, im_s, intensity_order,
         mz_tol_factor, mz_tol_abs, mob_tol_factor, mob_tol_abs,
         mz_is_ppm, im_is_relative, min_peaks, _max_peaks,
+        1 if peak_noise_filter else 0,
+        float(peak_noise_window),
+        float(peak_noise_end_fraction),
     )
     return np.column_stack([out_mz, out_int, out_im])
 
@@ -176,6 +221,9 @@ def merge_peaks(
     im_tolerance_type: Literal["relative", "absolute"] = "relative",
     min_peaks: int = 3,
     max_peaks: int | None = None,
+    peak_noise_filter: bool = False,
+    peak_noise_window: float = 0.1,
+    peak_noise_end_fraction: float = 0.1,
     use_numba: bool = True,
 ) -> np.ndarray:
     """Centroid profile-like peaks using m/z and ion mobility tolerances.
@@ -196,6 +244,20 @@ def merge_peaks(
         min_peaks: Minimum number of nearby raw peaks required to form a centroid.
                   Set to 0 or 1 to keep all peaks (no filtering).
         max_peaks: Maximum number of centroided peaks to return (keeps highest intensity)
+        peak_noise_filter: If True, after each centroid is formed suppress raw
+            points within ±``peak_noise_window`` Da of the anchor m/z and inside
+            the centroid's IM window whose intensity falls below a linear
+            threshold that decays from the **anchor point's raw intensity** at
+            zero distance to ``anchor * peak_noise_end_fraction`` at the window
+            edge. This kills TOF satellite/ringing noise around bright peaks
+            without eliminating nearby real peaks that exceed the ramp.
+            Comparison is point-to-point against the raw anchor intensity (not
+            the summed centroid). Defaults to ``False``.
+        peak_noise_window: Half-width in Da on each side of the anchor m/z over
+            which the peak-noise ramp is applied. Defaults to ``0.1`` Da.
+        peak_noise_end_fraction: Fraction of the anchor's raw intensity used as
+            the suppression threshold at ``peak_noise_window`` distance.
+            Defaults to ``0.1`` (10%).
 
     Returns:
         np.ndarray: Array of shape (N, 3) containing centroided peaks.
@@ -219,6 +281,9 @@ def merge_peaks(
             im_tolerance_type=im_tolerance_type,
             min_peaks=min_peaks,
             max_peaks=max_peaks,
+            peak_noise_filter=peak_noise_filter,
+            peak_noise_window=peak_noise_window,
+            peak_noise_end_fraction=peak_noise_end_fraction,
         )
 
     # Fallback to Python implementation
@@ -232,6 +297,9 @@ def merge_peaks(
         im_tolerance_type,
         min_peaks,
         max_peaks,
+        peak_noise_filter,
+        peak_noise_window,
+        peak_noise_end_fraction,
     )
 
 
@@ -245,6 +313,9 @@ def _merge_peaks_python(
     im_tolerance_type: Literal["relative", "absolute"] = "relative",
     min_peaks: int = 3,
     max_peaks: int | None = None,
+    peak_noise_filter: bool = False,
+    peak_noise_window: float = 0.1,
+    peak_noise_end_fraction: float = 0.1,
 ) -> np.ndarray:
     """Python implementation of merge_peaks (fallback when Numba unavailable)."""
     logger.debug(
@@ -378,6 +449,38 @@ def _merge_peaks_python(
         global_nearby_idx = np.where(nearby_mask)[0] + left_idx
         used_mask[global_nearby_idx] = True
 
+        # Peak-satellite noise filter: see Numba kernel for rationale. Within
+        # ±peak_noise_window Da of the anchor m/z and inside the centroid's IM
+        # window, suppress raw points whose intensity falls below a linear ramp
+        # decaying from the anchor's raw intensity at d=0 to
+        # (anchor * end_fraction) at d=window. Comparison is point-to-point
+        # against the raw anchor intensity.
+        if peak_noise_filter and peak_noise_window > 0.0:
+            anchor_int = float(intensity_peak)
+            noise_left_idx = int(
+                np.searchsorted(mz_array, mz_peak - peak_noise_window, side="left")
+            )
+            noise_right_idx = int(
+                np.searchsorted(mz_array, mz_peak + peak_noise_window, side="right")
+            )
+            noise_mz = mz_array[noise_left_idx:noise_right_idx]
+            noise_int = intensity_array[noise_left_idx:noise_right_idx]
+            noise_im = ion_mobility_array[noise_left_idx:noise_right_idx]
+            noise_used = used_mask[noise_left_idx:noise_right_idx]
+            d = np.abs(noise_mz - mz_peak)
+            threshold = anchor_int * (
+                1.0 - (d / peak_noise_window) * (1.0 - peak_noise_end_fraction)
+            )
+            suppress = (
+                ~noise_used
+                & (noise_im >= im_lo)
+                & (noise_im <= im_hi)
+                & (noise_int < threshold)
+            )
+            if suppress.any():
+                global_suppress_idx = np.where(suppress)[0] + noise_left_idx
+                used_mask[global_suppress_idx] = True
+
         if max_peaks and len(merged_mz_list) >= max_peaks:
             logger.debug(
                 "Reached max_peaks limit of %d, stopping centroiding", max_peaks
@@ -403,221 +506,108 @@ def _merge_peaks_python(
 def get_raw_peaks(
     td: TimsData,
     frame_id: int,
+    *,
+    scan_range: tuple[int, int] | None = None,
+    exclude: ChargeStateRegion | None = None,
+    noise: NoiseSpec = None,
     ion_mobility_type: Literal["ook0", "ccs", "voltage"] = "ook0",
 ) -> np.ndarray:
-    """Collect raw (un-centroided) peaks for a single frame.
+    """Return raw peaks for a frame as a ``(N, 3)`` ``[mz, intensity, ion_mobility]`` array.
 
-    Reads all scans, converts indices to m/z values and ion mobility, and
-    returns every raw data point without any filtering.  Noise filtering should
-    be applied to centroided peaks, not individual raw hits — see
-    :func:`get_centroided_spectrum`.
+    Thin orchestrator over the :mod:`tdfpy.pipeline` ops:
+
+    1. :func:`pipeline.read_spectrum` — read raw integer-index peaks.
+    2. :func:`pipeline.subset_scans` — restrict to scan range, if given.
+    3. :func:`pipeline.exclude_region` — drop ``exclude`` region, if given.
+    4. :func:`pipeline.apply_noise` — apply the coerced noise filter pipeline.
+    5. :func:`pipeline.convert` — convert to ``(mz, intensity, ion_mobility)``.
+
+    For full control over ordering or to plug in custom steps, call the
+    pipeline ops directly — each takes and returns a
+    :class:`~tdfpy.pipeline.RawSpectrum`.
 
     Args:
         td: TimsData instance connected to the analysis directory.
         frame_id: Frame ID to read.
+        scan_range: Optional half-open ``(begin, end)`` scan range. Restricts
+            the spectrum to peaks in that scan window — used by
+            :class:`~tdfpy.DiaWindow` and :class:`~tdfpy.PrmTransition` to
+            scope to their isolation window. ``None`` (default) keeps the
+            whole frame.
+        exclude: Optional region of (m/z, 1/K0) space to drop wholesale — for
+            timsTOF MS1 use :class:`~tdfpy.regions.ChargeStateRegion` to drop
+            singly-charged contamination. Applied in integer-index space, so
+            there's no per-peak unit conversion.
+        noise: One or more noise filters. Accepts an instance, a list/tuple
+            of instances, the string shorthand (``"mad"`` / ``"percentile"``
+            / ``"histogram"`` / ``"baseline"`` / ``"iterative_median"``), or
+            a numeric absolute threshold — see
+            :func:`tdfpy.noise.coerce_filters`. ``None`` (default) disables.
         ion_mobility_type: Ion mobility representation — ``"ook0"`` (1/K0),
             ``"ccs"``, or ``"voltage"``.
-
-    Returns:
-        np.ndarray: Shape ``(N, 3)`` — columns ``[mz, intensity, ion_mobility]``.
-
-    Raises:
-        ValueError: If *frame_id* does not exist in the database.
-        RuntimeError: If the TimsData connection is not open.
     """
-    if td.conn is None:
-        raise RuntimeError("TimsData connection is not open")
-
-    cursor = td.conn.cursor()
-    cursor.execute(
-        "SELECT NumScans FROM Frames WHERE Id = ?", (frame_id,)
-    )
-    result = cursor.fetchone()
-    if result is None:
-        raise ValueError(f"Frame {frame_id} not found in database")
-
-    (num_scans,) = result
-
-    if num_scans == 0:
-        return np.empty((0, 3), dtype=np.float64)
-
-    ion_mobility = td.scanNumToOneOverK0(frame_id, np.arange(0, num_scans))  # type: ignore[call-arg]
-    scans = td.readScans(frame_id, 0, num_scans)
-
-    total_peaks = sum(len(idx) for idx, _ in scans)
-    if total_peaks == 0:
-        return np.empty((0, 3), dtype=np.float64)
-
-    mz_array = np.empty(total_peaks, dtype=np.float64)
-    intensity_array = np.empty(total_peaks, dtype=np.float64)
-    ion_mobility_array = np.empty(total_peaks, dtype=np.float64)
-
-    offset = 0
-    for scan_index, (index_array, intensity_scan) in enumerate(scans):
-        n = len(index_array)
-        if n == 0:
-            continue
-        mz_array[offset : offset + n] = td.indexToMz(frame_id, index_array)
-        intensity_array[offset : offset + n] = intensity_scan
-        ion_mobility_array[offset : offset + n] = ion_mobility[scan_index]
-        offset += n
-
-    mz_array = mz_array[:offset]
-    intensity_array = intensity_array[:offset]
-    ion_mobility_array = ion_mobility_array[:offset]
-
-    if ion_mobility_type == "ccs":
-        ion_mobility_array = np.array(
-            [oneOverK0ToCCSforMz(ook0, 1, mz) for ook0, mz in zip(ion_mobility_array, mz_array)],
-            dtype=np.float64,
+    spectrum = read_spectrum(td, frame_id)
+    if scan_range is not None:
+        spectrum = subset_scans(
+            spectrum, scan_num_begin=scan_range[0], scan_num_end=scan_range[1]
         )
-    elif ion_mobility_type == "voltage":
-        ion_mobility_array = td.scanNumToVoltage(frame_id, ion_mobility_array)
-
-    return np.column_stack((mz_array, intensity_array, ion_mobility_array))
+    if exclude is not None:
+        spectrum = exclude_region(spectrum, exclude, td=td, frame_id=frame_id)
+    filters = coerce_filters(noise)
+    if filters:
+        spectrum = apply_noise(spectrum, filters, td=td, frame_id=frame_id)
+    return convert(spectrum, td, frame_id, ion_mobility_type=ion_mobility_type)
 
 
 def get_centroided_spectrum(
     td: TimsData,
     frame_id: int,
-    spectrum_index: int | None = None,
+    *,
+    scan_range: tuple[int, int] | None = None,
+    exclude: ChargeStateRegion | None = None,
+    noise: NoiseSpec = None,
     ion_mobility_type: Literal["ook0", "ccs", "voltage"] = "ook0",
-    mz_tolerance: float = 8.0,
-    mz_tolerance_type: Literal["ppm", "da"] = "ppm",
-    im_tolerance: float = 0.1,
-    im_tolerance_type: Literal["relative", "absolute"] = "relative",
-    min_peaks: int = 3,
-    max_peaks: int | None = None,
-    noise_filter: None
-    | (
-        Literal["mad", "percentile", "histogram", "baseline", "iterative_median"]
-        | float
-        | int
-    ) = None,
-    use_numba: bool = True,
+    centroid: Centroider | None = None,
 ) -> np.ndarray:
-    """Extract a centroided MS1 spectrum for a single frame.
+    """Extract a centroided spectrum for a single frame.
 
-    This function reads raw profile-like scans from the frame, converts indices to m/z values,
-    collects all raw peaks with their ion mobility values, and applies peak centroiding
-    based on m/z and ion mobility tolerances to produce a centroided spectrum.
+    Thin orchestrator over the :mod:`tdfpy.pipeline` ops. Threads a
+    :class:`~tdfpy.pipeline.RawSpectrum` through optional scan-range
+    restriction, region exclusion, and noise filtering, then hands it to
+    the centroider — which decides whether to operate in integer index
+    space (e.g. :class:`~tdfpy.pipeline.WatershedCentroider`) or after
+    float conversion (e.g. :class:`~tdfpy.pipeline.MergePeaksCentroider`).
 
-    Args:
-        td: TimsData instance connected to the analysis directory
-        frame_id: Frame ID to extract
-        spectrum_index: Optional index for this spectrum (defaults to frame_id)
-        ion_mobility_type: Type of ion mobility to calculate and include for each peak
-                          - "ook0": 1/K0 (reciprocal reduced mobility) [default]
-                          - "ccs": Collision Cross Section in Ų (requires charge state estimation)
-        mz_tolerance: Tolerance for m/z matching during centroiding
-        mz_tolerance_type: Type of m/z tolerance - "ppm" or "da" (daltons)
-        im_tolerance: Tolerance for ion mobility matching during centroiding
-        im_tolerance_type: Type of ion mobility tolerance - "relative" or "absolute"
-        min_peaks: Minimum number of nearby raw peaks required to form a centroid (0 or 1 keeps all)
-        max_peaks: Maximum number of centroided peaks to return
-        noise_filter: Noise filtering method to apply before centroiding. Options:
-                     - None: No noise filtering (default)
-                     - "mad": Median Absolute Deviation method
-                     - "percentile": 75th percentile threshold
-                     - "histogram": Histogram mode-based estimation
-                     - "baseline": Bottom quartile statistics
-                     - "iterative_median": Iterative median filtering
-                     - float/int: Direct intensity threshold value
+    Default centroider is :class:`~tdfpy.pipeline.MergePeaksCentroider`.
+    For position-preserving intensity smoothing, use the
+    ``smooth_*_half_width`` fields on :class:`~tdfpy.pipeline.WatershedCentroider`.
 
-    Returns:
-        np.ndarray: Array of shape (N, 3) containing centroided peaks.
-                   Columns are: [mz, intensity, ion_mobility]
-
-    Raises:
-        ValueError: If the frame_id doesn't exist or is not an MS1 frame
-        RuntimeError: If the TimsData connection is not open
-
-    Example:
-        ```python
-        with timsdata_connect('path/to/data.d') as td:
-            # Get centroided spectrum with 1/K0 (default)
-            peaks = get_centroided_ms1_spectrum(td, frame_id=1)
-            print(f"Found {len(peaks)} centroided peaks")
-
-            # Get spectrum with CCS values
-            spectrum = get_centroided_ms1_spectrum(td, frame_id=1, ion_mobility_type="ccs")
-
-            # Custom centroiding tolerances
-            spectrum = get_centroided_ms1_spectrum(
-                td, frame_id=1, mz_tolerance=10, im_tolerance=0.1
-            )
-
-            # With noise filtering
-            spectrum = get_centroided_ms1_spectrum(td, frame_id=1, noise_filter="mad")
-
-            # With custom noise threshold
-            spectrum = get_centroided_ms1_spectrum(td, frame_id=1, noise_filter=1000.0)
-        ```
+    Returns an ``(N, 3)`` array of ``[mz, intensity, ion_mobility]`` centroids.
     """
-    logger.debug(
-        "Extracting MS1 spectrum for frame_id=%d, noise_filter=%s",
-        frame_id,
-        noise_filter,
-    )
-
-    raw = get_raw_peaks(td, frame_id, ion_mobility_type=ion_mobility_type)
-    if len(raw) == 0:
-        logger.warning("Frame %d has 0 peaks, returning empty spectrum", frame_id)
-        return raw
-
-    mz_array = raw[:, 0]
-    intensity_array = raw[:, 1]
-    ion_mobility_array = raw[:, 2]
-    total_peaks = len(raw)
-
-    cursor = td.conn.cursor()  # type: ignore[union-attr]
-    cursor.execute("SELECT Time FROM Frames WHERE Id = ?", (frame_id,))
-    retention_time_min = cursor.fetchone()[0] / 60.0
-
-    # Apply peak centroiding
-    logger.debug("Starting peak centroiding algorithm")
-    peaks = merge_peaks(
-        mz_array=mz_array,
-        intensity_array=intensity_array,
-        ion_mobility_array=ion_mobility_array,
-        mz_tolerance=mz_tolerance,
-        mz_tolerance_type=mz_tolerance_type,
-        im_tolerance=im_tolerance,
-        im_tolerance_type=im_tolerance_type,
-        min_peaks=min_peaks,
-        max_peaks=max_peaks,
-        use_numba=use_numba,
-    )
-
-    # Apply noise filter on centroided intensities — after merging so the
-    # summed cluster intensity is compared against the threshold, not individual
-    # raw hit intensities.
-    if noise_filter is not None and len(peaks) > 0:
-        logger.debug("Applying noise filter to centroided peaks: %s", noise_filter)
-        threshold = estimate_noise_level(peaks[:, 1], method=noise_filter)
-        before = len(peaks)
-        peaks = peaks[peaks[:, 1] >= threshold]
-        logger.info(
-            "Noise filter removed %d centroided peaks below threshold %.2f (%d → %d)",
-            before - len(peaks), threshold, before, len(peaks),
+    spectrum = read_spectrum(td, frame_id)
+    if scan_range is not None:
+        spectrum = subset_scans(
+            spectrum, scan_num_begin=scan_range[0], scan_num_end=scan_range[1]
         )
+    if exclude is not None:
+        spectrum = exclude_region(spectrum, exclude, td=td, frame_id=frame_id)
+    filters = coerce_filters(noise)
+    if filters:
+        spectrum = apply_noise(spectrum, filters, td=td, frame_id=frame_id)
 
-    # Apply max_peaks limit if specified (post-centroiding)
-    if max_peaks and len(peaks) > max_peaks:
-        logger.debug("Applying max_peaks filter: %d → %d", len(peaks), max_peaks)
-        sort_indices = np.argsort(peaks[:, 1])[::-1][:max_peaks]
-        peaks = peaks[sort_indices]
+    if spectrum.empty:
+        logger.warning("Frame %d has 0 peaks, returning empty spectrum", frame_id)
+        return np.empty((0, 3), dtype=np.float64)
 
-    logger.info(
-        "Extracted centroided MS1 spectrum: frame_id=%d, RT=%.2f min, centroided_peaks=%d, raw_peaks=%d, ion_mobility_type=%s",
-        frame_id,
-        retention_time_min,
-        len(peaks),
-        total_peaks,
-        ion_mobility_type,
+    centroider = centroid if centroid is not None else MergePeaksCentroider()
+    centroids = centroider(
+        spectrum, td, frame_id, ion_mobility_type=ion_mobility_type
     )
-
-    return peaks
+    logger.info(
+        "Centroided frame %d: %d raw → %d centroids",
+        frame_id, len(spectrum), len(centroids),
+    )
+    return centroids
 
 
 def calculate_nmass(mz: float, charge: int) -> float:

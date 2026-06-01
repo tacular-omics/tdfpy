@@ -1,0 +1,153 @@
+"""Statistical intensity-threshold noise filters.
+
+Each subclass of :class:`IntensityThreshold` exposes the knobs of its
+estimator as dataclass fields so users can tune them with full type
+support. The string shorthand ``"mad"`` / ``"percentile"`` / etc. (handled
+in :mod:`tdfpy.noise`) maps to these classes with their default fields.
+"""
+
+from __future__ import annotations
+
+from abc import abstractmethod
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+import numpy as np
+
+from . import NoiseFilter
+
+if TYPE_CHECKING:
+    from ..timsdata import TimsData
+
+
+@dataclass(frozen=True)
+class IntensityThreshold(NoiseFilter):
+    """Drop points whose intensity is below a computed threshold.
+
+    Subclasses implement :meth:`compute_threshold` to derive the threshold
+    from the intensity distribution. The keep-mask is then the simple
+    ``intensities >= threshold`` comparison.
+    """
+
+    @abstractmethod
+    def compute_threshold(self, intensities: np.ndarray) -> float:
+        """Return the intensity floor for this estimator."""
+
+    def keep_mask(
+        self,
+        scan_indices: np.ndarray,
+        mz_indices: np.ndarray,
+        intensities: np.ndarray,
+        *,
+        num_scans: int,
+        td: "TimsData",
+        frame_id: int,
+    ) -> np.ndarray:
+        if intensities.size == 0:
+            return np.zeros(0, dtype=bool)
+        threshold = self.compute_threshold(intensities)
+        return intensities >= threshold
+
+
+@dataclass(frozen=True)
+class AbsoluteThreshold(IntensityThreshold):
+    """Constant intensity floor, ignored estimator."""
+
+    value: float = 0.0
+
+    def compute_threshold(self, intensities: np.ndarray) -> float:
+        return float(self.value)
+
+
+@dataclass(frozen=True)
+class MadThreshold(IntensityThreshold):
+    """Median Absolute Deviation threshold: ``median + k · scale · MAD``.
+
+    ``scale = 1.4826`` makes MAD a consistent estimator of the standard
+    deviation for a Gaussian distribution.
+    """
+
+    k: float = 3.0
+    scale: float = 1.4826
+
+    def compute_threshold(self, intensities: np.ndarray) -> float:
+        median = float(np.median(intensities))
+        mad = float(np.median(np.abs(intensities - median)))
+        return median + self.k * self.scale * mad
+
+
+@dataclass(frozen=True)
+class PercentileThreshold(IntensityThreshold):
+    """Drop everything below the ``q``-th percentile of intensities."""
+
+    q: float = 75.0
+
+    def compute_threshold(self, intensities: np.ndarray) -> float:
+        return float(np.percentile(intensities, self.q))
+
+
+@dataclass(frozen=True)
+class HistogramThreshold(IntensityThreshold):
+    """Mode-of-histogram noise floor + ``k`` standard deviations.
+
+    Bins the intensities into ``bins`` equal-width bins, takes the modal
+    bin as the noise mode, estimates noise std from the FWHM around it,
+    and returns ``mode + k · std``.
+    """
+
+    bins: int = 100
+    k: float = 3.0
+
+    def compute_threshold(self, intensities: np.ndarray) -> float:
+        hist, edges = np.histogram(intensities, bins=self.bins)
+        mode_idx = int(np.argmax(hist))
+        mode = (edges[mode_idx] + edges[mode_idx + 1]) / 2
+        half_max = hist[mode_idx] / 2
+        left = mode_idx
+        while left > 0 and hist[left] > half_max:
+            left -= 1
+        right = mode_idx
+        while right < len(hist) - 1 and hist[right] > half_max:
+            right += 1
+        noise_std = (edges[right] - edges[left]) / 2.355  # FWHM → std
+        return float(mode + self.k * noise_std)
+
+
+@dataclass(frozen=True)
+class BaselineThreshold(IntensityThreshold):
+    """Bottom-quartile baseline: ``mean + k · std`` of the lowest ``q`` %."""
+
+    q: float = 25.0
+    k: float = 3.0
+
+    def compute_threshold(self, intensities: np.ndarray) -> float:
+        cutoff = float(np.percentile(intensities, self.q))
+        baseline = intensities[intensities <= cutoff]
+        return float(np.mean(baseline) + self.k * np.std(baseline))
+
+
+@dataclass(frozen=True)
+class IterativeMedianThreshold(IntensityThreshold):
+    """Iteratively trim peaks above ``median + inner_k · scale · MAD``.
+
+    Repeats up to ``passes`` times (or until fewer than ``min_remaining``
+    points are left). The final threshold is ``median + final_k · std``
+    of the surviving distribution.
+    """
+
+    passes: int = 3
+    inner_k: float = 2.0
+    final_k: float = 3.0
+    scale: float = 1.4826
+    min_remaining: int = 100
+
+    def compute_threshold(self, intensities: np.ndarray) -> float:
+        current = intensities.copy()
+        for _ in range(self.passes):
+            median = float(np.median(current))
+            mad = float(np.median(np.abs(current - median)))
+            cutoff = median + self.inner_k * self.scale * mad
+            current = current[current <= cutoff]
+            if len(current) < self.min_remaining:
+                break
+        return float(np.median(current) + self.final_k * np.std(current))
