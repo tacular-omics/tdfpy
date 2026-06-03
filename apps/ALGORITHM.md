@@ -1,9 +1,13 @@
-# IM Feature Filter Dashboard — Algorithm Report
+# IM Feature Filter — Algorithm Report
 
-Comprehensive description of the three-stage pipeline implemented in
-[`im_feature_filter_dashboard.py`](im_feature_filter_dashboard.py). This is a
-**standalone testing app** — not part of the `tdfpy` package — for tuning a
-custom noise filter and centroider on Bruker timsTOF MS1 frames.
+Comprehensive description of the three-stage MS1 denoising + centroiding
+pipeline — intensity smoothing, the vertical-IM feature filter, and the
+watershed centroider. All three stages are now part of the public `tdfpy`
+package (`tdfpy.smooth` / `box_smooth`, `tdfpy.VerticalNoiseFilter`,
+`tdfpy.WatershedCentroider`); the timsTOF viewer app under
+[`timstof_viewer/`](timstof_viewer/) exposes them as tunable knobs on Bruker
+timsTOF MS1 frames. This document is the algorithm reference behind those
+package APIs.
 
 ---
 

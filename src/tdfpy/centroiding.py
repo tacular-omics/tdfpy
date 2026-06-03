@@ -15,6 +15,7 @@ from .noise import NoiseSpec, coerce_filters
 from .pipeline import (
     Centroider,
     MergePeaksCentroider,
+    Smooth,
     apply_noise,
     convert,
     exclude_region,
@@ -509,6 +510,7 @@ def get_raw_peaks(
     *,
     scan_range: tuple[int, int] | None = None,
     exclude: ChargeStateRegion | None = None,
+    smooth: Smooth | None = None,
     noise: NoiseSpec = None,
     ion_mobility_type: Literal["ook0", "ccs", "voltage"] = "ook0",
 ) -> np.ndarray:
@@ -519,8 +521,9 @@ def get_raw_peaks(
     1. :func:`pipeline.read_spectrum` — read raw integer-index peaks.
     2. :func:`pipeline.subset_scans` — restrict to scan range, if given.
     3. :func:`pipeline.exclude_region` — drop ``exclude`` region, if given.
-    4. :func:`pipeline.apply_noise` — apply the coerced noise filter pipeline.
-    5. :func:`pipeline.convert` — convert to ``(mz, intensity, ion_mobility)``.
+    4. :func:`pipeline.smooth` — box-smooth intensities, if ``smooth`` given.
+    5. :func:`pipeline.apply_noise` — apply the coerced noise filter pipeline.
+    6. :func:`pipeline.convert` — convert to ``(mz, intensity, ion_mobility)``.
 
     For full control over ordering or to plug in custom steps, call the
     pipeline ops directly — each takes and returns a
@@ -538,6 +541,10 @@ def get_raw_peaks(
             timsTOF MS1 use :class:`~tdfpy.regions.ChargeStateRegion` to drop
             singly-charged contamination. Applied in integer-index space, so
             there's no per-peak unit conversion.
+        smooth: Optional :class:`~tdfpy.pipeline.Smooth` config. Box-sums (or
+            means) intensity over a small ``(scan, TOF index)`` window before
+            noise filtering, amplifying genuine ion-mobility streaks. ``None``
+            (default) skips smoothing.
         noise: One or more noise filters. Accepts an instance, a list/tuple
             of instances, the string shorthand (``"mad"`` / ``"percentile"``
             / ``"histogram"`` / ``"baseline"`` / ``"iterative_median"``), or
@@ -553,6 +560,8 @@ def get_raw_peaks(
         )
     if exclude is not None:
         spectrum = exclude_region(spectrum, exclude, td=td, frame_id=frame_id)
+    if smooth is not None:
+        spectrum = smooth.apply(spectrum)
     filters = coerce_filters(noise)
     if filters:
         spectrum = apply_noise(spectrum, filters, td=td, frame_id=frame_id)
@@ -565,6 +574,7 @@ def get_centroided_spectrum(
     *,
     scan_range: tuple[int, int] | None = None,
     exclude: ChargeStateRegion | None = None,
+    smooth: Smooth | None = None,
     noise: NoiseSpec = None,
     ion_mobility_type: Literal["ook0", "ccs", "voltage"] = "ook0",
     centroid: Centroider | None = None,
@@ -573,14 +583,15 @@ def get_centroided_spectrum(
 
     Thin orchestrator over the :mod:`tdfpy.pipeline` ops. Threads a
     :class:`~tdfpy.pipeline.RawSpectrum` through optional scan-range
-    restriction, region exclusion, and noise filtering, then hands it to
-    the centroider — which decides whether to operate in integer index
-    space (e.g. :class:`~tdfpy.pipeline.WatershedCentroider`) or after
-    float conversion (e.g. :class:`~tdfpy.pipeline.MergePeaksCentroider`).
+    restriction, region exclusion, intensity smoothing, and noise filtering,
+    then hands it to the centroider — which decides whether to operate in
+    integer index space (e.g. :class:`~tdfpy.pipeline.WatershedCentroider`) or
+    after float conversion (e.g. :class:`~tdfpy.pipeline.MergePeaksCentroider`).
 
-    Default centroider is :class:`~tdfpy.pipeline.MergePeaksCentroider`.
-    For position-preserving intensity smoothing, use the
-    ``smooth_*_half_width`` fields on :class:`~tdfpy.pipeline.WatershedCentroider`.
+    Default centroider is :class:`~tdfpy.pipeline.MergePeaksCentroider`. Pass
+    ``smooth=Smooth(...)`` for a position-preserving box-sum/mean smoothing
+    pre-step; the :class:`~tdfpy.pipeline.WatershedCentroider` additionally
+    has its own seed-stabilising smoother via its ``smooth_*_half_width`` fields.
 
     Returns an ``(N, 3)`` array of ``[mz, intensity, ion_mobility]`` centroids.
     """
@@ -591,6 +602,8 @@ def get_centroided_spectrum(
         )
     if exclude is not None:
         spectrum = exclude_region(spectrum, exclude, td=td, frame_id=frame_id)
+    if smooth is not None:
+        spectrum = smooth.apply(spectrum)
     filters = coerce_filters(noise)
     if filters:
         spectrum = apply_noise(spectrum, filters, td=td, frame_id=frame_id)

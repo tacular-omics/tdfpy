@@ -13,6 +13,7 @@ Public surface:
   :class:`PercentileThreshold`, :class:`HistogramThreshold`,
   :class:`BaselineThreshold`, :class:`IterativeMedianThreshold`).
 - :class:`VerticalNoiseFilter` — content-aware vertical-streak filter.
+- :class:`GaussianNoiseFilter` — Gaussian-cloud non-max suppression.
 
 The convenience entry points (``get_raw_peaks``, ``Frame.raw_peaks``,
 etc.) also accept ``str`` / ``float`` shorthand which is coerced to a
@@ -66,7 +67,11 @@ from .intensity import (  # noqa: E402
     MadThreshold,
     PercentileThreshold,
 )
-from .structural import VerticalNoiseDiagnostics, VerticalNoiseFilter  # noqa: E402
+from .structural import (  # noqa: E402
+    GaussianNoiseFilter,
+    VerticalNoiseDiagnostics,
+    VerticalNoiseFilter,
+)
 
 _STRING_ALIASES: dict[str, type[IntensityThreshold]] = {
     "mad": MadThreshold,
@@ -143,4 +148,5 @@ __all__ = [
     "IterativeMedianThreshold",
     "VerticalNoiseFilter",
     "VerticalNoiseDiagnostics",
+    "GaussianNoiseFilter",
 ]

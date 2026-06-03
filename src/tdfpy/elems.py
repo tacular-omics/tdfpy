@@ -10,7 +10,7 @@ import pandas as pd
 
 from .centroiding import get_centroided_spectrum, get_raw_peaks
 from .noise import NoiseSpec
-from .pipeline import Centroider, MergePeaksCentroider
+from .pipeline import Centroider, MergePeaksCentroider, Smooth
 from .regions import ChargeStateRegion
 from .timsdata import TimsData, oneOverK0ToCCSforMz
 
@@ -21,6 +21,7 @@ def _frame_raw_peaks(
     *,
     scan_range: tuple[int, int] | None,
     exclude: ChargeStateRegion | None,
+    smooth: Smooth | None,
     noise: NoiseSpec,
     ion_mobility_type: Literal["ook0", "ccs", "voltage"],
 ) -> np.ndarray:
@@ -30,6 +31,7 @@ def _frame_raw_peaks(
         frame_id,
         scan_range=scan_range,
         exclude=exclude,
+        smooth=smooth,
         noise=noise,
         ion_mobility_type=ion_mobility_type,
     )
@@ -41,6 +43,7 @@ def _frame_centroid(
     *,
     scan_range: tuple[int, int] | None,
     exclude: ChargeStateRegion | None,
+    smooth: Smooth | None,
     noise: NoiseSpec,
     ion_mobility_type: Literal["ook0", "ccs", "voltage"],
     centroid: Centroider | None,
@@ -58,6 +61,7 @@ def _frame_centroid(
             frame_id,
             scan_range=scan_range,
             exclude=exclude,
+            smooth=smooth,
             noise=noise,
             ion_mobility_type=ion_mobility_type,
             centroid=cfg,
@@ -77,6 +81,7 @@ def _frame_centroid(
             frame_id,
             scan_range=scan_range,
             exclude=exclude,
+            smooth=smooth,
             noise=noise,
             ion_mobility_type=ion_mobility_type,
             centroid=replace(cfg, use_numba=False),
@@ -478,6 +483,7 @@ class Frame(_TdfData):
         self,
         *,
         exclude: ChargeStateRegion | None = None,
+        smooth: Smooth | None = None,
         noise: NoiseSpec = None,
         ion_mobility_type: Literal["ook0", "ccs", "voltage"] = "ook0",
     ) -> np.ndarray:
@@ -491,6 +497,7 @@ class Frame(_TdfData):
             self.frame_id,
             scan_range=None,
             exclude=exclude,
+            smooth=smooth,
             noise=noise,
             ion_mobility_type=ion_mobility_type,
         )
@@ -499,6 +506,7 @@ class Frame(_TdfData):
         self,
         *,
         exclude: ChargeStateRegion | None = None,
+        smooth: Smooth | None = None,
         noise: NoiseSpec = None,
         ion_mobility_type: Literal["ook0", "ccs", "voltage"] = "ook0",
         centroid: Centroider | None = None,
@@ -515,6 +523,7 @@ class Frame(_TdfData):
             self.frame_id,
             scan_range=None,
             exclude=exclude,
+            smooth=smooth,
             noise=noise,
             ion_mobility_type=ion_mobility_type,
             centroid=centroid,
@@ -569,6 +578,7 @@ class DiaWindow(DiaWindowGroup, _TdfData):
         self,
         *,
         exclude: ChargeStateRegion | None = None,
+        smooth: Smooth | None = None,
         noise: NoiseSpec = None,
         ion_mobility_type: Literal["ook0", "ccs", "voltage"] = "ook0",
     ) -> np.ndarray:
@@ -582,6 +592,7 @@ class DiaWindow(DiaWindowGroup, _TdfData):
             self.frame_id,
             scan_range=(self.scan_num_begin, self.scan_num_end),
             exclude=exclude,
+            smooth=smooth,
             noise=noise,
             ion_mobility_type=ion_mobility_type,
         )
@@ -590,6 +601,7 @@ class DiaWindow(DiaWindowGroup, _TdfData):
         self,
         *,
         exclude: ChargeStateRegion | None = None,
+        smooth: Smooth | None = None,
         noise: NoiseSpec = None,
         ion_mobility_type: Literal["ook0", "ccs", "voltage"] = "ook0",
         centroid: Centroider | None = None,
@@ -604,6 +616,7 @@ class DiaWindow(DiaWindowGroup, _TdfData):
             self.frame_id,
             scan_range=(self.scan_num_begin, self.scan_num_end),
             exclude=exclude,
+            smooth=smooth,
             noise=noise,
             ion_mobility_type=ion_mobility_type,
             centroid=centroid,
@@ -738,6 +751,7 @@ class PrmTransition(_TdfData):
         self,
         *,
         exclude: ChargeStateRegion | None = None,
+        smooth: Smooth | None = None,
         noise: NoiseSpec = None,
         ion_mobility_type: Literal["ook0", "ccs", "voltage"] = "ook0",
     ) -> np.ndarray:
@@ -751,6 +765,7 @@ class PrmTransition(_TdfData):
             self.frame_id,
             scan_range=(self.scan_num_begin, self.scan_num_end),
             exclude=exclude,
+            smooth=smooth,
             noise=noise,
             ion_mobility_type=ion_mobility_type,
         )
@@ -759,6 +774,7 @@ class PrmTransition(_TdfData):
         self,
         *,
         exclude: ChargeStateRegion | None = None,
+        smooth: Smooth | None = None,
         noise: NoiseSpec = None,
         ion_mobility_type: Literal["ook0", "ccs", "voltage"] = "ook0",
         centroid: Centroider | None = None,
@@ -773,6 +789,7 @@ class PrmTransition(_TdfData):
             self.frame_id,
             scan_range=(self.scan_num_begin, self.scan_num_end),
             exclude=exclude,
+            smooth=smooth,
             noise=noise,
             ion_mobility_type=ion_mobility_type,
             centroid=centroid,

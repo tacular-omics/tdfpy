@@ -31,6 +31,7 @@ from .lookup import (
 from .noise import (
     AbsoluteThreshold,
     BaselineThreshold,
+    GaussianNoiseFilter,
     HistogramThreshold,
     IntensityThreshold,
     IterativeMedianThreshold,
@@ -46,11 +47,14 @@ from .pipeline import (
     MergePeaksCentroider,
     RawSpectrum,
     WatershedCentroider,
+    Smooth,
     apply_noise,
+    box_smooth,
     centroid_peaks,
     convert,
     exclude_region,
     read_spectrum,
+    smooth,
     subset_scans,
 )
 from .reader import (
@@ -104,6 +108,9 @@ __all__ = [
     "read_spectrum",
     "subset_scans",
     "exclude_region",
+    "smooth",
+    "box_smooth",
+    "Smooth",
     "apply_noise",
     "convert",
     "centroid_peaks",
@@ -125,6 +132,7 @@ __all__ = [
     "BaselineThreshold",
     "IterativeMedianThreshold",
     "VerticalNoiseFilter",
+    "GaussianNoiseFilter",
     # Visualization
     "plot_centroiding",
 ]

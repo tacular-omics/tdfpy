@@ -98,18 +98,22 @@ mz, intensity, im = peaks[:, 0], peaks[:, 1], peaks[:, 2]
 mz_min, mz_max = float(mz.min()), float(mz.max())
 im_min, im_max = float(im.min()), float(im.max())
 
-# Default the axes to the full instrument acquisition range so frames are
-# comparable, regardless of where this frame's data happens to fall.
+# Fixed, frame-independent slider bounds from the acquisition metadata. Keeping
+# the bounds stable (and giving each slider a key) means the selected range
+# persists when you change frames or filters, instead of resetting every rerun.
+# Fall back to this frame's data extent only when metadata is unavailable.
 (fmz_lo, fmz_hi), (fim_lo, fim_hi) = full_axis_ranges(analysis_dir, ion_mobility_type)
-mz_lo = min(fmz_lo, mz_min) if fmz_lo is not None else float(np.floor(mz_min))
-mz_hi = max(fmz_hi, mz_max) if fmz_hi is not None else float(np.ceil(mz_max))
-im_lo = min(fim_lo, im_min) if fim_lo is not None else im_min
-im_hi = max(fim_hi, im_max) if fim_hi is not None else im_max
+mz_lo = fmz_lo if fmz_lo is not None else float(np.floor(mz_min))
+mz_hi = fmz_hi if fmz_hi is not None else float(np.ceil(mz_max))
+im_lo = fim_lo if fim_lo is not None else im_min
+im_hi = fim_hi if fim_hi is not None else im_max
 
 with st.sidebar:
     st.header("Ranges (display only)")
-    mz_range = st.slider("m/z range", mz_lo, mz_hi, (mz_lo, mz_hi))
-    im_range = st.slider(f"Ion mobility ({ion_mobility_type}) range", im_lo, im_hi, (im_lo, im_hi))
+    mz_range = st.slider("m/z range", mz_lo, mz_hi, (mz_lo, mz_hi), key="ms1_mz_range")
+    im_range = st.slider(
+        f"Ion mobility ({ion_mobility_type}) range", im_lo, im_hi, (im_lo, im_hi),
+        key=f"ms1_im_range_{ion_mobility_type}")
 
 mask = (mz >= mz_range[0]) & (mz <= mz_range[1]) & (im >= im_range[0]) & (im <= im_range[1])
 mz, intensity, im = mz[mask], intensity[mask], im[mask]

@@ -40,13 +40,23 @@ WatershedCentroider(
 )
 ```
 
-Position-preserving intensity smoothing runs before seed selection by
-default, controlled by `WatershedCentroider`'s `smooth_scan_half_width` /
-`smooth_mz_idx_half_width` fields (defaults `5` and `3`). Set either to
-`0` to disable. There is no standalone smoothing pipeline op — the
-convolution-style `smooth()` was removed because it expanded the point
-set, often dramatically. The watershed's box-mean smoothing rewrites
-intensities in place and is the canonical smoothing path.
+The standalone [`smooth`](#tdfpy.smooth) op (and the lower-level
+[`box_smooth`](#tdfpy.box_smooth) array helper) rewrite intensities in
+place — a box **sum** or **mean** over a `(±scan_half_width,
+±mz_idx_half_width)` window — without expanding the point set. Summing
+(the default) amplifies genuine ion-mobility streaks ahead of noise
+filtering; the mean variant backs `WatershedCentroider`'s seed-stabilising
+smoother, which runs before seed selection by default via the
+`smooth_scan_half_width` / `smooth_mz_idx_half_width` fields (defaults `5`
+and `3`; set either to `0` to disable).
+
+```python
+from tdfpy import read_spectrum, smooth, apply_noise, VerticalNoiseFilter
+
+s = read_spectrum(td, frame_id=1)
+s = smooth(s, scan_half_width=5, mz_idx_half_width=2)   # box sum, amplify streaks
+s = apply_noise(s, (VerticalNoiseFilter(),), td=td, frame_id=1)
+```
 
 ---
 
@@ -67,6 +77,20 @@ intensities in place and is the canonical smoothing path.
 ::: tdfpy.subset_scans
 
 ::: tdfpy.exclude_region
+
+---
+
+## Smoothing
+
+The convenience entry points (`get_raw_peaks`, `get_centroided_spectrum`,
+`Frame.centroid()`, …) accept smoothing as a single `smooth=Smooth(...)`
+argument; `smooth` / `box_smooth` are the underlying composable ops.
+
+::: tdfpy.Smooth
+
+::: tdfpy.smooth
+
+::: tdfpy.box_smooth
 
 ---
 

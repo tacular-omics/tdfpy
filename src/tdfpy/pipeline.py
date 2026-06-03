@@ -299,73 +299,131 @@ class MergePeaksCentroider(Centroider):
         )
 
 
-def _box_smooth_kernel(
-    scan_arr: np.ndarray,
-    mz_arr: np.ndarray,
-    int_arr: np.ndarray,
-    smooth_scan_half_width: int,
-    smooth_mz_idx_half_width: int,
-) -> np.ndarray:
-    """Box-mean kernel — position-preserving intensity smoothing.
-
-    Used internally by :class:`WatershedCentroider` to stabilise seed
-    selection. Not exposed as a pipeline op; the watershed is the
-    only consumer in practice.
-    """
-    n = scan_arr.size
-    grid: dict[tuple[int, int], list[int]] = {}
-    for i in range(n):
-        grid.setdefault(
-            (
-                int(scan_arr[i]) // smooth_scan_half_width,
-                int(mz_arr[i]) // smooth_mz_idx_half_width,
-            ),
-            [],
-        ).append(i)
-
-    smoothed = np.empty(n, dtype=np.float64)
-    for i in range(n):
-        p_scan = int(scan_arr[i])
-        p_mz = int(mz_arr[i])
-        c_scan = p_scan // smooth_scan_half_width
-        c_mz = p_mz // smooth_mz_idx_half_width
-        total = 0.0
-        count = 0
-        for ds in (-1, 0, 1):
-            for dm in (-1, 0, 1):
-                bucket = grid.get((c_scan + ds, c_mz + dm))
-                if bucket is None:
-                    continue
-                for q in bucket:
-                    if abs(p_scan - int(scan_arr[q])) > smooth_scan_half_width:
-                        continue
-                    if abs(p_mz - int(mz_arr[q])) > smooth_mz_idx_half_width:
-                        continue
-                    total += float(int_arr[q])
-                    count += 1
-        smoothed[i] = total / count if count > 0 else float(int_arr[i])
-    return smoothed
-
-
-def _box_smooth_intensities_arrays(
+def box_smooth(
     scan_indices: np.ndarray,
     mz_indices: np.ndarray,
     intensities: np.ndarray,
     *,
-    smooth_scan_half_width: int,
-    smooth_mz_idx_half_width: int,
+    scan_half_width: int,
+    mz_idx_half_width: int,
+    mode: Literal["sum", "mean"] = "sum",
 ) -> np.ndarray:
-    """Array-input variant kept for the watershed centroider's internal use
-    (it already has the arrays in hand and doesn't need to rewrap them)."""
-    if scan_indices.size == 0:
+    """Box sum / mean of intensities over a (±scan, ±mz_idx) index window.
+
+    For every peak, gathers all peaks within ``±scan_half_width`` mobility
+    scans and ``±mz_idx_half_width`` TOF indices and replaces the peak's
+    intensity with the sum (``mode="sum"``) or mean (``mode="mean"``) of that
+    window. Positions are preserved — only intensities change. Summing
+    amplifies genuine features (which recur across many scans) while leaving
+    isolated background hits untouched; the mean variant is used internally by
+    :class:`WatershedCentroider` to stabilise seed ordering.
+
+    Vectorised per mobility-scan: for each scan offset the contributing source
+    scan's peaks are searched by a sorted-m/z prefix sum, so cost is
+    ``O((2·scan_half_width+1) · N · log N)`` rather than the naïve ``O(N²)``.
+    """
+    n = intensities.size
+    if n == 0:
         return np.zeros(0, dtype=np.float64)
-    return _box_smooth_kernel(
-        np.asarray(scan_indices, dtype=np.int64),
-        np.asarray(mz_indices, dtype=np.int64),
-        np.asarray(intensities, dtype=np.float64),
-        max(1, int(smooth_scan_half_width)),
-        max(1, int(smooth_mz_idx_half_width)),
+    scan = np.asarray(scan_indices, dtype=np.int64)
+    mz = np.asarray(mz_indices, dtype=np.int64)
+    inten = np.asarray(intensities, dtype=np.float64)
+    scan_hw = max(0, int(scan_half_width))
+    mz_hw = max(0, int(mz_idx_half_width))
+
+    # Per mobility scan: sorted TOF indices + prefix sums of intensity / count.
+    order = np.argsort(scan, kind="stable")
+    scan_sorted = scan[order]
+    uniq, starts = np.unique(scan_sorted, return_index=True)
+    ends = np.append(starts[1:], scan_sorted.size)
+
+    queries: dict[int, tuple[np.ndarray, np.ndarray]] = {}
+    sources: dict[int, tuple[np.ndarray, np.ndarray, np.ndarray]] = {}
+    for sv, s0, s1 in zip(uniq.tolist(), starts.tolist(), ends.tolist()):
+        idx = order[s0:s1]
+        m = mz[idx]
+        msort = np.argsort(m, kind="stable")
+        m_sorted = m[msort]
+        prefix_int = np.concatenate([[0.0], np.cumsum(inten[idx[msort]])])
+        prefix_cnt = np.arange(m_sorted.size + 1, dtype=np.float64)
+        queries[sv] = (idx, m)
+        sources[sv] = (m_sorted, prefix_int, prefix_cnt)
+
+    result = np.zeros(n, dtype=np.float64)
+    count = np.zeros(n, dtype=np.float64)
+    for d in range(-scan_hw, scan_hw + 1):
+        for sv in uniq.tolist():
+            src = sources.get(sv + d)
+            if src is None:
+                continue
+            q_idx, q_mz = queries[sv]
+            m_sorted, prefix_int, prefix_cnt = src
+            lo = np.searchsorted(m_sorted, q_mz - mz_hw, side="left")
+            hi = np.searchsorted(m_sorted, q_mz + mz_hw, side="right")
+            result[q_idx] += prefix_int[hi] - prefix_int[lo]
+            if mode == "mean":
+                count[q_idx] += prefix_cnt[hi] - prefix_cnt[lo]
+
+    if mode == "mean":
+        np.divide(result, count, out=result, where=count > 0)
+    return result
+
+
+def smooth(
+    spectrum: RawSpectrum,
+    *,
+    scan_half_width: int = 5,
+    mz_idx_half_width: int = 2,
+    mode: Literal["sum", "mean"] = "sum",
+) -> RawSpectrum:
+    """Return a new spectrum with box-smoothed intensities (positions kept).
+
+    A pre-noise-filter signal-amplification step: summing intensity over a
+    small ``(±scan_half_width, ±mz_idx_half_width)`` window boosts genuine
+    features that recur across consecutive mobility scans while leaving
+    scattered single-hit noise largely unchanged. Composes ahead of
+    :func:`apply_noise` in a custom pipeline. See :func:`box_smooth`.
+    """
+    if spectrum.empty:
+        return spectrum
+    new_int = box_smooth(
+        spectrum.scan_indices,
+        spectrum.mz_indices,
+        spectrum.intensities,
+        scan_half_width=scan_half_width,
+        mz_idx_half_width=mz_idx_half_width,
+        mode=mode,
     )
+    return RawSpectrum(
+        scan_indices=spectrum.scan_indices,
+        mz_indices=spectrum.mz_indices,
+        intensities=new_int,
+        num_scans=spectrum.num_scans,
+    )
+
+
+@dataclass(frozen=True)
+class Smooth:
+    """Config for the pre-noise-filter intensity smoothing step.
+
+    A small, hashable carrier for the :func:`smooth` op's knobs so the
+    convenience entry points (`get_raw_peaks`, `get_centroided_spectrum`,
+    `Frame.centroid()`, …) can accept smoothing as a single `smooth=Smooth(...)`
+    argument. Frozen so it is hashable (Streamlit-cacheable).
+    """
+
+    scan_half_width: int = 5
+    mz_idx_half_width: int = 2
+    mode: Literal["sum", "mean"] = "sum"
+
+    def apply(self, spectrum: RawSpectrum) -> RawSpectrum:
+        """Return ``spectrum`` with intensities box-smoothed per this config."""
+        return smooth(
+            spectrum,
+            scan_half_width=self.scan_half_width,
+            mz_idx_half_width=self.mz_idx_half_width,
+            mode=self.mode,
+        )
 
 
 _CELL_STRIDE = np.int64(1_000_000_000)
@@ -753,12 +811,13 @@ class WatershedCentroider(Centroider):
 
         intensities = spectrum.intensities
         if self.smooth_scan_half_width > 0 and self.smooth_mz_idx_half_width > 0:
-            intensities = _box_smooth_intensities_arrays(
+            intensities = box_smooth(
                 spectrum.scan_indices,
                 spectrum.mz_indices,
                 intensities,
-                smooth_scan_half_width=self.smooth_scan_half_width,
-                smooth_mz_idx_half_width=self.smooth_mz_idx_half_width,
+                scan_half_width=self.smooth_scan_half_width,
+                mz_idx_half_width=self.smooth_mz_idx_half_width,
+                mode="mean",
             )
 
         return _watershed_kernel(
@@ -816,6 +875,9 @@ __all__ = [
     "read_spectrum",
     "subset_scans",
     "exclude_region",
+    "smooth",
+    "box_smooth",
+    "Smooth",
     "apply_noise",
     "convert",
     "centroid_peaks",

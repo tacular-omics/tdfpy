@@ -4,6 +4,11 @@ The vertical-noise filter identifies real ions by their characteristic
 vertical streaks in ``(scan_number, TOF_index)`` space — see
 ``apps/ALGORITHM.md`` for the full algorithm write-up. It is the
 canonical structural filter for timsTOF MS1 data.
+
+The Gaussian-cloud filter (:class:`GaussianNoiseFilter`) suppresses the
+diffuse halo of weak peaks that surrounds each bright ion, projecting a 2D
+Gaussian envelope in physical ``(m/z, 1/K0)`` space and dropping neighbours
+that fall below it.
 """
 
 from __future__ import annotations
@@ -14,6 +19,12 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from . import NoiseFilter
+
+try:
+    from numba import njit as _njit  # ty: ignore[unresolved-import]
+    _HAS_NUMBA = True
+except ImportError:  # pragma: no cover
+    _HAS_NUMBA = False
 
 if TYPE_CHECKING:
     from ..timsdata import TimsData
@@ -38,7 +49,95 @@ class VerticalNoiseDiagnostics:
     #   Length num_iterations + 1; per_pass_kept[0] is the input count.
 
 
-def _single_pass_filter(
+if _HAS_NUMBA:
+    @_njit(cache=True)
+    def _vertical_single_pass_njit(
+        mz_sorted: np.ndarray,
+        scan_sorted: np.ndarray,
+        int_sorted: np.ndarray,
+        first_idx: np.ndarray,
+        num_scans: int,
+        mz_idx_half_width: int,
+        min_streak_scans: int,
+        max_gap_scans: int,
+        min_streak_intensity: float,
+    ):
+        """Numba single-pass kernel over m/z-sorted points.
+
+        Mirrors :func:`_single_pass_filter_python` exactly. Uses a forward
+        two-pointer window over the sorted points (centres increase
+        monotonically, so the window bounds never move backward) and keeps an
+        incremental per-scan intensity ``profile`` updated as points enter and
+        leave the ``±mz_idx_half_width`` window. Returns ``(keep_sorted,
+        num_columns_with_kept_runs)``.
+        """
+        n = mz_sorted.size
+        u = first_idx.size
+        keep = np.zeros(n, dtype=np.bool_)
+        profile = np.zeros(num_scans, dtype=np.float64)
+        run_lo = np.empty(num_scans, dtype=np.int64)
+        run_hi = np.empty(num_scans, dtype=np.int64)
+        left = 0
+        right = 0
+        n_cols_kept = 0
+
+        for k in range(u):
+            center = mz_sorted[first_idx[k]]
+            lo_val = center - mz_idx_half_width
+            hi_val = center + mz_idx_half_width
+            while right < n and mz_sorted[right] <= hi_val:
+                profile[scan_sorted[right]] += int_sorted[right]
+                right += 1
+            while left < n and mz_sorted[left] < lo_val:
+                profile[scan_sorted[left]] -= int_sorted[left]
+                left += 1
+
+            # Walk scans, collecting gap-closed occupied runs that clear the
+            # span + intensity thresholds.
+            nkr = 0
+            run_first = -1
+            run_last = -1
+            run_sum = 0.0
+            for s in range(num_scans):
+                p = profile[s]
+                if p > 0.0:
+                    if run_first == -1:
+                        run_first = s
+                        run_last = s
+                        run_sum = p
+                    elif (s - run_last - 1) > max_gap_scans:
+                        if (run_last - run_first + 1) >= min_streak_scans and \
+                                run_sum >= min_streak_intensity:
+                            run_lo[nkr] = run_first
+                            run_hi[nkr] = run_last
+                            nkr += 1
+                        run_first = s
+                        run_last = s
+                        run_sum = p
+                    else:
+                        run_last = s
+                        run_sum += p
+            if run_first != -1 and (run_last - run_first + 1) >= min_streak_scans and \
+                    run_sum >= min_streak_intensity:
+                run_lo[nkr] = run_first
+                run_hi[nkr] = run_last
+                nkr += 1
+            if nkr > 0:
+                n_cols_kept += 1
+
+            # Keep this column's own points whose scan falls in a kept run.
+            start = first_idx[k]
+            end = first_idx[k + 1] if k + 1 < u else n
+            for i in range(start, end):
+                sc = scan_sorted[i]
+                for r in range(nkr):
+                    if run_lo[r] <= sc and sc <= run_hi[r]:
+                        keep[i] = True
+                        break
+        return keep, n_cols_kept
+
+
+def _single_pass_filter_python(
     scan_indices: np.ndarray,
     mz_indices: np.ndarray,
     intensities: np.ndarray,
@@ -50,7 +149,7 @@ def _single_pass_filter(
     min_streak_intensity: float,
     collect_span_intensities: bool = False,
 ) -> tuple[np.ndarray, int, int, np.ndarray]:
-    """One pass of the vertical-noise filter.
+    """Pure-NumPy reference implementation of one pass (also the fallback).
 
     Returns ``(keep_mask, num_columns_evaluated, num_columns_with_kept_runs,
     feature_span_intensities)``. The last is populated only if
@@ -129,6 +228,56 @@ def _single_pass_filter(
     )
 
 
+def _single_pass_filter(
+    scan_indices: np.ndarray,
+    mz_indices: np.ndarray,
+    intensities: np.ndarray,
+    num_scans: int,
+    *,
+    mz_idx_half_width: int,
+    min_streak_scans: int,
+    max_gap_scans: int,
+    min_streak_intensity: float,
+    collect_span_intensities: bool = False,
+) -> tuple[np.ndarray, int, int, np.ndarray]:
+    """One pass of the vertical-noise filter.
+
+    Dispatches to the Numba kernel when available (the common path); falls back
+    to :func:`_single_pass_filter_python` when Numba is missing or when the
+    per-run span-intensity histogram is requested (``collect_span_intensities``,
+    used only by the tuning dashboard).
+    """
+    if not _HAS_NUMBA or collect_span_intensities:
+        return _single_pass_filter_python(
+            scan_indices, mz_indices, intensities, num_scans,
+            mz_idx_half_width=mz_idx_half_width,
+            min_streak_scans=min_streak_scans,
+            max_gap_scans=max_gap_scans,
+            min_streak_intensity=min_streak_intensity,
+            collect_span_intensities=collect_span_intensities,
+        )
+
+    n = scan_indices.size
+    if n == 0:
+        return (np.zeros(0, dtype=bool), 0, 0, np.zeros(0, dtype=np.float64))
+
+    order = np.argsort(mz_indices, kind="stable")
+    mz_sorted = np.ascontiguousarray(mz_indices[order], dtype=np.int64)
+    scan_sorted = np.ascontiguousarray(scan_indices[order], dtype=np.int64)
+    int_sorted = np.ascontiguousarray(intensities[order], dtype=np.float64)
+    _unique_mz, first_idx = np.unique(mz_sorted, return_index=True)
+
+    keep_sorted, n_cols_kept = _vertical_single_pass_njit(
+        mz_sorted, scan_sorted, int_sorted,
+        np.ascontiguousarray(first_idx, dtype=np.int64), int(num_scans),
+        int(mz_idx_half_width), int(min_streak_scans), int(max_gap_scans),
+        float(min_streak_intensity),
+    )
+    keep_mask = np.empty(n, dtype=bool)
+    keep_mask[order] = keep_sorted
+    return (keep_mask, int(first_idx.size), int(n_cols_kept), np.zeros(0, dtype=np.float64))
+
+
 @dataclass(frozen=True)
 class VerticalNoiseFilter(NoiseFilter):
     """Keep points belonging to vertical streaks in (scan, TOF_index) space.
@@ -182,7 +331,7 @@ class VerticalNoiseFilter(NoiseFilter):
 
         When ``diagnostics`` is False (default) returns the keep-mask only.
         When True returns a :class:`VerticalNoiseDiagnostics` carrying the mask
-        and per-pass telemetry — used by the IM-feature-filter dashboard.
+        and per-pass telemetry — used by the timsTOF viewer's IM-filter page.
         """
         n = scan_indices.size
         if n == 0:
@@ -238,4 +387,163 @@ class VerticalNoiseFilter(NoiseFilter):
             num_kept_points=int(cumulative.sum()),
             feature_span_intensities=last_span_intensities,
             per_pass_kept=per_pass_kept,
+        )
+
+
+# --------------------------------------------------------------------------
+# Gaussian-cloud filter
+# --------------------------------------------------------------------------
+
+
+def _gaussian_cloud_kernel_py(
+    mz_s: np.ndarray,
+    im_s: np.ndarray,
+    int_s: np.ndarray,
+    int_order_desc: np.ndarray,
+    peak_fraction: float,
+    mz_window: float,
+    inv2_mz: float,
+    im_window: float,
+    inv2_im: float,
+    min_query_intensity: float,
+) -> np.ndarray:
+    """Greedy Gaussian-cloud suppression on m/z-sorted arrays.
+
+    Returns an ``alive`` mask (in m/z-sorted order). Processes peaks strongest
+    first; each surviving peak removes weaker alive neighbours falling under
+    its 2D Gaussian envelope ``I_query · peak_fraction · exp(-Δmz²·inv2_mz -
+    Δim²·inv2_im)`` within the ``±mz_window`` / ``±im_window`` box. Suppressed
+    peaks cannot themselves suppress (greedy non-max suppression).
+    """
+    n = mz_s.size
+    alive = np.ones(n, dtype=np.bool_)
+    for t in range(int_order_desc.size):
+        i = int_order_desc[t]
+        if not alive[i]:
+            continue
+        ii = int_s[i]
+        if ii < min_query_intensity:
+            continue
+        mzi = mz_s[i]
+        imi = im_s[i]
+        lo = np.searchsorted(mz_s, mzi - mz_window, side="left")
+        hi = np.searchsorted(mz_s, mzi + mz_window, side="right")
+        for j in range(lo, hi):
+            if j == i or not alive[j]:
+                continue
+            ij = int_s[j]
+            if ij >= ii:
+                continue
+            dim = im_s[j] - imi
+            if dim < 0.0:
+                dim = -dim
+            if dim > im_window:
+                continue
+            dmz = mz_s[j] - mzi
+            weight = np.exp(-(dmz * dmz) * inv2_mz - (dim * dim) * inv2_im)
+            if ij < ii * peak_fraction * weight:
+                alive[j] = False
+    return alive
+
+
+if _HAS_NUMBA:
+    _gaussian_cloud_kernel = _njit(cache=True)(_gaussian_cloud_kernel_py)
+else:  # pragma: no cover
+    _gaussian_cloud_kernel = _gaussian_cloud_kernel_py
+
+
+def _gaussian_cloud_keep_mask(
+    mz: np.ndarray,
+    im: np.ndarray,
+    intensities: np.ndarray,
+    *,
+    peak_fraction: float,
+    mz_window: float,
+    mz_sigma: float,
+    im_window: float,
+    im_sigma: float,
+    min_query_intensity: float,
+) -> np.ndarray:
+    """Keep-mask (original order) for the greedy Gaussian-cloud filter.
+
+    Inputs are in physical units: ``mz`` in Da, ``im`` in 1/K0.
+    """
+    n = intensities.size
+    if n == 0:
+        return np.ones(0, dtype=bool)
+    mz_order = np.argsort(mz, kind="stable")
+    mz_s = np.ascontiguousarray(mz[mz_order], dtype=np.float64)
+    im_s = np.ascontiguousarray(im[mz_order], dtype=np.float64)
+    int_s = np.ascontiguousarray(intensities[mz_order], dtype=np.float64)
+    # Descending-intensity processing order, expressed as positions in mz_s.
+    int_order_desc = np.argsort(int_s, kind="stable")[::-1].astype(np.int64)
+    inv2_mz = 1.0 / (2.0 * mz_sigma * mz_sigma) if mz_sigma > 0 else 0.0
+    inv2_im = 1.0 / (2.0 * im_sigma * im_sigma) if im_sigma > 0 else 0.0
+    alive_s = _gaussian_cloud_kernel(
+        mz_s, im_s, int_s, np.ascontiguousarray(int_order_desc),
+        float(peak_fraction), float(mz_window), float(inv2_mz),
+        float(im_window), float(inv2_im), float(min_query_intensity),
+    )
+    keep = np.empty(n, dtype=bool)
+    keep[mz_order] = alive_s
+    return keep
+
+
+@dataclass(frozen=True)
+class GaussianNoiseFilter(NoiseFilter):
+    """Suppress the diffuse noise cloud surrounding bright peaks.
+
+    High-intensity ions are wrapped in a halo of weak peaks — likely from
+    charge interactions within the fragment-ion cloud or detector effects —
+    that are not resolvable to high-precision m/z values. This filter
+    performs greedy non-maximum suppression in physical ``(m/z, 1/K0)``
+    space: peaks are visited strongest first, and each surviving peak drops
+    weaker neighbours whose intensity falls below its 2D Gaussian envelope
+
+        ``I_query · peak_fraction · exp(-Δmz²/2σ_mz² - Δ(1/K0)²/2σ_im²)``
+
+    evaluated within a ``±mz_window`` (Da) by ``±im_window`` (1/K0) box.
+    With the defaults, the envelope peaks at 30% of a bright peak's
+    intensity at its centre and decays over a 0.4 Da window with a 0.15 Da
+    standard deviation. A suppressed peak cannot itself suppress others.
+
+    Because the envelope is defined in physical units, ``keep_mask``
+    converts the integer TOF/scan indices to m/z and 1/K0 using the frame's
+    calibration before running. The inner loop is JIT-compiled via Numba,
+    with a pure-Python fallback.
+    """
+
+    peak_fraction: float = 0.3
+    mz_window: float = 0.2
+    mz_sigma: float = 0.15
+    im_window: float = 0.05
+    im_sigma: float = 0.02
+    min_query_intensity: float = 0.0
+
+    def keep_mask(
+        self,
+        scan_indices: np.ndarray,
+        mz_indices: np.ndarray,
+        intensities: np.ndarray,
+        *,
+        num_scans: int,
+        td: "TimsData",
+        frame_id: int,
+    ) -> np.ndarray:
+        n = intensities.size
+        if n == 0:
+            return np.ones(0, dtype=bool)
+        mz = np.asarray(td.indexToMz(frame_id, mz_indices), dtype=np.float64)
+        ook0_per_scan = np.asarray(
+            td.scanNumToOneOverK0(frame_id, np.arange(num_scans, dtype=np.float64))
+        )
+        im = ook0_per_scan[scan_indices]
+        return _gaussian_cloud_keep_mask(
+            mz, im, intensities,
+            peak_fraction=self.peak_fraction,
+            mz_window=self.mz_window,
+            mz_sigma=self.mz_sigma,
+            im_window=self.im_window,
+            im_sigma=self.im_sigma,
+            min_query_intensity=self.min_query_intensity,
         )

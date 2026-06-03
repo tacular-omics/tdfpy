@@ -13,8 +13,8 @@ from tdfpy.pipeline import (
     Centroider,
     MergePeaksCentroider,
     WatershedCentroider,
-    _box_smooth_intensities_arrays,
     _watershed_kernel,
+    box_smooth,
 )
 
 
@@ -294,9 +294,9 @@ class TestBoxSmoothIntensities:
         scan = np.array([0, 1, 2, 3, 4], dtype=np.int64)
         mz = np.array([100, 100, 100, 100, 100], dtype=np.int64)
         intens = np.array([1.0, 10.0, 1.0, 10.0, 1.0])
-        out = _box_smooth_intensities_arrays(
+        out = box_smooth(
             scan, mz, intens,
-            smooth_scan_half_width=1, smooth_mz_idx_half_width=0,
+            scan_half_width=1, mz_idx_half_width=0, mode="mean",
         )
         assert out.shape == intens.shape
 
@@ -304,9 +304,9 @@ class TestBoxSmoothIntensities:
         scan = np.arange(10, dtype=np.int64)
         mz = np.zeros(10, dtype=np.int64)
         intens = np.full(10, 42.0)
-        out = _box_smooth_intensities_arrays(
+        out = box_smooth(
             scan, mz, intens,
-            smooth_scan_half_width=2, smooth_mz_idx_half_width=0,
+            scan_half_width=2, mz_idx_half_width=0, mode="mean",
         )
         assert np.allclose(out, 42.0)
 
@@ -315,18 +315,93 @@ class TestBoxSmoothIntensities:
         scan = np.array([0, 1, 2, 3, 4], dtype=np.int64)
         mz = np.zeros(5, dtype=np.int64)
         intens = np.array([1.0, 1.0, 100.0, 1.0, 1.0])
-        # smooth_scan_half_width=2 → centre point at scan=2 averages over scans 0..4 (all 5).
-        out = _box_smooth_intensities_arrays(
+        # scan_half_width=2 → centre point at scan=2 averages over scans 0..4 (all 5).
+        out = box_smooth(
             scan, mz, intens,
-            smooth_scan_half_width=2, smooth_mz_idx_half_width=0,
+            scan_half_width=2, mz_idx_half_width=0, mode="mean",
         )
         assert out[2] == pytest.approx((1 + 1 + 100 + 1 + 1) / 5)
 
     def test_empty(self):
-        out = _box_smooth_intensities_arrays(
+        out = box_smooth(
             np.empty(0, dtype=np.int64),
             np.empty(0, dtype=np.int64),
             np.empty(0, dtype=np.float64),
-            smooth_scan_half_width=1, smooth_mz_idx_half_width=1,
+            scan_half_width=1, mz_idx_half_width=1, mode="mean",
         )
         assert out.shape == (0,)
+
+    def test_sum_mode_accumulates_window(self):
+        # Five neighbouring points along the scan axis; sum over ±2 = all 5.
+        scan = np.array([0, 1, 2, 3, 4], dtype=np.int64)
+        mz = np.zeros(5, dtype=np.int64)
+        intens = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
+        out = box_smooth(
+            scan, mz, intens,
+            scan_half_width=2, mz_idx_half_width=0, mode="sum",
+        )
+        assert out[2] == pytest.approx(15.0)  # 1+2+3+4+5
+        assert out[0] == pytest.approx(1 + 2 + 3)  # scans 0..2
+
+    def test_sum_mode_amplifies_streak_over_isolated_noise(self):
+        # A vertical streak (same mz across scans) sums up; a lone hit doesn't.
+        scan = np.array([0, 1, 2, 3, 4, 0], dtype=np.int64)
+        mz = np.array([10, 10, 10, 10, 10, 50], dtype=np.int64)
+        intens = np.array([100.0, 100.0, 100.0, 100.0, 100.0, 100.0])
+        out = box_smooth(
+            scan, mz, intens,
+            scan_half_width=5, mz_idx_half_width=0, mode="sum",
+        )
+        assert out[0] == pytest.approx(500.0)  # streak point
+        assert out[5] == pytest.approx(100.0)  # isolated noise unchanged
+
+
+class TestSmoothOp:
+    def test_smooth_returns_new_spectrum_same_positions(self):
+        from tdfpy.pipeline import RawSpectrum, smooth
+
+        spec = RawSpectrum(
+            scan_indices=np.array([0, 1, 2], dtype=np.int64),
+            mz_indices=np.array([10, 10, 10], dtype=np.int64),
+            intensities=np.array([1.0, 1.0, 1.0]),
+            num_scans=3,
+        )
+        out = smooth(spec, scan_half_width=5, mz_idx_half_width=0, mode="sum")
+        np.testing.assert_array_equal(out.scan_indices, spec.scan_indices)
+        np.testing.assert_array_equal(out.mz_indices, spec.mz_indices)
+        assert out.intensities.tolist() == [3.0, 3.0, 3.0]
+
+    def test_smooth_empty(self):
+        from tdfpy.pipeline import RawSpectrum, smooth
+
+        spec = RawSpectrum.empty_like(10)
+        assert smooth(spec).empty
+
+
+class TestSmoothConfig:
+    def test_defaults(self):
+        from tdfpy import Smooth
+
+        s = Smooth()
+        assert (s.scan_half_width, s.mz_idx_half_width, s.mode) == (5, 2, "sum")
+
+    def test_is_hashable(self):
+        from tdfpy import Smooth
+
+        # Frozen → usable as a dict key / Streamlit cache arg.
+        assert hash(Smooth()) == hash(Smooth())
+
+    def test_apply_matches_smooth_op(self):
+        from tdfpy import Smooth
+        from tdfpy.pipeline import RawSpectrum, smooth
+
+        spec = RawSpectrum(
+            scan_indices=np.array([0, 1, 2, 3, 4], dtype=np.int64),
+            mz_indices=np.full(5, 10, dtype=np.int64),
+            intensities=np.array([1.0, 2.0, 3.0, 4.0, 5.0]),
+            num_scans=5,
+        )
+        cfg = Smooth(scan_half_width=2, mz_idx_half_width=0, mode="sum")
+        via_cfg = cfg.apply(spec)
+        via_op = smooth(spec, scan_half_width=2, mz_idx_half_width=0, mode="sum")
+        np.testing.assert_array_equal(via_cfg.intensities, via_op.intensities)

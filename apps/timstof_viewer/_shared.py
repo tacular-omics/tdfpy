@@ -1,9 +1,11 @@
-"""Shared helpers for the consolidated DDA dashboard.
+"""Shared helpers for the timsTOF viewer app.
 
 This module factors the data loaders, the noise/centroid pipeline sidebar
-builder, and the plotting helpers out of the older single-purpose dashboards
-(``raw_spectrum_dashboard.py``, ``raw_ms2_dashboard.py``) so every page of the
-DDA app renders consistently and re-uses the same cached accessors.
+builder, and the plotting helpers out of the individual pages so every page
+renders consistently and re-uses the same cached accessors. The peak-processing
+ops (smoothing, noise filtering, centroiding) are thin adapters over the public
+``tdfpy`` pipeline — the app builds UI-tuple specs and hands them to
+:func:`tdfpy.smooth`, :class:`tdfpy.GaussianNoiseFilter`, etc.
 
 Nothing here is part of the public ``tdfpy`` package — this is internal dev
 tooling under ``apps/`` only.
@@ -25,6 +27,7 @@ from tdfpy import (
     AbsoluteThreshold,
     BaselineThreshold,
     ChargeStateRegion,
+    GaussianNoiseFilter,
     HistogramThreshold,
     IntensityThreshold,
     IterativeMedianThreshold,
@@ -42,16 +45,11 @@ from tdfpy import (
     get_acquisition_type,
     get_raw_peaks,
     read_spectrum,
+    smooth,
     subset_scans,
 )
 from tdfpy.pipeline import Centroider
 from tdfpy.tdf import PandasTdf
-
-try:
-    from numba import njit as _njit  # ty: ignore[unresolved-import]
-    _HAS_NUMBA = True
-except ImportError:  # pragma: no cover
-    _HAS_NUMBA = False
 
 # A smoothing config: ``(scan_half_width, mz_idx_half_width, "sum" | "mean")``.
 SmoothSpec = tuple[int, int, str]
@@ -261,188 +259,36 @@ def count_raw_peaks(analysis_dir: str, frame_id: int) -> int:
         return int(get_raw_peaks(td, frame_id).shape[0])
 
 
-def _box_smooth_intensities(
-    scan: np.ndarray,
-    mz: np.ndarray,
-    inten: np.ndarray,
-    *,
-    scan_hw: int,
-    mz_hw: int,
-    mode: str,
-) -> np.ndarray:
-    """Box sum / mean of intensities over a (±scan_hw, ±mz_hw) index window.
+def _smooth_spectrum(spectrum: RawSpectrum, smooth_spec: SmoothSpec) -> RawSpectrum:
+    """Box-smooth intensities via the package :func:`tdfpy.smooth` op.
 
-    For every peak, gathers all peaks within ``±scan_hw`` mobility scans and
-    ``±mz_hw`` TOF indices and replaces the peak's intensity with the sum (or
-    mean) of that window. Positions are preserved — only intensities change.
-
-    Vectorised per mobility-scan: for each scan offset the contributing source
-    scan's peaks are searched by a sorted-m/z prefix sum, so cost is
-    ``O((2·scan_hw+1) · N · log)`` rather than the naïve ``O(N²)``.
+    ``smooth_spec`` is the UI tuple ``(scan_hw, mz_hw, "sum" | "mean")``.
     """
-    n = inten.size
-    if n == 0:
-        return inten
-    scan = np.asarray(scan, dtype=np.int64)
-    mz = np.asarray(mz, dtype=np.int64)
-    inten = np.asarray(inten, dtype=np.float64)
-
-    # Per mobility scan: sorted TOF indices + prefix sums of intensity/count.
-    order = np.argsort(scan, kind="stable")
-    scan_sorted = scan[order]
-    uniq, starts = np.unique(scan_sorted, return_index=True)
-    ends = np.append(starts[1:], scan_sorted.size)
-
-    # queries[scan] = (orig_indices, their mz); sources[scan] = (sorted_mz, prefix_int, prefix_cnt)
-    queries: dict[int, tuple[np.ndarray, np.ndarray]] = {}
-    sources: dict[int, tuple[np.ndarray, np.ndarray, np.ndarray]] = {}
-    for sv, s0, s1 in zip(uniq.tolist(), starts.tolist(), ends.tolist()):
-        idx = order[s0:s1]
-        m = mz[idx]
-        msort = np.argsort(m, kind="stable")
-        m_sorted = m[msort]
-        prefix_int = np.concatenate([[0.0], np.cumsum(inten[idx[msort]])])
-        prefix_cnt = np.arange(m_sorted.size + 1, dtype=np.float64)
-        queries[sv] = (idx, m)
-        sources[sv] = (m_sorted, prefix_int, prefix_cnt)
-
-    result = np.zeros(n, dtype=np.float64)
-    count = np.zeros(n, dtype=np.float64)
-    for d in range(-scan_hw, scan_hw + 1):
-        for sv in uniq.tolist():
-            src = sources.get(sv + d)
-            if src is None:
-                continue
-            q_idx, q_mz = queries[sv]
-            m_sorted, prefix_int, prefix_cnt = src
-            lo = np.searchsorted(m_sorted, q_mz - mz_hw, side="left")
-            hi = np.searchsorted(m_sorted, q_mz + mz_hw, side="right")
-            result[q_idx] += prefix_int[hi] - prefix_int[lo]
-            if mode == "mean":
-                count[q_idx] += prefix_cnt[hi] - prefix_cnt[lo]
-
-    if mode == "mean":
-        np.divide(result, count, out=result, where=count > 0)
-    return result
-
-
-def _smooth_spectrum(spectrum: RawSpectrum, smooth: SmoothSpec) -> RawSpectrum:
-    """Return a new ``RawSpectrum`` with box-smoothed intensities."""
-    if spectrum.empty:
-        return spectrum
-    scan_hw, mz_hw, mode = smooth
-    new_int = _box_smooth_intensities(
-        spectrum.scan_indices, spectrum.mz_indices, spectrum.intensities,
-        scan_hw=max(0, int(scan_hw)), mz_hw=max(0, int(mz_hw)), mode=mode,
+    scan_hw, mz_hw, mode = smooth_spec
+    return smooth(
+        spectrum,
+        scan_half_width=max(0, int(scan_hw)),
+        mz_idx_half_width=max(0, int(mz_hw)),
+        mode=mode,  # type: ignore[arg-type]
     )
-    return RawSpectrum(
-        scan_indices=spectrum.scan_indices,
-        mz_indices=spectrum.mz_indices,
-        intensities=new_int,
-        num_scans=spectrum.num_scans,
-    )
-
-
-def _gaussian_cloud_kernel_py(
-    mz_s: np.ndarray,
-    im_s: np.ndarray,
-    int_s: np.ndarray,
-    int_order_desc: np.ndarray,
-    peak_fraction: float,
-    mz_window: float,
-    inv2_mz: float,
-    im_window: float,
-    inv2_im: float,
-    min_query_intensity: float,
-) -> np.ndarray:
-    """Greedy Gaussian-cloud suppression on m/z-sorted arrays.
-
-    Returns an ``alive`` mask (in m/z-sorted order). Processes peaks strongest
-    first; each surviving peak removes weaker alive neighbours falling under
-    its 2D Gaussian envelope ``I_query · peak_fraction · exp(-Δmz²·inv2_mz -
-    Δim²·inv2_im)`` within the ``±mz_window`` / ``±im_window`` box. Suppressed
-    peaks cannot themselves suppress (greedy non-max suppression).
-    """
-    n = mz_s.size
-    alive = np.ones(n, dtype=np.bool_)
-    for t in range(int_order_desc.size):
-        i = int_order_desc[t]
-        if not alive[i]:
-            continue
-        ii = int_s[i]
-        if ii < min_query_intensity:
-            continue
-        mzi = mz_s[i]
-        imi = im_s[i]
-        lo = np.searchsorted(mz_s, mzi - mz_window, side="left")
-        hi = np.searchsorted(mz_s, mzi + mz_window, side="right")
-        for j in range(lo, hi):
-            if j == i or not alive[j]:
-                continue
-            ij = int_s[j]
-            if ij >= ii:
-                continue
-            dim = im_s[j] - imi
-            if dim < 0.0:
-                dim = -dim
-            if dim > im_window:
-                continue
-            dmz = mz_s[j] - mzi
-            weight = np.exp(-(dmz * dmz) * inv2_mz - (dim * dim) * inv2_im)
-            if ij < ii * peak_fraction * weight:
-                alive[j] = False
-    return alive
-
-
-if _HAS_NUMBA:
-    _gaussian_cloud_kernel = _njit(cache=True)(_gaussian_cloud_kernel_py)
-else:  # pragma: no cover
-    _gaussian_cloud_kernel = _gaussian_cloud_kernel_py
-
-
-def _gaussian_cloud_keep_mask(
-    mz: np.ndarray, im: np.ndarray, inten: np.ndarray, gaussian: GaussianSpec
-) -> np.ndarray:
-    """Keep-mask (original order) for the greedy Gaussian-cloud filter."""
-    peak_fraction, mz_window, mz_sigma, im_window, im_sigma, min_q = gaussian
-    n = inten.size
-    if n == 0:
-        return np.ones(0, dtype=bool)
-    mz_order = np.argsort(mz, kind="stable")
-    mz_s = np.ascontiguousarray(mz[mz_order], dtype=np.float64)
-    im_s = np.ascontiguousarray(im[mz_order], dtype=np.float64)
-    int_s = np.ascontiguousarray(inten[mz_order], dtype=np.float64)
-    # Descending-intensity processing order, expressed as positions in mz_s.
-    int_order_desc = np.argsort(int_s, kind="stable")[::-1].astype(np.int64)
-    inv2_mz = 1.0 / (2.0 * mz_sigma * mz_sigma) if mz_sigma > 0 else 0.0
-    inv2_im = 1.0 / (2.0 * im_sigma * im_sigma) if im_sigma > 0 else 0.0
-    alive_s = _gaussian_cloud_kernel(
-        mz_s, im_s, int_s, np.ascontiguousarray(int_order_desc),
-        float(peak_fraction), float(mz_window), float(inv2_mz),
-        float(im_window), float(inv2_im), float(min_q),
-    )
-    keep = np.empty(n, dtype=bool)
-    keep[mz_order] = alive_s
-    return keep
 
 
 def _gaussian_filter_spectrum(
     spectrum: RawSpectrum, td, frame_id: int, gaussian: GaussianSpec
 ) -> RawSpectrum:
-    """Drop noise-cloud peaks via the greedy Gaussian envelope.
+    """Drop noise-cloud peaks via the package :class:`tdfpy.GaussianNoiseFilter`.
 
-    Works in physical (m/z, 1/K0) space — the 0.4 Da / 10% rules are physical —
-    by converting the integer indices with the frame's calibration.
+    ``gaussian`` is the UI tuple
+    ``(peak_fraction, mz_window, mz_sigma, im_window, im_sigma, min_query_intensity)``.
     """
     if spectrum.empty:
         return spectrum
-    mz = np.asarray(td.indexToMz(frame_id, spectrum.mz_indices), dtype=np.float64)
-    ook0_per_scan = np.asarray(
-        td.scanNumToOneOverK0(frame_id, np.arange(spectrum.num_scans))
+    peak_fraction, mz_window, mz_sigma, im_window, im_sigma, min_q = gaussian
+    filt = GaussianNoiseFilter(
+        peak_fraction=peak_fraction, mz_window=mz_window, mz_sigma=mz_sigma,
+        im_window=im_window, im_sigma=im_sigma, min_query_intensity=min_q,
     )
-    im = ook0_per_scan[spectrum.scan_indices]
-    mask = _gaussian_cloud_keep_mask(mz, im, spectrum.intensities, gaussian)
-    return spectrum.filter(mask)
+    return apply_noise(spectrum, (filt,), td=td, frame_id=frame_id)
 
 
 def _build_spectrum(
@@ -1227,12 +1073,12 @@ def build_pipeline_ui(
                     min_cent = float(st.number_input(
                         "min_centroid_intensity", 0.0, value=0.0, step=10.0, key=k("ws_cent"),
                         help="Final centroids below this summed intensity are dropped."))
-                    st.caption("Pre-centroid box smoothing (0 = off)")
+                    st.caption("Pre-centroid box smoothing (0 = off; use the upstream Smoothing step instead)")
                     s1, s2 = st.columns(2)
                     with s1:
-                        sm_scan = int(st.number_input("smooth_scan_half_width", 0, 50, 5, 1, key=k("ws_sms")))
+                        sm_scan = int(st.number_input("smooth_scan_half_width", 0, 50, 0, 1, key=k("ws_sms")))
                     with s2:
-                        sm_mz = int(st.number_input("smooth_mz_idx_half_width", 0, 50, 3, 1, key=k("ws_smmz")))
+                        sm_mz = int(st.number_input("smooth_mz_idx_half_width", 0, 50, 0, 1, key=k("ws_smmz")))
                     st.caption("Per-group leash from seed (0 = no limit)")
                     l1, l2 = st.columns(2)
                     with l1:
@@ -1384,6 +1230,7 @@ def scatter_mz_im(
                 "intensity: %{customdata[0]:,.0f}<extra></extra>"
             ),
             name="raw peaks",
+            showlegend=False,  # the colorbar already labels intensity
         )
     )
     if exclude is not None and ion_mobility_type == "ook0" and mz_range is not None:
@@ -1403,7 +1250,10 @@ def scatter_mz_im(
     fig.update_layout(
         xaxis_title="m/z",
         yaxis_title=f"Ion mobility ({ion_mobility_type})",
-        height=height, margin=dict(l=40, r=20, t=30, b=40), template="plotly_white",
+        height=height, margin=dict(l=40, r=20, t=40, b=40), template="plotly_white",
+        # Horizontal legend above the plot so overlay labels (precursors /
+        # targets / bands) don't collide with the intensity colorbar.
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
     )
     if mz_range is not None:
         fig.update_xaxes(range=[mz_range[0], mz_range[1]])

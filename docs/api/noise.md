@@ -61,3 +61,8 @@ Each subclass exposes the knobs of its estimator as dataclass fields.
         - run
 
 ::: tdfpy.noise.VerticalNoiseDiagnostics
+
+::: tdfpy.GaussianNoiseFilter
+    options:
+      members:
+        - keep_mask

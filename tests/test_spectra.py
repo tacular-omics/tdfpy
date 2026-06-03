@@ -59,6 +59,28 @@ class TestSpectra(unittest.TestCase):
                     self.assertEqual(spectrum.ndim, 2)
                     self.assertEqual(spectrum.shape[1], 3)
 
+    def test_smooth_kwarg_threads_through_convenience_api(self):
+        """`smooth=Smooth(...)` reaches get_raw_peaks / get_centroided_spectrum."""
+        from tdfpy import Smooth, get_raw_peaks
+
+        with timsdata.timsdata_connect(TDF_PATH) as td:
+            cursor = td.conn.cursor()
+            cursor.execute(
+                "SELECT Id FROM Frames WHERE MsMsType = 0 ORDER BY Id LIMIT 1"
+            )
+            frame_id = cursor.fetchone()[0]
+
+            base = get_raw_peaks(td, frame_id)
+            smoothed = get_raw_peaks(
+                td, frame_id, smooth=Smooth(scan_half_width=5, mz_idx_half_width=2)
+            )
+            # Position-preserving: same point count, but intensities differ.
+            self.assertEqual(base.shape[0], smoothed.shape[0])
+            self.assertFalse(np.allclose(base[:, 1], smoothed[:, 1]))
+
+            centroids = get_centroided_spectrum(td, frame_id, smooth=Smooth())
+            self.assertEqual(centroids.shape[1], 3)
+
     def test_merge_peaks_basic(self):
         """Test basic peak merging functionality."""
         # Create test data with peaks that should merge
