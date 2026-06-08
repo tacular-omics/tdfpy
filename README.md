@@ -21,7 +21,7 @@ tdfpy provides a high-level Python API for reading Bruker timsTOF `.d` folders. 
 - **PRM** — iterate targets and their transitions
 - **Composable peak pipeline** — `read_spectrum` → optional region exclusion / smoothing / noise-filter chain → centroider. Returns `(N, 3)` `[m/z, intensity, 1/K0]` arrays
 - **Two centroiders** — `MergePeaksCentroider` (default, Numba-JIT'd greedy merge in float m/z) and `WatershedCentroider` (intensity-ordered region growing in integer TOF-index space)
-- **Composable noise filters** — chain `MadThreshold`, `VerticalNoiseFilter`, and others via `noise=[…]`. String shorthand (`noise="mad"`) preserved for terseness
+- **Composable noise filters** — chain `MadThreshold`, `VerticalNoiseFilter`, `GaussianNoiseFilter`, and others via `noise=[…]`. String shorthand (`noise="mad"`) preserved for terseness
 - **Lazy spectral access** — frame metadata is loaded upfront; raw peak data is only read when you call `.peaks`, `.raw_peaks()`, or `.centroid()`
 
 ## Installation
@@ -90,17 +90,21 @@ methods on `DiaWindow` and `PrmTransition`) accepts the same composable argument
 
 ```python
 from tdfpy import (
-    ChargeStateRegion, MadThreshold, VerticalNoiseFilter,
-    MergePeaksCentroider, WatershedCentroider,
+    ChargeStateRegion, Smooth, MadThreshold, VerticalNoiseFilter,
+    GaussianNoiseFilter, MergePeaksCentroider, WatershedCentroider,
 )
 
 peaks = frame.centroid(
     # Region exclusion: drop the singly-charged contamination band
     exclude=ChargeStateRegion(),
 
+    # Intensity smoothing: box-sum to amplify ion-mobility streaks pre-filter
+    smooth=Smooth(scan_half_width=5, mz_idx_half_width=2),
+
     # Noise filter pipeline (applied in order, pre-centroid)
     noise=[
         VerticalNoiseFilter(min_streak_scans=5, num_iterations=2),
+        GaussianNoiseFilter(),   # suppress the noise halo around bright peaks
         MadThreshold(k=3),
     ],
 
@@ -143,13 +147,13 @@ For ordering or transformations beyond what the convenience methods cover, call 
 ```python
 from tdfpy import (
     read_spectrum, exclude_region, smooth, apply_noise, convert,
-    ChargeStateRegion, MadThreshold,
+    ChargeStateRegion, VerticalNoiseFilter, GaussianNoiseFilter,
 )
 
 s = read_spectrum(td, frame_id)
 s = exclude_region(s, ChargeStateRegion(), td=td, frame_id=frame_id)
-s = smooth(s, im_window=3)
-s = apply_noise(s, (MadThreshold(k=3),), td=td, frame_id=frame_id)
+s = smooth(s, scan_half_width=5, mz_idx_half_width=2)   # box-sum, amplify IM streaks
+s = apply_noise(s, (VerticalNoiseFilter(), GaussianNoiseFilter()), td=td, frame_id=frame_id)
 peaks = convert(s, td, frame_id)
 ```
 
