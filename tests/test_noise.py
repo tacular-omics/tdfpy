@@ -282,8 +282,8 @@ class TestVerticalNumbaEquivalence:
 
 
 _GAUSS_KW = dict(
-    peak_fraction=0.3, mz_window=0.2, mz_sigma=0.15,
-    im_window=0.05, im_sigma=0.02, min_query_intensity=0.0,
+    peak_fraction=0.1, mz_half_width=0.4, mz_sigma=0.15,
+    im_half_width=0.05, im_sigma=0.02, min_query_intensity=0.0,
 )
 
 
@@ -344,7 +344,7 @@ class TestGaussianCloudKeepMask:
         inv2_mz = 1.0 / (2.0 * 0.15 ** 2)
         inv2_im = 1.0 / (2.0 * 0.02 ** 2)
         args = (mz_s, im_s, int_s, np.ascontiguousarray(int_order),
-                0.3, 0.2, inv2_mz, 0.05, inv2_im, 0.0)
+                0.1, 0.4, inv2_mz, 0.05, inv2_im, 0.0)
         alive_nb = _structural._gaussian_cloud_kernel(*args)
         alive_py = _gaussian_cloud_kernel_py(*args)
         np.testing.assert_array_equal(alive_nb, alive_py)

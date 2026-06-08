@@ -401,9 +401,9 @@ def _gaussian_cloud_kernel_py(
     int_s: np.ndarray,
     int_order_desc: np.ndarray,
     peak_fraction: float,
-    mz_window: float,
+    mz_half_width: float,
     inv2_mz: float,
-    im_window: float,
+    im_half_width: float,
     inv2_im: float,
     min_query_intensity: float,
 ) -> np.ndarray:
@@ -412,8 +412,8 @@ def _gaussian_cloud_kernel_py(
     Returns an ``alive`` mask (in m/z-sorted order). Processes peaks strongest
     first; each surviving peak removes weaker alive neighbours falling under
     its 2D Gaussian envelope ``I_query · peak_fraction · exp(-Δmz²·inv2_mz -
-    Δim²·inv2_im)`` within the ``±mz_window`` / ``±im_window`` box. Suppressed
-    peaks cannot themselves suppress (greedy non-max suppression).
+    Δim²·inv2_im)`` within the ``±mz_half_width`` / ``±im_half_width`` box.
+    Suppressed peaks cannot themselves suppress (greedy non-max suppression).
     """
     n = mz_s.size
     alive = np.ones(n, dtype=np.bool_)
@@ -426,8 +426,8 @@ def _gaussian_cloud_kernel_py(
             continue
         mzi = mz_s[i]
         imi = im_s[i]
-        lo = np.searchsorted(mz_s, mzi - mz_window, side="left")
-        hi = np.searchsorted(mz_s, mzi + mz_window, side="right")
+        lo = np.searchsorted(mz_s, mzi - mz_half_width, side="left")
+        hi = np.searchsorted(mz_s, mzi + mz_half_width, side="right")
         for j in range(lo, hi):
             if j == i or not alive[j]:
                 continue
@@ -437,7 +437,7 @@ def _gaussian_cloud_kernel_py(
             dim = im_s[j] - imi
             if dim < 0.0:
                 dim = -dim
-            if dim > im_window:
+            if dim > im_half_width:
                 continue
             dmz = mz_s[j] - mzi
             weight = np.exp(-(dmz * dmz) * inv2_mz - (dim * dim) * inv2_im)
@@ -458,9 +458,9 @@ def _gaussian_cloud_keep_mask(
     intensities: np.ndarray,
     *,
     peak_fraction: float,
-    mz_window: float,
+    mz_half_width: float,
     mz_sigma: float,
-    im_window: float,
+    im_half_width: float,
     im_sigma: float,
     min_query_intensity: float,
 ) -> np.ndarray:
@@ -481,8 +481,8 @@ def _gaussian_cloud_keep_mask(
     inv2_im = 1.0 / (2.0 * im_sigma * im_sigma) if im_sigma > 0 else 0.0
     alive_s = _gaussian_cloud_kernel(
         mz_s, im_s, int_s, np.ascontiguousarray(int_order_desc),
-        float(peak_fraction), float(mz_window), float(inv2_mz),
-        float(im_window), float(inv2_im), float(min_query_intensity),
+        float(peak_fraction), float(mz_half_width), float(inv2_mz),
+        float(im_half_width), float(inv2_im), float(min_query_intensity),
     )
     keep = np.empty(n, dtype=bool)
     keep[mz_order] = alive_s
@@ -502,10 +502,11 @@ class GaussianNoiseFilter(NoiseFilter):
 
         ``I_query · peak_fraction · exp(-Δmz²/2σ_mz² - Δ(1/K0)²/2σ_im²)``
 
-    evaluated within a ``±mz_window`` (Da) by ``±im_window`` (1/K0) box.
-    With the defaults, the envelope peaks at 30% of a bright peak's
-    intensity at its centre and decays over a 0.4 Da window with a 0.15 Da
-    standard deviation. A suppressed peak cannot itself suppress others.
+    evaluated within a ``±mz_half_width`` (Da) by ``±im_half_width`` (1/K0)
+    box. With the defaults, the envelope peaks at 10% of a bright peak's
+    intensity at its centre and decays with a 0.15 Da standard deviation over
+    a ``±0.4`` Da (0.8 Da total) m/z window. A suppressed peak cannot itself
+    suppress others.
 
     Because the envelope is defined in physical units, ``keep_mask``
     converts the integer TOF/scan indices to m/z and 1/K0 using the frame's
@@ -513,10 +514,10 @@ class GaussianNoiseFilter(NoiseFilter):
     with a pure-Python fallback.
     """
 
-    peak_fraction: float = 0.3
-    mz_window: float = 0.2
+    peak_fraction: float = 0.1
+    mz_half_width: float = 0.4
     mz_sigma: float = 0.15
-    im_window: float = 0.05
+    im_half_width: float = 0.05
     im_sigma: float = 0.02
     min_query_intensity: float = 0.0
 
@@ -541,9 +542,9 @@ class GaussianNoiseFilter(NoiseFilter):
         return _gaussian_cloud_keep_mask(
             mz, im, intensities,
             peak_fraction=self.peak_fraction,
-            mz_window=self.mz_window,
+            mz_half_width=self.mz_half_width,
             mz_sigma=self.mz_sigma,
-            im_window=self.im_window,
+            im_half_width=self.im_half_width,
             im_sigma=self.im_sigma,
             min_query_intensity=self.min_query_intensity,
         )

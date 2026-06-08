@@ -54,7 +54,7 @@ from tdfpy.tdf import PandasTdf
 # A smoothing config: ``(scan_half_width, mz_idx_half_width, "sum" | "mean")``.
 SmoothSpec = tuple[int, int, str]
 # A Gaussian-cloud config:
-# ``(peak_fraction, mz_window, mz_sigma, im_window, im_sigma, min_query_intensity)``.
+# ``(peak_fraction, mz_half_width, mz_sigma, im_half_width, im_sigma, min_query_intensity)``.
 GaussianSpec = tuple[float, float, float, float, float, float]
 
 # Bruker MsMsType code → human label. Codes from the Bruker TDF schema docs.
@@ -279,14 +279,14 @@ def _gaussian_filter_spectrum(
     """Drop noise-cloud peaks via the package :class:`tdfpy.GaussianNoiseFilter`.
 
     ``gaussian`` is the UI tuple
-    ``(peak_fraction, mz_window, mz_sigma, im_window, im_sigma, min_query_intensity)``.
+    ``(peak_fraction, mz_half_width, mz_sigma, im_half_width, im_sigma, min_query_intensity)``.
     """
     if spectrum.empty:
         return spectrum
-    peak_fraction, mz_window, mz_sigma, im_window, im_sigma, min_q = gaussian
+    peak_fraction, mz_half_width, mz_sigma, im_half_width, im_sigma, min_q = gaussian
     filt = GaussianNoiseFilter(
-        peak_fraction=peak_fraction, mz_window=mz_window, mz_sigma=mz_sigma,
-        im_window=im_window, im_sigma=im_sigma, min_query_intensity=min_q,
+        peak_fraction=peak_fraction, mz_half_width=mz_half_width, mz_sigma=mz_sigma,
+        im_half_width=im_half_width, im_sigma=im_sigma, min_query_intensity=min_q,
     )
     return apply_noise(spectrum, (filt,), td=td, frame_id=frame_id)
 
@@ -938,14 +938,14 @@ def build_pipeline_ui(
             cmz1, cmz2 = st.columns(2)
             with cmz1:
                 g_mz_win = float(st.number_input(
-                    "m/z window (Da)", 0.0, 5.0, 0.4, 0.05, format="%.3f", key=k("g_mzwin")))
+                    "m/z half-width (±Da)", 0.0, 5.0, 0.4, 0.05, format="%.3f", key=k("g_mzwin")))
             with cmz2:
                 g_mz_sig = float(st.number_input(
                     "m/z σ (Da)", 0.001, 5.0, 0.15, 0.01, format="%.3f", key=k("g_mzsig")))
             cim1, cim2 = st.columns(2)
             with cim1:
                 g_im_win = float(st.number_input(
-                    "1/K0 window", 0.0, 1.0, 0.05, 0.01, format="%.3f", key=k("g_imwin")))
+                    "1/K0 half-width (±)", 0.0, 1.0, 0.05, 0.01, format="%.3f", key=k("g_imwin")))
             with cim2:
                 g_im_sig = float(st.number_input(
                     "1/K0 σ", 0.001, 1.0, 0.02, 0.005, format="%.3f", key=k("g_imsig")))
