@@ -484,7 +484,7 @@ class HorizontalHaloFilter(NoiseFilter):
     fallback.
     """
 
-    peak_fraction: float = 0.1
+    peak_fraction: float = 0.15
     mz_idx_half_width: int = 100
     scan_half_width: int = 2
 
