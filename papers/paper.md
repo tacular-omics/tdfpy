@@ -108,13 +108,15 @@ m/z-tolerance merger (default) and a watershed region-grower
 descriptions and tunable parameters are documented online.
 \autoref{fig:pipeline} shows the pipeline applied to one MS1 frame.
 
-![`tdfpy` applied to a single MS1 frame from the bundled example DDA
-acquisition, produced reproducibly by `scripts/make_paper_figure.py` with the
-`VerticalNoiseFilter` → `GaussianNoiseFilter` chain. Left: the (m/z, 1/K0) ion
-map, with peaks rejected as noise drawn in grey behind the retained peaks
-(coloured by log-intensity) — the diffuse background is removed while the
-diagonal charge-state mobility bands are kept. Right: the resulting centroided
-m/z spectrum (stem lines) over the retained raw signal.\label{fig:pipeline}](pipeline.png)
+![`tdfpy`'s built-in `plot_centroiding` view of a single MS1 frame from the
+bundled example DDA acquisition (zoomed to m/z 400–1200 and 1/K0 0.6–1.4),
+produced reproducibly by `scripts/make_paper_figure.py` with the
+`VerticalNoiseFilter` → `GaussianNoiseFilter` chain. Top-left: the raw
+(m/z, 1/K0) peaks retained after noise filtering, coloured by log-intensity;
+top-right: the resulting intensity-weighted centroids (stars) over the faded
+cloud; bottom-left: the peaks rejected as noise (crimson); bottom-right: a 1-D
+m/z projection comparing raw, retained, and centroided
+signal.\label{fig:pipeline}](pipeline.png)
 
 tdfpy is a pure-Python wheel with no compile step at install; the Numba JIT
 replaced an earlier Rust extension that produced platform-specific wheels. The

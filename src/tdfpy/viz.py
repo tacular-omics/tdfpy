@@ -188,7 +188,6 @@ def plot_centroiding(
 
     log_int_raw = np.log1p(int_raw_p)
     log_int_c = np.log1p(int_c_p)
-    log_int_nr = np.log1p(int_nr_p) if len(int_nr_p) > 0 else np.array([])
 
     # Panel 1 — raw 2D ion map
     sc_raw = ax_raw.scatter(
@@ -229,13 +228,10 @@ def plot_centroiding(
         else "Noise-rejected raw peaks  (no `noise` set)"
     )
     if len(mz_nr_p) > 0:
-        sc_nr = ax_lost.scatter(
+        ax_lost.scatter(
             mz_nr_p, im_nr_p,
-            c=log_int_nr, s=8, cmap="hot", alpha=0.7,
-            marker="x", rasterized=True,
+            s=6, c="crimson", alpha=0.5, linewidths=0, rasterized=True,
         )
-        cb3 = fig.colorbar(sc_nr, ax=ax_lost, pad=0.02)
-        cb3.set_label("log(intensity + 1)", fontsize=8)
     else:
         ax_lost.text(0.5, 0.5, "No noise-rejected raw peaks" if filters else "Set `noise=` to see\nrejected peaks",
                      ha="center", va="center", transform=ax_lost.transAxes, fontsize=10, color="grey")
