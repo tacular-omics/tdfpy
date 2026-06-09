@@ -310,6 +310,27 @@ def _build_spectrum(
     spectrum = read_spectrum(td, frame_id)
     if scan_range is not None:
         spectrum = subset_scans(spectrum, scan_num_begin=scan_range[0], scan_num_end=scan_range[1])
+    return _apply_pipeline_steps(
+        spectrum, td, frame_id,
+        exclude=exclude, smooth=smooth, halo=halo, noise_filters=noise_filters)
+
+
+def _apply_pipeline_steps(
+    spectrum: RawSpectrum,
+    td,
+    frame_id: int,
+    *,
+    exclude: ChargeStateRegion | None,
+    smooth: SmoothSpec | None,
+    halo: HaloSpec | None,
+    noise_filters: tuple[NoiseFilter, ...],
+) -> RawSpectrum:
+    """Apply exclude → smooth → vertical-IM → halo → intensity-threshold.
+
+    The post-read half of the pipeline, shared by the per-frame
+    (:func:`_build_spectrum`) and per-precursor
+    (:func:`_build_precursor_spectrum`) builders.
+    """
     if exclude is not None:
         spectrum = exclude_region(spectrum, exclude, td=td, frame_id=frame_id)
     if smooth is not None:
@@ -327,6 +348,57 @@ def _build_spectrum(
     if post:
         spectrum = apply_noise(spectrum, post, td=td, frame_id=frame_id)
     return spectrum
+
+
+def _build_precursor_spectrum(
+    td,
+    segments: list[dict],
+    *,
+    exclude: ChargeStateRegion | None,
+    smooth: SmoothSpec | None,
+    halo: HaloSpec | None,
+    noise_filters: tuple[NoiseFilter, ...],
+) -> tuple[RawSpectrum, int | None]:
+    """Combine the raw scans across a precursor's PASEF segments into one cloud.
+
+    Each segment is a ``PasefFrameMsMsInfo`` record with ``Frame``,
+    ``ScanNumBegin``, ``ScanNumEnd`` (the last is inclusive). All MS2 frames in
+    a run share the same calibration, so the first segment's frame is used as
+    the reference for unit conversion / centroiding. Returns
+    ``(spectrum, reference_frame_id)`` with the post-read pipeline already
+    applied; ``reference_frame_id`` is ``None`` when there are no segments.
+    """
+    if not segments:
+        return RawSpectrum.empty_like(0), None
+    rep_frame = int(segments[0]["Frame"])
+    scans: list[np.ndarray] = []
+    mzs: list[np.ndarray] = []
+    ints: list[np.ndarray] = []
+    num_scans = 0
+    for seg in segments:
+        frame = int(seg["Frame"])
+        begin = int(seg["ScanNumBegin"])
+        end = int(seg["ScanNumEnd"]) + 1  # ScanNumEnd is inclusive
+        s = read_spectrum(td, frame)
+        num_scans = max(num_scans, s.num_scans)
+        s = subset_scans(s, scan_num_begin=begin, scan_num_end=end)
+        if s.empty:
+            continue
+        scans.append(s.scan_indices)
+        mzs.append(s.mz_indices)
+        ints.append(s.intensities)
+    if not scans:
+        return RawSpectrum.empty_like(num_scans), rep_frame
+    combined = RawSpectrum(
+        scan_indices=np.concatenate(scans),
+        mz_indices=np.concatenate(mzs),
+        intensities=np.concatenate(ints),
+        num_scans=num_scans,
+    )
+    combined = _apply_pipeline_steps(
+        combined, td, rep_frame,
+        exclude=exclude, smooth=smooth, halo=halo, noise_filters=noise_filters)
+    return combined, rep_frame
 
 
 @st.cache_data(show_spinner=True, hash_funcs={NoiseFilter: lambda f: hash(f)})
@@ -367,6 +439,57 @@ def fetch_centroided(
             return np.empty((0, 3), dtype=np.float64)
         return centroider(
             spectrum, td, frame_id, ion_mobility_type=ion_mobility_type)  # type: ignore[arg-type]
+
+
+@st.cache_data(show_spinner=True, hash_funcs={NoiseFilter: lambda f: hash(f)})
+def fetch_precursor_raw_peaks(
+    analysis_dir: str,
+    precursor_id: int,
+    ion_mobility_type: str,
+    noise_filters: tuple[NoiseFilter, ...],
+    exclude: ChargeStateRegion | None,
+    smooth: SmoothSpec | None = None,
+    halo: HaloSpec | None = None,
+) -> np.ndarray:
+    """Raw ``(m/z, intensity, ion_mobility)`` peaks across all of a precursor's
+    PASEF subscans, combined into one cloud and run through the pipeline."""
+    info = precursor_pasef_info(analysis_dir, precursor_id)
+    segments = info.get("segments") or []
+    if not segments:
+        return np.empty((0, 3), dtype=np.float64)
+    with tdfpy.timsdata_connect(analysis_dir) as td:
+        spectrum, rep = _build_precursor_spectrum(
+            td, segments, exclude=exclude, smooth=smooth, halo=halo,
+            noise_filters=noise_filters)
+        if spectrum.empty or rep is None:
+            return np.empty((0, 3), dtype=np.float64)
+        return convert(spectrum, td, rep, ion_mobility_type=ion_mobility_type)  # type: ignore[arg-type]
+
+
+@st.cache_data(show_spinner=True, hash_funcs={NoiseFilter: lambda f: hash(f)})
+def fetch_precursor_centroided(
+    analysis_dir: str,
+    precursor_id: int,
+    ion_mobility_type: str,
+    noise_filters: tuple[NoiseFilter, ...],
+    exclude: ChargeStateRegion | None,
+    centroider: Centroider,
+    smooth: SmoothSpec | None = None,
+    halo: HaloSpec | None = None,
+) -> np.ndarray:
+    """Centroids of a precursor's combined PASEF subscans (see
+    :func:`fetch_precursor_raw_peaks`)."""
+    info = precursor_pasef_info(analysis_dir, precursor_id)
+    segments = info.get("segments") or []
+    if not segments:
+        return np.empty((0, 3), dtype=np.float64)
+    with tdfpy.timsdata_connect(analysis_dir) as td:
+        spectrum, rep = _build_precursor_spectrum(
+            td, segments, exclude=exclude, smooth=smooth, halo=halo,
+            noise_filters=noise_filters)
+        if spectrum.empty or rep is None:
+            return np.empty((0, 3), dtype=np.float64)
+        return centroider(spectrum, td, rep, ion_mobility_type=ion_mobility_type)  # type: ignore[arg-type]
 
 
 @st.cache_data(show_spinner=True)

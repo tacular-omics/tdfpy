@@ -14,10 +14,16 @@ import streamlit as st
 
 from _shared import (
     accumulated_precursor_spectrum,
+    build_pipeline_ui,
+    fetch_precursor_centroided,
+    fetch_precursor_raw_peaks,
+    filter_chain_label,
     list_precursors,
     precursor_pasef_info,
     require_analysis_dir,
+    scatter_mz_im,
     select_table_row,
+    stick_spectrum_im,
     stick_spectrum_simple,
 )
 
@@ -50,6 +56,22 @@ with st.sidebar:
     annotate_iso = st.checkbox("Mark isotope spacing", value=True,
                                help="Draw expected isotope m/z positions for the charge state.")
     n_iso = int(st.number_input("Isotopes to mark", 1, 10, 4, 1)) if annotate_iso else 0
+
+    st.header("Raw subscan view")
+    show_raw_view = st.checkbox(
+        "Show raw (m/z × 1/K0) subscans + pipeline", value=False,
+        help="Combine every PASEF subscan of this precursor into one (m/z × "
+        "1/K0) cloud and run the noise filter / centroider on it — instead of "
+        "Bruker's pre-accumulated 1-D spectrum.")
+    raw_ion_mobility = "ook0"
+    raw_log_intensity = True
+    raw_pipeline = None
+    if show_raw_view:
+        raw_ion_mobility = st.selectbox(
+            "Ion mobility axis", ["ook0", "ccs", "voltage"], index=0, key="prec_im_axis")
+        raw_log_intensity = st.checkbox(
+            "Log-scale color (log10 intensity)", value=True, key="prec_log_int")
+        raw_pipeline = build_pipeline_ui("prec")
 
 if view.empty:
     st.warning("No precursors match the charge filter.")
@@ -150,3 +172,65 @@ if segs:
         "These segments are the per-frame subscans that were accumulated into "
         "the spectrum above. The PASEF MS2 page shows them as full frames."
     )
+
+
+# -- Raw subscan view (m/z × 1/K0) + pipeline -------------------------------
+# All of this precursor's PASEF subscans combined into one cloud, with the
+# noise filter / centroider applied — the un-accumulated counterpart of the
+# 1-D spectrum above.
+
+if show_raw_view and raw_pipeline is not None:
+    exclude, smooth, halo, noise_filters, centroider, centroid_log_y = raw_pipeline
+
+    st.markdown("---")
+    st.subheader("Raw subscans (m/z × 1/K0)")
+    st.caption(
+        f"Combined across {len(segs)} PASEF segment(s)  ·  "
+        f"Filter chain: {filter_chain_label(exclude, noise_filters)}"
+    )
+
+    peaks = fetch_precursor_raw_peaks(
+        analysis_dir, precursor_id, raw_ion_mobility, noise_filters, exclude,
+        smooth=smooth, halo=halo)
+    if peaks.size == 0:
+        st.warning("No raw peaks survive the current filter chain for this precursor.")
+    else:
+        r_mz, r_int, r_im = peaks[:, 0], peaks[:, 1], peaks[:, 2]
+        mz_range = (float(r_mz.min()), float(r_mz.max()))
+        im_range = (float(r_im.min()), float(r_im.max()))
+        fig_raw = scatter_mz_im(
+            r_mz, r_int, r_im,
+            ion_mobility_type=raw_ion_mobility, log_intensity=raw_log_intensity,
+            mz_range=mz_range, im_range=im_range, exclude=exclude)
+        st.plotly_chart(fig_raw, use_container_width=True)
+
+        r1, r2, r3 = st.columns(3)
+        r1.metric("Raw peaks", f"{r_mz.size:,}")
+        r2.metric("Base peak m/z", f"{r_mz[int(np.argmax(r_int))]:.4f}")
+        r3.metric("Summed intensity", f"{r_int.sum():,.0f}")
+
+        if centroider is not None:
+            st.subheader(f"Centroided subscans — {type(centroider).__name__}")
+            try:
+                centroided = fetch_precursor_centroided(
+                    analysis_dir, precursor_id, raw_ion_mobility,
+                    noise_filters, exclude, centroider, smooth=smooth, halo=halo)
+            except Exception as exc:  # noqa: BLE001
+                st.error(f"Centroiding failed: {exc}")
+                centroided = np.empty((0, 3), dtype=np.float64)
+            if centroided.size == 0:
+                st.warning("Centroiding produced 0 peaks. Try loosening tolerances.")
+            else:
+                c_mz, c_int, c_im = centroided[:, 0], centroided[:, 1], centroided[:, 2]
+                reduction = 100.0 * (1.0 - centroided.shape[0] / max(peaks.shape[0], 1))
+                d1, d2, d3 = st.columns(3)
+                d1.metric("Centroids", f"{centroided.shape[0]:,}",
+                          delta=f"-{reduction:.1f}% of raw", delta_color="off")
+                d2.metric("Algorithm", type(centroider).__name__)
+                d3.metric("Intensity retained",
+                          f"{100.0 * c_int.sum() / max(r_int.sum(), 1):.1f}%")
+                fig_c = stick_spectrum_im(
+                    c_mz, c_int, c_im,
+                    ion_mobility_type=raw_ion_mobility, im_range=im_range,
+                    mz_range=mz_range, log_y=centroid_log_y)
+                st.plotly_chart(fig_c, use_container_width=True)
