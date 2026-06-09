@@ -6,7 +6,7 @@ vertical streaks in ``(scan_number, TOF_index)`` space — see
 canonical structural filter for timsTOF MS1 data.
 
 The horizontal-halo filter (:class:`HorizontalHaloFilter`) removes the weak
-m/z halo flanking each bright ion — comparing every peak to the mean of its
+m/z halo flanking each bright ion — comparing every peak to the maximum of its
 surrounding box *excluding its own m/z column*, so it only ever drops
 left/right neighbours and never the vertical streak above or below.
 """
@@ -395,6 +395,67 @@ class VerticalNoiseFilter(NoiseFilter):
 # --------------------------------------------------------------------------
 
 
+def _offcol_box_max_py(
+    scan_sorted: np.ndarray,   # int64, sorted by (scan, mz_idx)
+    mz_sorted: np.ndarray,     # int64
+    int_sorted: np.ndarray,    # float64
+    block_start: np.ndarray,   # int64, len num_scans (start index of each scan's block)
+    block_len: np.ndarray,     # int64, len num_scans
+    scan_half_width: int,
+    mz_idx_half_width: int,
+) -> np.ndarray:
+    """Per-point max intensity over the box, excluding the point's own column.
+
+    For each point, scans every source row in ``±scan_half_width`` and, within
+    each row's m/z-sorted block, binary-searches the ``±mz_idx_half_width``
+    window and tracks the largest intensity among peaks at a *different* TOF
+    index. Windows are sparse (few peaks), so the inner scan is cheap.
+    """
+    n = scan_sorted.size
+    num_scans = block_start.size
+    out = np.zeros(n, dtype=np.float64)
+    for i in range(n):
+        si = scan_sorted[i]
+        mi = mz_sorted[i]
+        lo_scan = si - scan_half_width
+        hi_scan = si + scan_half_width
+        if lo_scan < 0:
+            lo_scan = 0
+        if hi_scan > num_scans - 1:
+            hi_scan = num_scans - 1
+        lo_mz = mi - mz_idx_half_width
+        hi_mz = mi + mz_idx_half_width
+        best = 0.0
+        for v in range(lo_scan, hi_scan + 1):
+            bl = block_len[v]
+            if bl == 0:
+                continue
+            bs = block_start[v]
+            be = bs + bl
+            # lower bound of lo_mz within [bs, be)
+            left = bs
+            right = be
+            while left < right:
+                mid = (left + right) // 2
+                if mz_sorted[mid] < lo_mz:
+                    left = mid + 1
+                else:
+                    right = mid
+            j = left
+            while j < be and mz_sorted[j] <= hi_mz:
+                if mz_sorted[j] != mi and int_sorted[j] > best:
+                    best = int_sorted[j]
+                j += 1
+        out[i] = best
+    return out
+
+
+if _HAS_NUMBA:
+    _offcol_box_max = _njit(cache=True)(_offcol_box_max_py)
+else:  # pragma: no cover
+    _offcol_box_max = _offcol_box_max_py
+
+
 @dataclass(frozen=True)
 class HorizontalHaloFilter(NoiseFilter):
     """Remove the weak m/z halo flanking bright peaks — left/right only.
@@ -407,19 +468,20 @@ class HorizontalHaloFilter(NoiseFilter):
     **left and right** (offset in TOF/m-z index) of a bright neighbour and
     **never above or below** (offset in ion mobility at the same index).
 
-    For each peak it computes a local reference intensity — the **mean
-    intensity of the surrounding box** ``(±scan_half_width scans,
+    For each peak it computes a local reference intensity — the **maximum
+    intensity in the surrounding box** ``(±scan_half_width scans,
     ±mz_idx_half_width TOF indices)`` **excluding the peak's own m/z column**
     — and drops the peak if its intensity falls below ``peak_fraction`` of
     that reference. Excluding the peak's own column is what guarantees the
     vertical streak is never used against it: a bright peak directly above or
-    below sits in the same column and so can never raise the threshold; only
-    genuine left/right neighbours can. A peak with no off-column neighbours in
-    its box is always kept.
+    below sits in the same column and so can never raise the threshold; only a
+    genuine left/right neighbour can. A peak with no off-column neighbours in
+    its box is always kept. Set ``scan_half_width=0`` for strictly per-row
+    (same ion-mobility scan) behaviour.
 
-    Operates entirely in integer ``(scan, TOF index)`` space (no unit
-    conversion); the box means are computed with the vectorised
-    :func:`tdfpy.pipeline.box_smooth`.
+    Operates entirely in integer ``(scan, TOF index)`` space — no unit
+    conversion. The box max is JIT-compiled with Numba, with a pure-Python
+    fallback.
     """
 
     peak_fraction: float = 0.1
@@ -436,29 +498,29 @@ class HorizontalHaloFilter(NoiseFilter):
         td: "TimsData",
         frame_id: int,
     ) -> np.ndarray:
-        from ..pipeline import box_smooth  # local import avoids a cycle
-
         n = intensities.size
         if n == 0:
             return np.ones(0, dtype=bool)
-        ones = np.ones(n, dtype=np.float64)
-        sh = self.scan_half_width
-        mh = self.mz_idx_half_width
-        # Full box (±scan, ±mz_idx) and the same-column strip (±scan, 0 mz_idx).
-        box_sum = box_smooth(scan_indices, mz_indices, intensities,
-                             scan_half_width=sh, mz_idx_half_width=mh, mode="sum")
-        box_cnt = box_smooth(scan_indices, mz_indices, ones,
-                             scan_half_width=sh, mz_idx_half_width=mh, mode="sum")
-        col_sum = box_smooth(scan_indices, mz_indices, intensities,
-                             scan_half_width=sh, mz_idx_half_width=0, mode="sum")
-        col_cnt = box_smooth(scan_indices, mz_indices, ones,
-                             scan_half_width=sh, mz_idx_half_width=0, mode="sum")
-        # Reference = mean intensity of off-column (left/right) box neighbours.
-        off_sum = box_sum - col_sum
-        off_cnt = box_cnt - col_cnt
-        ref = np.zeros(n, dtype=np.float64)
-        has_neighbours = off_cnt > 0
-        ref[has_neighbours] = off_sum[has_neighbours] / off_cnt[has_neighbours]
-        # Keep unless strictly below the fraction of the left/right reference.
+        # Sort by (scan, mz_idx) so each scan is a contiguous, m/z-sorted block.
+        order = np.lexsort((mz_indices, scan_indices))
+        scan_s = np.ascontiguousarray(scan_indices[order], dtype=np.int64)
+        mz_s = np.ascontiguousarray(mz_indices[order], dtype=np.int64)
+        int_s = np.ascontiguousarray(intensities[order], dtype=np.float64)
+
+        block_start = np.zeros(num_scans, dtype=np.int64)
+        block_len = np.zeros(num_scans, dtype=np.int64)
+        uniq, starts, counts = np.unique(
+            scan_s, return_index=True, return_counts=True
+        )
+        block_start[uniq] = starts
+        block_len[uniq] = counts
+
+        ref_sorted = _offcol_box_max(
+            scan_s, mz_s, int_s, block_start, block_len,
+            int(self.scan_half_width), int(self.mz_idx_half_width),
+        )
+        ref = np.empty(n, dtype=np.float64)
+        ref[order] = ref_sorted
+        # Keep unless strictly below the fraction of the left/right max.
         # Peaks with no off-column neighbours (ref == 0) are always kept.
         return intensities >= self.peak_fraction * ref

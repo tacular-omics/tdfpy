@@ -344,6 +344,18 @@ class TestHorizontalHaloFilter:
         keep = _halo_mask(filt, [10, 10], [1000, 1010], [10000.0, 9000.0])
         assert keep.tolist() == [True, True]
 
+    def test_reference_is_box_max_not_mean(self):
+        # Same row: bright (10000) and weak (50) flank a mid peak (600).
+        # Threshold = peak_fraction * MAX off-column = 0.1*10000 = 1000, so the
+        # mid peak is dropped. (A mean reference (~5025) would have kept it.)
+        filt = HorizontalHaloFilter(
+            peak_fraction=0.1, mz_idx_half_width=25, scan_half_width=2
+        )
+        keep = _halo_mask(
+            filt, [10, 10, 10], [1000, 1010, 1020], [10000.0, 600.0, 50.0]
+        )
+        assert keep.tolist() == [True, False, False]
+
 
 class TestHorizontalHaloFilterLive:
     """Integration against the live DDA fixture (needs the Bruker library)."""

@@ -922,7 +922,7 @@ def build_pipeline_ui(
         key=k("halo_on"),
         help=(
             "Removes the weak m/z halo flanking bright peaks — left/right only, "
-            "never above/below. Each peak is compared to the mean intensity of "
+            "never above/below. Each peak is compared to the MAX intensity in "
             "its surrounding box EXCLUDING its own m/z column; if it's below "
             "peak_fraction of that, it's dropped. Same-column (vertical streak) "
             "neighbours can never trigger removal."
@@ -932,7 +932,7 @@ def build_pipeline_ui(
     if halo_on:
         with st.expander("Halo filter knobs", expanded=True):
             g_frac = float(st.number_input(
-                "peak_fraction (drop below this × left/right mean)", 0.0, 1.0, 0.10, 0.01,
+                "peak_fraction (drop below this × left/right max)", 0.0, 1.0, 0.10, 0.01,
                 format="%.3f", key=k("g_frac")))
             g_mz_hw = int(st.number_input(
                 "mz_idx_half_width (±TOF indices, ~247/Da)", 0, 1000, 100, 10,
