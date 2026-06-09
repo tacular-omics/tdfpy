@@ -223,8 +223,7 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 benchmark/
-papers/
 
-# JOSS paper render artifacts
+# JOSS paper: track the source (paper.md, paper.bib), ignore render artifacts
 papers/*.pdf
 papers/*.jats
