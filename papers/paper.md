@@ -106,6 +106,16 @@ around bright peaks. Two centroiders are interchangeable per call site: a greedy
 m/z-tolerance merger (default) and a watershed region-grower
 [@Beucher1979Watershed] operating in integer index space. Full algorithm
 descriptions and tunable parameters are documented online.
+\autoref{fig:pipeline} shows the pipeline applied to one MS1 frame.
+
+![`tdfpy`'s built-in `plot_centroiding` view of a single MS1 frame from the
+bundled example DDA acquisition, produced by `scripts/make_paper_figure.py`
+with the `VerticalNoiseFilter` → `GaussianNoiseFilter` chain. Top-left: the
+raw (m/z, 1/K0) peaks retained after noise filtering, coloured by
+log-intensity; top-right: the resulting intensity-weighted centroids (stars)
+over the faded cloud; bottom-left: the peaks rejected as noise; bottom-right: a
+1-D m/z projection comparing raw, retained, and centroided
+signal.\label{fig:pipeline}](pipeline.png)
 
 tdfpy is a pure-Python wheel with no compile step at install; the Numba JIT
 replaced an earlier Rust extension that produced platform-specific wheels. The
