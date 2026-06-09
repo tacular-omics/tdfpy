@@ -486,7 +486,7 @@ class HorizontalHaloFilter(NoiseFilter):
 
     peak_fraction: float = 0.1
     mz_idx_half_width: int = 100
-    scan_half_width: int = 30
+    scan_half_width: int = 2
 
     def keep_mask(
         self,

@@ -938,7 +938,7 @@ def build_pipeline_ui(
                 "mz_idx_half_width (±TOF indices, ~247/Da)", 0, 1000, 100, 10,
                 key=k("g_mzhw")))
             g_scan_hw = int(st.number_input(
-                "scan_half_width (±mobility scans, box height)", 0, 200, 30, 5,
+                "scan_half_width (±mobility scans, box height)", 0, 200, 2, 1,
                 key=k("g_scanhw")))
         halo = (g_frac, g_mz_hw, g_scan_hw)
 
