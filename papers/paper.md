@@ -108,15 +108,15 @@ m/z-tolerance merger (default) and a watershed region-grower
 descriptions and tunable parameters are documented online.
 \autoref{fig:pipeline} shows the pipeline applied to one MS1 frame.
 
-![`tdfpy`'s built-in `plot_centroiding` view of a single MS1 frame from the
-bundled example DDA acquisition (zoomed to m/z 400–1200 and 1/K0 0.6–1.4),
-produced reproducibly by `scripts/make_paper_figure.py` with the
-`VerticalNoiseFilter` → `GaussianNoiseFilter` chain. Top-left: the raw
-(m/z, 1/K0) peaks retained after noise filtering, coloured by log-intensity;
-top-right: the resulting intensity-weighted centroids (stars) over the faded
-cloud; bottom-left: the peaks rejected as noise (crimson); bottom-right: a 1-D
-m/z projection comparing raw, retained, and centroided
-signal.\label{fig:pipeline}](pipeline.png)
+![`tdfpy` applied to one MS1 frame from the bundled example DDA acquisition
+(zoomed to m/z 400–1200 and 1/K0 0.6–1.4), generated reproducibly by
+`scripts/make_paper_figure.py` with the `VerticalNoiseFilter` →
+`GaussianNoiseFilter` chain. Top-left: all raw (m/z, 1/K0) peaks, with those
+rejected as noise drawn in grey behind the retained peaks (coloured by
+log-intensity), so signal sits in front of the noise; top-right: the resulting
+intensity-weighted centroids; bottom-left: the centroided m/z spectrum (stem
+lines) over the retained raw signal; bottom-right: the peaks rejected as
+noise.\label{fig:pipeline}](pipeline.png)
 
 tdfpy is a pure-Python wheel with no compile step at install; the Numba JIT
 replaced an earlier Rust extension that produced platform-specific wheels. The
