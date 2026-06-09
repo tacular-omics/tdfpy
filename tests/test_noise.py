@@ -283,7 +283,7 @@ class TestVerticalNumbaEquivalence:
 
 _GAUSS_KW = dict(
     peak_fraction=0.1, mz_half_width=0.4, mz_sigma=0.15,
-    im_half_width=0.05, im_sigma=0.02, min_query_intensity=0.0,
+    im_half_width=0.05, min_query_intensity=0.0,
 )
 
 
@@ -306,12 +306,21 @@ class TestGaussianCloudKeepMask:
 
     def test_suppresses_weak_neighbour_under_envelope(self):
         # Bright peak at (500.0, 0.9); a weak peak 0.05 Da away in m/z, same
-        # mobility, sits well under the 30%-at-centre envelope and is dropped.
+        # mobility, sits well under the envelope and is dropped.
         mz = np.array([500.0, 500.05])
         im = np.array([0.9, 0.9])
         inten = np.array([10000.0, 50.0])
         keep = _gaussian_cloud_keep_mask(mz, im, inten, **_GAUSS_KW)
         assert keep[0] and not keep[1]
+
+    def test_keeps_weak_vertical_neighbour_same_mz(self):
+        # A weak peak at the SAME m/z but offset in mobility is the vertical
+        # streak of a real ion — never suppressed, even well under the envelope.
+        mz = np.array([500.0, 500.0])
+        im = np.array([0.9, 0.92])
+        inten = np.array([10000.0, 50.0])
+        keep = _gaussian_cloud_keep_mask(mz, im, inten, **_GAUSS_KW)
+        assert keep.tolist() == [True, True]
 
     def test_keeps_comparable_neighbour(self):
         # A neighbour nearly as intense as the query is not "cloud" — kept.
@@ -342,9 +351,8 @@ class TestGaussianCloudKeepMask:
         int_s = np.ascontiguousarray(inten[order])
         int_order = np.argsort(int_s, kind="stable")[::-1].astype(np.int64)
         inv2_mz = 1.0 / (2.0 * 0.15 ** 2)
-        inv2_im = 1.0 / (2.0 * 0.02 ** 2)
         args = (mz_s, im_s, int_s, np.ascontiguousarray(int_order),
-                0.1, 0.4, inv2_mz, 0.05, inv2_im, 0.0)
+                0.1, 0.4, inv2_mz, 0.05, 0.0)
         alive_nb = _structural._gaussian_cloud_kernel(*args)
         alive_py = _gaussian_cloud_kernel_py(*args)
         np.testing.assert_array_equal(alive_nb, alive_py)

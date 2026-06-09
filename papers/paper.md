@@ -101,8 +101,9 @@ the ops directly. Region exclusion (`ChargeStateRegion`) drops uninteresting
 bands such as the singly-charged contamination line. Noise filtering offers
 intensity-threshold estimators and two structural filters that exploit signal
 geometry — `VerticalNoiseFilter`, which keeps the vertical ion-mobility streaks
-of genuine ions, and `GaussianNoiseFilter`, which suppresses the diffuse halo
-around bright peaks. Two centroiders are interchangeable per call site: a greedy
+of genuine ions, and `GaussianNoiseFilter`, which clears the diffuse halo
+flanking bright peaks along the m/z axis (leaving the mobility streak intact).
+Two centroiders are interchangeable per call site: a greedy
 m/z-tolerance merger (default) and a watershed region-grower
 [@Beucher1979Watershed] operating in integer index space. Full algorithm
 descriptions and tunable parameters are documented online.

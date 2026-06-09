@@ -54,8 +54,8 @@ from tdfpy.tdf import PandasTdf
 # A smoothing config: ``(scan_half_width, mz_idx_half_width, "sum" | "mean")``.
 SmoothSpec = tuple[int, int, str]
 # A Gaussian-cloud config:
-# ``(peak_fraction, mz_half_width, mz_sigma, im_half_width, im_sigma, min_query_intensity)``.
-GaussianSpec = tuple[float, float, float, float, float, float]
+# ``(peak_fraction, mz_half_width, mz_sigma, im_half_width, min_query_intensity)``.
+GaussianSpec = tuple[float, float, float, float, float]
 
 # Bruker MsMsType code → human label. Codes from the Bruker TDF schema docs.
 MS_MS_TYPE_LABELS: dict[int, str] = {
@@ -279,14 +279,14 @@ def _gaussian_filter_spectrum(
     """Drop noise-cloud peaks via the package :class:`tdfpy.GaussianNoiseFilter`.
 
     ``gaussian`` is the UI tuple
-    ``(peak_fraction, mz_half_width, mz_sigma, im_half_width, im_sigma, min_query_intensity)``.
+    ``(peak_fraction, mz_half_width, mz_sigma, im_half_width, min_query_intensity)``.
     """
     if spectrum.empty:
         return spectrum
-    peak_fraction, mz_half_width, mz_sigma, im_half_width, im_sigma, min_q = gaussian
+    peak_fraction, mz_half_width, mz_sigma, im_half_width, min_q = gaussian
     filt = GaussianNoiseFilter(
         peak_fraction=peak_fraction, mz_half_width=mz_half_width, mz_sigma=mz_sigma,
-        im_half_width=im_half_width, im_sigma=im_sigma, min_query_intensity=min_q,
+        im_half_width=im_half_width, min_query_intensity=min_q,
     )
     return apply_noise(spectrum, (filt,), td=td, frame_id=frame_id)
 
@@ -921,11 +921,12 @@ def build_pipeline_ui(
         value=False,
         key=k("gauss_on"),
         help=(
-            "Greedy non-max suppression: each intense peak projects a 2D "
-            "Gaussian envelope (≈10% of its intensity at the centre, decaying "
-            "with m/z and 1/K0 distance). Weaker neighbours under the envelope "
-            "are dropped as the surrounding noise cloud; suppressed peaks "
-            "cannot themselves suppress."
+            "Greedy non-max suppression along the m/z axis only: each intense "
+            "peak projects a 1D Gaussian envelope (≈10% of its intensity at the "
+            "centre, decaying with m/z distance). Weaker neighbours offset in "
+            "m/z fall under the envelope and are dropped; peaks at the same m/z "
+            "(the vertical ion-mobility streak) are always kept. The 1/K0 "
+            "half-width only bounds the box."
         ),
     )
     gaussian: GaussianSpec | None = None
@@ -942,17 +943,13 @@ def build_pipeline_ui(
             with cmz2:
                 g_mz_sig = float(st.number_input(
                     "m/z σ (Da)", 0.001, 5.0, 0.15, 0.01, format="%.3f", key=k("g_mzsig")))
-            cim1, cim2 = st.columns(2)
-            with cim1:
-                g_im_win = float(st.number_input(
-                    "1/K0 half-width (±)", 0.0, 1.0, 0.05, 0.01, format="%.3f", key=k("g_imwin")))
-            with cim2:
-                g_im_sig = float(st.number_input(
-                    "1/K0 σ", 0.001, 1.0, 0.02, 0.005, format="%.3f", key=k("g_imsig")))
+            g_im_win = float(st.number_input(
+                "1/K0 half-width (±, box only — no suppression along 1/K0)",
+                0.0, 1.0, 0.05, 0.01, format="%.3f", key=k("g_imwin")))
             g_minq = float(st.number_input(
                 "min_query_intensity", 0.0, value=0.0, step=10.0, key=k("g_minq"),
                 help="Peaks below this don't act as suppressors (0 = all peaks suppress)."))
-        gaussian = (g_frac, g_mz_win, g_mz_sig, g_im_win, g_im_sig, g_minq)
+        gaussian = (g_frac, g_mz_win, g_mz_sig, g_im_win, g_minq)
 
     methods = ("off", "absolute", "mad", "percentile", "histogram", "baseline", "iterative_median")
     method = st.selectbox(

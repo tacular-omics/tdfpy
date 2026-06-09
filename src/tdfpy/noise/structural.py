@@ -404,16 +404,18 @@ def _gaussian_cloud_kernel_py(
     mz_half_width: float,
     inv2_mz: float,
     im_half_width: float,
-    inv2_im: float,
     min_query_intensity: float,
 ) -> np.ndarray:
-    """Greedy Gaussian-cloud suppression on m/z-sorted arrays.
+    """Greedy m/z-axis cloud suppression on m/z-sorted arrays.
 
     Returns an ``alive`` mask (in m/z-sorted order). Processes peaks strongest
-    first; each surviving peak removes weaker alive neighbours falling under
-    its 2D Gaussian envelope ``I_query · peak_fraction · exp(-Δmz²·inv2_mz -
-    Δim²·inv2_im)`` within the ``±mz_half_width`` / ``±im_half_width`` box.
-    Suppressed peaks cannot themselves suppress (greedy non-max suppression).
+    first; within a ``±mz_half_width`` (m/z) by ``±im_half_width`` (1/K0) box,
+    each surviving peak removes weaker alive neighbours that are *offset in m/z*
+    and fall below the 1-D Gaussian envelope ``I_query · peak_fraction ·
+    exp(-Δmz²·inv2_mz)``. Neighbours at the same m/z (directly above/below in
+    ion mobility) are never removed — they are the vertical streak of a real
+    ion. Suppressed peaks cannot themselves suppress (greedy non-max
+    suppression).
     """
     n = mz_s.size
     alive = np.ones(n, dtype=np.bool_)
@@ -434,13 +436,17 @@ def _gaussian_cloud_kernel_py(
             ij = int_s[j]
             if ij >= ii:
                 continue
+            dmz = mz_s[j] - mzi
+            if dmz == 0.0:
+                # Same m/z = directly above/below in ion mobility: part of the
+                # vertical streak of a real ion, never suppressed.
+                continue
             dim = im_s[j] - imi
             if dim < 0.0:
                 dim = -dim
             if dim > im_half_width:
                 continue
-            dmz = mz_s[j] - mzi
-            weight = np.exp(-(dmz * dmz) * inv2_mz - (dim * dim) * inv2_im)
+            weight = np.exp(-(dmz * dmz) * inv2_mz)
             if ij < ii * peak_fraction * weight:
                 alive[j] = False
     return alive
@@ -461,7 +467,6 @@ def _gaussian_cloud_keep_mask(
     mz_half_width: float,
     mz_sigma: float,
     im_half_width: float,
-    im_sigma: float,
     min_query_intensity: float,
 ) -> np.ndarray:
     """Keep-mask (original order) for the greedy Gaussian-cloud filter.
@@ -478,11 +483,10 @@ def _gaussian_cloud_keep_mask(
     # Descending-intensity processing order, expressed as positions in mz_s.
     int_order_desc = np.argsort(int_s, kind="stable")[::-1].astype(np.int64)
     inv2_mz = 1.0 / (2.0 * mz_sigma * mz_sigma) if mz_sigma > 0 else 0.0
-    inv2_im = 1.0 / (2.0 * im_sigma * im_sigma) if im_sigma > 0 else 0.0
     alive_s = _gaussian_cloud_kernel(
         mz_s, im_s, int_s, np.ascontiguousarray(int_order_desc),
         float(peak_fraction), float(mz_half_width), float(inv2_mz),
-        float(im_half_width), float(inv2_im), float(min_query_intensity),
+        float(im_half_width), float(min_query_intensity),
     )
     keep = np.empty(n, dtype=bool)
     keep[mz_order] = alive_s
@@ -491,34 +495,40 @@ def _gaussian_cloud_keep_mask(
 
 @dataclass(frozen=True)
 class GaussianNoiseFilter(NoiseFilter):
-    """Suppress the diffuse noise cloud surrounding bright peaks.
+    """Suppress the m/z noise cloud flanking bright peaks.
 
-    High-intensity ions are wrapped in a halo of weak peaks — likely from
+    High-intensity ions are flanked by a halo of weak peaks — likely from
     charge interactions within the fragment-ion cloud or detector effects —
-    that are not resolvable to high-precision m/z values. This filter
-    performs greedy non-maximum suppression in physical ``(m/z, 1/K0)``
-    space: peaks are visited strongest first, and each surviving peak drops
-    weaker neighbours whose intensity falls below its 2D Gaussian envelope
+    that are not resolvable to high-precision m/z values. A real ion forms a
+    *vertical streak* along the ion-mobility axis (the same m/z across many
+    consecutive mobility scans), so this filter only suppresses **along the
+    m/z axis** (peaks to the left and right of a bright peak) and never along
+    ion mobility: a neighbour at the same m/z (directly above/below) is always
+    kept.
 
-        ``I_query · peak_fraction · exp(-Δmz²/2σ_mz² - Δ(1/K0)²/2σ_im²)``
+    Greedy non-maximum suppression: peaks are visited strongest first, and
+    within a ``±mz_half_width`` (Da) by ``±im_half_width`` (1/K0) box each
+    surviving peak drops weaker m/z-offset neighbours whose intensity falls
+    below the 1-D Gaussian envelope
 
-    evaluated within a ``±mz_half_width`` (Da) by ``±im_half_width`` (1/K0)
-    box. With the defaults, the envelope peaks at 10% of a bright peak's
-    intensity at its centre and decays with a 0.15 Da standard deviation over
-    a ``±0.4`` Da (0.8 Da total) m/z window. A suppressed peak cannot itself
-    suppress others.
+        ``I_query · peak_fraction · exp(-Δmz²/2σ_mz²)``.
 
-    Because the envelope is defined in physical units, ``keep_mask``
-    converts the integer TOF/scan indices to m/z and 1/K0 using the frame's
-    calibration before running. The inner loop is JIT-compiled via Numba,
-    with a pure-Python fallback.
+    With the defaults the envelope peaks at 10% of the bright peak's intensity
+    and decays with a 0.15 Da standard deviation over a ``±0.4`` Da window.
+    ``im_half_width`` only bounds how far up/down the m/z halo is cleared; the
+    mobility distance otherwise does not affect suppression. A suppressed peak
+    cannot itself suppress others.
+
+    Because the envelope is defined in physical units, ``keep_mask`` converts
+    the integer TOF/scan indices to m/z and 1/K0 using the frame's calibration
+    before running. The inner loop is JIT-compiled via Numba, with a
+    pure-Python fallback.
     """
 
     peak_fraction: float = 0.1
     mz_half_width: float = 0.4
     mz_sigma: float = 0.15
     im_half_width: float = 0.05
-    im_sigma: float = 0.02
     min_query_intensity: float = 0.0
 
     def keep_mask(
@@ -545,6 +555,5 @@ class GaussianNoiseFilter(NoiseFilter):
             mz_half_width=self.mz_half_width,
             mz_sigma=self.mz_sigma,
             im_half_width=self.im_half_width,
-            im_sigma=self.im_sigma,
             min_query_intensity=self.min_query_intensity,
         )
