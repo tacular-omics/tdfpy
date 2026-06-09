@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-06-08
+
 ### Added
 
 - **Pipeline module (`tdfpy.pipeline`).** Composable ops for raw peak extraction and centroiding — `RawSpectrum` data carrier plus `read_spectrum`, `subset_scans`, `exclude_region`, `smooth`, `box_smooth`, `apply_noise`, `convert`, `centroid_peaks`. The convenience `get_raw_peaks` and `get_centroided_spectrum` are now thin orchestrators over these ops; custom pipelines call the ops directly. See [docs/api/pipeline.md](docs/api/pipeline.md).
