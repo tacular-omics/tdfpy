@@ -6,8 +6,8 @@ import pytest
 from tdfpy.noise import (
     AbsoluteThreshold,
     BaselineThreshold,
-    GaussianNoiseFilter,
     HistogramThreshold,
+    HorizontalHaloFilter,
     IntensityThreshold,
     IterativeMedianThreshold,
     MadThreshold,
@@ -19,8 +19,6 @@ from tdfpy.noise import (
 from tdfpy.noise import structural as _structural
 from tdfpy.noise.structural import (
     _HAS_NUMBA,
-    _gaussian_cloud_keep_mask,
-    _gaussian_cloud_kernel_py,
     _single_pass_filter,
     _single_pass_filter_python,
 )
@@ -281,84 +279,73 @@ class TestVerticalNumbaEquivalence:
 # --------------------------------------------------------------------------
 
 
-_GAUSS_KW = dict(
-    peak_fraction=0.1, mz_half_width=0.4, mz_sigma=0.15,
-    im_half_width=0.05, min_query_intensity=0.0,
-)
+def _halo_mask(filt, scan, mz_idx, inten, num_scans=200):
+    """Run HorizontalHaloFilter.keep_mask on integer-index arrays.
+
+    The filter works purely in (scan, TOF index) space, so ``td``/``frame_id``
+    are unused and passed as None/0.
+    """
+    return filt.keep_mask(
+        np.asarray(scan, dtype=np.int64),
+        np.asarray(mz_idx, dtype=np.int64),
+        np.asarray(inten, dtype=np.float64),
+        num_scans=num_scans, td=None, frame_id=0,
+    )
 
 
-class TestGaussianCloudKeepMask:
+class TestHorizontalHaloFilter:
     def test_is_noise_filter(self):
-        assert issubclass(GaussianNoiseFilter, NoiseFilter)
+        assert issubclass(HorizontalHaloFilter, NoiseFilter)
 
     def test_empty(self):
-        keep = _gaussian_cloud_keep_mask(
-            np.zeros(0), np.zeros(0), np.zeros(0), **_GAUSS_KW
+        keep = _halo_mask(
+            HorizontalHaloFilter(),
+            np.zeros(0, dtype=np.int64), np.zeros(0, dtype=np.int64), np.zeros(0),
         )
         assert keep.shape == (0,)
 
     def test_keeps_lone_peak(self):
-        # A single peak has nothing to suppress it.
-        keep = _gaussian_cloud_keep_mask(
-            np.array([500.0]), np.array([0.9]), np.array([1000.0]), **_GAUSS_KW
-        )
+        # No off-column neighbours -> reference 0 -> always kept.
+        keep = _halo_mask(HorizontalHaloFilter(), [10], [1000], [50.0])
         assert keep.tolist() == [True]
 
-    def test_suppresses_weak_neighbour_under_envelope(self):
-        # Bright peak at (500.0, 0.9); a weak peak 0.05 Da away in m/z, same
-        # mobility, sits well under the envelope and is dropped.
-        mz = np.array([500.0, 500.05])
-        im = np.array([0.9, 0.9])
-        inten = np.array([10000.0, 50.0])
-        keep = _gaussian_cloud_keep_mask(mz, im, inten, **_GAUSS_KW)
-        assert keep[0] and not keep[1]
+    def test_removes_weak_left_right_neighbour(self):
+        # Weak peak in the SAME scan row, offset in m/z from a bright peak.
+        filt = HorizontalHaloFilter(
+            peak_fraction=0.1, mz_idx_half_width=20, scan_half_width=2
+        )
+        keep = _halo_mask(filt, [10, 10], [1000, 1010], [10000.0, 50.0])
+        assert keep.tolist() == [True, False]
 
     def test_keeps_weak_vertical_neighbour_same_mz(self):
-        # A weak peak at the SAME m/z but offset in mobility is the vertical
-        # streak of a real ion — never suppressed, even well under the envelope.
-        mz = np.array([500.0, 500.0])
-        im = np.array([0.9, 0.92])
-        inten = np.array([10000.0, 50.0])
-        keep = _gaussian_cloud_keep_mask(mz, im, inten, **_GAUSS_KW)
+        # Same m/z column, offset in mobility = the vertical streak: always kept,
+        # even though it is far weaker than the bright peak directly above it.
+        filt = HorizontalHaloFilter(
+            peak_fraction=0.1, mz_idx_half_width=20, scan_half_width=10
+        )
+        keep = _halo_mask(filt, [10, 15], [1000, 1000], [10000.0, 50.0])
+        assert keep.tolist() == [True, True]
+
+    def test_keeps_diagonal_weak_peak_when_no_same_row_bright(self):
+        # A weak peak below-and-beside a bright one, but whose own row has no
+        # bright neighbour, is kept (the bright peak is not in its scan range).
+        filt = HorizontalHaloFilter(
+            peak_fraction=0.1, mz_idx_half_width=20, scan_half_width=2
+        )
+        # bright at (scan 10, 1000); weak at (scan 50, 1010) — 40 scans away.
+        keep = _halo_mask(filt, [10, 50], [1000, 1010], [10000.0, 50.0])
         assert keep.tolist() == [True, True]
 
     def test_keeps_comparable_neighbour(self):
-        # A neighbour nearly as intense as the query is not "cloud" — kept.
-        mz = np.array([500.0, 500.05])
-        im = np.array([0.9, 0.9])
-        inten = np.array([10000.0, 9000.0])
-        keep = _gaussian_cloud_keep_mask(mz, im, inten, **_GAUSS_KW)
+        # A neighbour nearly as intense as its surroundings is not halo.
+        filt = HorizontalHaloFilter(
+            peak_fraction=0.1, mz_idx_half_width=20, scan_half_width=2
+        )
+        keep = _halo_mask(filt, [10, 10], [1000, 1010], [10000.0, 9000.0])
         assert keep.tolist() == [True, True]
 
-    def test_keeps_neighbour_outside_window(self):
-        # A weak peak beyond the m/z window is never visited by the suppressor.
-        mz = np.array([500.0, 500.5])
-        im = np.array([0.9, 0.9])
-        inten = np.array([10000.0, 50.0])
-        keep = _gaussian_cloud_keep_mask(mz, im, inten, **_GAUSS_KW)
-        assert keep.tolist() == [True, True]
 
-    @pytest.mark.skipif(not _HAS_NUMBA, reason="numba not installed")
-    def test_numba_matches_python(self):
-        rng = np.random.default_rng(3)
-        n = 800
-        mz = rng.uniform(400.0, 401.0, n)
-        im = rng.uniform(0.8, 1.0, n)
-        inten = rng.uniform(50.0, 20000.0, n)
-        order = np.argsort(mz, kind="stable")
-        mz_s = np.ascontiguousarray(mz[order])
-        im_s = np.ascontiguousarray(im[order])
-        int_s = np.ascontiguousarray(inten[order])
-        int_order = np.argsort(int_s, kind="stable")[::-1].astype(np.int64)
-        inv2_mz = 1.0 / (2.0 * 0.15 ** 2)
-        args = (mz_s, im_s, int_s, np.ascontiguousarray(int_order),
-                0.1, 0.4, inv2_mz, 0.05, 0.0)
-        alive_nb = _structural._gaussian_cloud_kernel(*args)
-        alive_py = _gaussian_cloud_kernel_py(*args)
-        np.testing.assert_array_equal(alive_nb, alive_py)
-
-
-class TestGaussianNoiseFilterLive:
+class TestHorizontalHaloFilterLive:
     """Integration against the live DDA fixture (needs the Bruker library)."""
 
     TDF_PATH = "tests/data/example_dda.d"
@@ -374,7 +361,7 @@ class TestGaussianNoiseFilterLive:
             )
             frame_id = cursor.fetchone()[0]
             spec = read_spectrum(td, frame_id)
-            mask = GaussianNoiseFilter().keep_mask(
+            mask = HorizontalHaloFilter().keep_mask(
                 spec.scan_indices, spec.mz_indices, spec.intensities,
                 num_scans=spec.num_scans, td=td, frame_id=frame_id,
             )

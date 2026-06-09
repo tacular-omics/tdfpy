@@ -5,7 +5,7 @@ builder, and the plotting helpers out of the individual pages so every page
 renders consistently and re-uses the same cached accessors. The peak-processing
 ops (smoothing, noise filtering, centroiding) are thin adapters over the public
 ``tdfpy`` pipeline — the app builds UI-tuple specs and hands them to
-:func:`tdfpy.smooth`, :class:`tdfpy.GaussianNoiseFilter`, etc.
+:func:`tdfpy.smooth`, :class:`tdfpy.HorizontalHaloFilter`, etc.
 
 Nothing here is part of the public ``tdfpy`` package — this is internal dev
 tooling under ``apps/`` only.
@@ -27,7 +27,7 @@ from tdfpy import (
     AbsoluteThreshold,
     BaselineThreshold,
     ChargeStateRegion,
-    GaussianNoiseFilter,
+    HorizontalHaloFilter,
     HistogramThreshold,
     IntensityThreshold,
     IterativeMedianThreshold,
@@ -53,9 +53,8 @@ from tdfpy.tdf import PandasTdf
 
 # A smoothing config: ``(scan_half_width, mz_idx_half_width, "sum" | "mean")``.
 SmoothSpec = tuple[int, int, str]
-# A Gaussian-cloud config:
-# ``(peak_fraction, mz_half_width, mz_sigma, im_half_width, min_query_intensity)``.
-GaussianSpec = tuple[float, float, float, float, float]
+# A horizontal m/z-halo config: ``(peak_fraction, mz_idx_half_width, scan_half_width)``.
+HaloSpec = tuple[float, int, int]
 
 # Bruker MsMsType code → human label. Codes from the Bruker TDF schema docs.
 MS_MS_TYPE_LABELS: dict[int, str] = {
@@ -273,20 +272,21 @@ def _smooth_spectrum(spectrum: RawSpectrum, smooth_spec: SmoothSpec) -> RawSpect
     )
 
 
-def _gaussian_filter_spectrum(
-    spectrum: RawSpectrum, td, frame_id: int, gaussian: GaussianSpec
+def _halo_filter_spectrum(
+    spectrum: RawSpectrum, td, frame_id: int, halo: HaloSpec
 ) -> RawSpectrum:
-    """Drop noise-cloud peaks via the package :class:`tdfpy.GaussianNoiseFilter`.
+    """Drop left/right m/z-halo peaks via :class:`tdfpy.HorizontalHaloFilter`.
 
-    ``gaussian`` is the UI tuple
-    ``(peak_fraction, mz_half_width, mz_sigma, im_half_width, min_query_intensity)``.
+    ``halo`` is the UI tuple
+    ``(peak_fraction, mz_idx_half_width, scan_half_width)``.
     """
     if spectrum.empty:
         return spectrum
-    peak_fraction, mz_half_width, mz_sigma, im_half_width, min_q = gaussian
-    filt = GaussianNoiseFilter(
-        peak_fraction=peak_fraction, mz_half_width=mz_half_width, mz_sigma=mz_sigma,
-        im_half_width=im_half_width, min_query_intensity=min_q,
+    peak_fraction, mz_idx_half_width, scan_half_width = halo
+    filt = HorizontalHaloFilter(
+        peak_fraction=peak_fraction,
+        mz_idx_half_width=int(mz_idx_half_width),
+        scan_half_width=int(scan_half_width),
     )
     return apply_noise(spectrum, (filt,), td=td, frame_id=frame_id)
 
@@ -298,14 +298,14 @@ def _build_spectrum(
     scan_range: tuple[int, int] | None,
     exclude: ChargeStateRegion | None,
     smooth: SmoothSpec | None,
-    gaussian: GaussianSpec | None,
+    halo: HaloSpec | None,
     noise_filters: tuple[NoiseFilter, ...],
 ) -> RawSpectrum:
     """Compose the integer-space pipeline:
 
-    read → subset → exclude → **smooth** → vertical-IM → **gaussian** →
-    intensity threshold. The Gaussian cloud filter runs after the structural
-    (vertical) filter and before the global intensity threshold.
+    read → subset → exclude → **smooth** → vertical-IM → **halo** →
+    intensity threshold. The halo filter runs after the structural (vertical)
+    filter and before the global intensity threshold.
     """
     spectrum = read_spectrum(td, frame_id)
     if scan_range is not None:
@@ -315,15 +315,15 @@ def _build_spectrum(
     if smooth is not None:
         spectrum = _smooth_spectrum(spectrum, smooth)
 
-    # Split noise filters: structural (vertical) ones run before the Gaussian
-    # cloud filter, global intensity thresholds run after it.
+    # Split noise filters: structural (vertical) ones run before the halo
+    # filter, global intensity thresholds run after it.
     filters = coerce_filters(list(noise_filters) if noise_filters else None)
     pre = [f for f in filters if not isinstance(f, IntensityThreshold)]
     post = [f for f in filters if isinstance(f, IntensityThreshold)]
     if pre:
         spectrum = apply_noise(spectrum, pre, td=td, frame_id=frame_id)
-    if gaussian is not None:
-        spectrum = _gaussian_filter_spectrum(spectrum, td, frame_id, gaussian)
+    if halo is not None:
+        spectrum = _halo_filter_spectrum(spectrum, td, frame_id, halo)
     if post:
         spectrum = apply_noise(spectrum, post, td=td, frame_id=frame_id)
     return spectrum
@@ -338,12 +338,12 @@ def fetch_raw_peaks(
     exclude: ChargeStateRegion | None,
     scan_range: tuple[int, int] | None = None,
     smooth: SmoothSpec | None = None,
-    gaussian: GaussianSpec | None = None,
+    halo: HaloSpec | None = None,
 ) -> np.ndarray:
     with tdfpy.timsdata_connect(analysis_dir) as td:
         spectrum = _build_spectrum(
             td, frame_id, scan_range=scan_range, exclude=exclude,
-            smooth=smooth, gaussian=gaussian, noise_filters=noise_filters)
+            smooth=smooth, halo=halo, noise_filters=noise_filters)
         return convert(spectrum, td, frame_id, ion_mobility_type=ion_mobility_type)  # type: ignore[arg-type]
 
 
@@ -357,12 +357,12 @@ def fetch_centroided(
     centroider: Centroider,
     scan_range: tuple[int, int] | None = None,
     smooth: SmoothSpec | None = None,
-    gaussian: GaussianSpec | None = None,
+    halo: HaloSpec | None = None,
 ) -> np.ndarray:
     with tdfpy.timsdata_connect(analysis_dir) as td:
         spectrum = _build_spectrum(
             td, frame_id, scan_range=scan_range, exclude=exclude,
-            smooth=smooth, gaussian=gaussian, noise_filters=noise_filters)
+            smooth=smooth, halo=halo, noise_filters=noise_filters)
         if spectrum.empty:
             return np.empty((0, 3), dtype=np.float64)
         return centroider(
@@ -804,7 +804,7 @@ def build_pipeline_ui(
 ) -> tuple[
     ChargeStateRegion | None,
     "SmoothSpec | None",
-    "GaussianSpec | None",
+    "HaloSpec | None",
     tuple[NoiseFilter, ...],
     Centroider | None,
     bool,
@@ -813,8 +813,8 @@ def build_pipeline_ui(
 
     ``prefix`` namespaces every widget key so multiple pages can each own an
     independent instance of the controls. Returns
-    ``(exclude, smooth, gaussian, noise_filters, centroider, centroid_log_y)``.
-    The Gaussian cloud filter runs after the vertical-IM filter and before the
+    ``(exclude, smooth, halo, noise_filters, centroider, centroid_log_y)``.
+    The halo filter runs after the vertical-IM filter and before the
     intensity threshold (handled in :func:`_build_spectrum`).
     """
     k = lambda name: f"{prefix}_{name}"  # noqa: E731
@@ -914,42 +914,33 @@ def build_pipeline_ui(
             num_iterations=vim_iters,
         )
 
-    # 1b) Gaussian cloud filter — greedy, runs after the vertical filter and
+    # 1b) Horizontal m/z-halo filter — runs after the vertical filter and
     #     before the intensity threshold.
-    gauss_on = st.checkbox(
-        "Gaussian cloud filter",
+    halo_on = st.checkbox(
+        "Horizontal m/z-halo filter",
         value=False,
-        key=k("gauss_on"),
+        key=k("halo_on"),
         help=(
-            "Greedy non-max suppression along the m/z axis only: each intense "
-            "peak projects a 1D Gaussian envelope (≈10% of its intensity at the "
-            "centre, decaying with m/z distance). Weaker neighbours offset in "
-            "m/z fall under the envelope and are dropped; peaks at the same m/z "
-            "(the vertical ion-mobility streak) are always kept. The 1/K0 "
-            "half-width only bounds the box."
+            "Removes the weak m/z halo flanking bright peaks — left/right only, "
+            "never above/below. Each peak is compared to the mean intensity of "
+            "its surrounding box EXCLUDING its own m/z column; if it's below "
+            "peak_fraction of that, it's dropped. Same-column (vertical streak) "
+            "neighbours can never trigger removal."
         ),
     )
-    gaussian: GaussianSpec | None = None
-    if gauss_on:
-        with st.expander("Gaussian cloud knobs", expanded=True):
+    halo: HaloSpec | None = None
+    if halo_on:
+        with st.expander("Halo filter knobs", expanded=True):
             g_frac = float(st.number_input(
-                "peak_fraction (cloud level at centre)", 0.0, 1.0, 0.10, 0.01,
-                format="%.3f", key=k("g_frac"),
-                help="Envelope height at the peak as a fraction of its intensity."))
-            cmz1, cmz2 = st.columns(2)
-            with cmz1:
-                g_mz_win = float(st.number_input(
-                    "m/z half-width (±Da)", 0.0, 5.0, 0.4, 0.05, format="%.3f", key=k("g_mzwin")))
-            with cmz2:
-                g_mz_sig = float(st.number_input(
-                    "m/z σ (Da)", 0.001, 5.0, 0.15, 0.01, format="%.3f", key=k("g_mzsig")))
-            g_im_win = float(st.number_input(
-                "1/K0 half-width (±, box only — no suppression along 1/K0)",
-                0.0, 1.0, 0.05, 0.01, format="%.3f", key=k("g_imwin")))
-            g_minq = float(st.number_input(
-                "min_query_intensity", 0.0, value=0.0, step=10.0, key=k("g_minq"),
-                help="Peaks below this don't act as suppressors (0 = all peaks suppress)."))
-        gaussian = (g_frac, g_mz_win, g_mz_sig, g_im_win, g_minq)
+                "peak_fraction (drop below this × left/right mean)", 0.0, 1.0, 0.10, 0.01,
+                format="%.3f", key=k("g_frac")))
+            g_mz_hw = int(st.number_input(
+                "mz_idx_half_width (±TOF indices, ~247/Da)", 0, 1000, 100, 10,
+                key=k("g_mzhw")))
+            g_scan_hw = int(st.number_input(
+                "scan_half_width (±mobility scans, box height)", 0, 200, 30, 5,
+                key=k("g_scanhw")))
+        halo = (g_frac, g_mz_hw, g_scan_hw)
 
     methods = ("off", "absolute", "mad", "percentile", "histogram", "baseline", "iterative_median")
     method = st.selectbox(
@@ -1094,7 +1085,7 @@ def build_pipeline_ui(
                 )
             centroid_log_y = st.checkbox("Log y-axis (centroid intensity)", value=False, key=k("clog"))
 
-    return exclude, smooth, gaussian, noise_filters, centroider, centroid_log_y
+    return exclude, smooth, halo, noise_filters, centroider, centroid_log_y
 
 
 def filter_chain_label(

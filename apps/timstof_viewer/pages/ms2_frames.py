@@ -91,14 +91,14 @@ with st.sidebar:
         seg = segments[scope_idx - 1]
         scan_scope = (seg["scan_begin"], seg["scan_end"] + 1)
 
-    exclude, smooth, gaussian, noise_filters, centroider, centroid_log_y = build_pipeline_ui("ms2")
+    exclude, smooth, halo, noise_filters, centroider, centroid_log_y = build_pipeline_ui("ms2")
 
 
 # -- Fetch raw peaks --------------------------------------------------------
 
 peaks = fetch_raw_peaks(
     analysis_dir, frame_id, ion_mobility_type, noise_filters, exclude, scan_scope,
-    smooth=smooth, gaussian=gaussian)
+    smooth=smooth, halo=halo)
 if peaks.size == 0:
     st.warning("No peaks survive the current filter chain / scan scope.")
     st.stop()
@@ -202,7 +202,7 @@ if centroider is not None:
     try:
         centroided = fetch_centroided(
             analysis_dir, frame_id, ion_mobility_type,
-            noise_filters, exclude, centroider, scan_scope, smooth=smooth, gaussian=gaussian)
+            noise_filters, exclude, centroider, scan_scope, smooth=smooth, halo=halo)
     except Exception as exc:  # noqa: BLE001
         st.error(f"Centroiding failed: {exc}")
         centroided = np.empty((0, 3), dtype=np.float64)

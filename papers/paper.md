@@ -101,7 +101,7 @@ the ops directly. Region exclusion (`ChargeStateRegion`) drops uninteresting
 bands such as the singly-charged contamination line. Noise filtering offers
 intensity-threshold estimators and two structural filters that exploit signal
 geometry — `VerticalNoiseFilter`, which keeps the vertical ion-mobility streaks
-of genuine ions, and `GaussianNoiseFilter`, which clears the diffuse halo
+of genuine ions, and `HorizontalHaloFilter`, which clears the diffuse halo
 flanking bright peaks along the m/z axis (leaving the mobility streak intact).
 Two centroiders are interchangeable per call site: a greedy
 m/z-tolerance merger (default) and a watershed region-grower
@@ -112,7 +112,7 @@ descriptions and tunable parameters are documented online.
 ![`tdfpy` applied to one MS1 frame from the bundled example DDA acquisition
 (zoomed to m/z 400–1200 and 1/K0 0.6–1.4), generated reproducibly by
 `scripts/make_paper_figure.py` with the `VerticalNoiseFilter` →
-`GaussianNoiseFilter` chain. Top-left: all raw (m/z, 1/K0) peaks, with those
+`HorizontalHaloFilter` chain. Top-left: all raw (m/z, 1/K0) peaks, with those
 rejected as noise drawn in grey behind the retained peaks (coloured by
 log-intensity), so signal sits in front of the noise; top-right: the resulting
 intensity-weighted centroids; bottom-left: the centroided m/z spectrum (stem

@@ -68,7 +68,7 @@ with st.sidebar:
     ion_mobility_type = st.selectbox("Ion mobility axis", ["ook0", "ccs", "voltage"], index=0)
     log_intensity = st.checkbox("Log-scale color", value=True)
 
-    exclude, smooth, gaussian, noise_filters, centroider, centroid_log_y = build_pipeline_ui("prmtgt")
+    exclude, smooth, halo, noise_filters, centroider, centroid_log_y = build_pipeline_ui("prmtgt")
 
 
 # -- Target metadata --------------------------------------------------------
@@ -110,7 +110,7 @@ frame_id = tr["frame_id"]
 
 peaks = fetch_raw_peaks(
     analysis_dir, frame_id, ion_mobility_type, noise_filters, exclude, scan_scope,
-    smooth=smooth, gaussian=gaussian)
+    smooth=smooth, halo=halo)
 if peaks.size == 0:
     st.warning("No peaks survive the filter chain in this transition's scan scope.")
     st.stop()
@@ -132,7 +132,7 @@ if centroider is not None:
     try:
         centroided = fetch_centroided(
             analysis_dir, frame_id, ion_mobility_type,
-            noise_filters, exclude, centroider, scan_scope, smooth=smooth, gaussian=gaussian)
+            noise_filters, exclude, centroider, scan_scope, smooth=smooth, halo=halo)
     except Exception as exc:  # noqa: BLE001
         st.error(f"Centroiding failed: {exc}")
         centroided = np.empty((0, 3), dtype=np.float64)

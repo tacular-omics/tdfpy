@@ -31,8 +31,8 @@ from .lookup import (
 from .noise import (
     AbsoluteThreshold,
     BaselineThreshold,
-    GaussianNoiseFilter,
     HistogramThreshold,
+    HorizontalHaloFilter,
     IntensityThreshold,
     IterativeMedianThreshold,
     MadThreshold,
@@ -132,7 +132,7 @@ __all__ = [
     "BaselineThreshold",
     "IterativeMedianThreshold",
     "VerticalNoiseFilter",
-    "GaussianNoiseFilter",
+    "HorizontalHaloFilter",
     # Visualization
     "plot_centroiding",
 ]

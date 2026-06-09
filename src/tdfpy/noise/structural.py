@@ -5,10 +5,10 @@ vertical streaks in ``(scan_number, TOF_index)`` space — see
 ``apps/ALGORITHM.md`` for the full algorithm write-up. It is the
 canonical structural filter for timsTOF MS1 data.
 
-The Gaussian-cloud filter (:class:`GaussianNoiseFilter`) suppresses the
-diffuse halo of weak peaks that surrounds each bright ion, projecting a 2D
-Gaussian envelope in physical ``(m/z, 1/K0)`` space and dropping neighbours
-that fall below it.
+The horizontal-halo filter (:class:`HorizontalHaloFilter`) removes the weak
+m/z halo flanking each bright ion — comparing every peak to the mean of its
+surrounding box *excluding its own m/z column*, so it only ever drops
+left/right neighbours and never the vertical streak above or below.
 """
 
 from __future__ import annotations
@@ -391,145 +391,40 @@ class VerticalNoiseFilter(NoiseFilter):
 
 
 # --------------------------------------------------------------------------
-# Gaussian-cloud filter
+# Horizontal (m/z-axis) halo filter
 # --------------------------------------------------------------------------
 
 
-def _gaussian_cloud_kernel_py(
-    mz_s: np.ndarray,
-    im_s: np.ndarray,
-    int_s: np.ndarray,
-    int_order_desc: np.ndarray,
-    peak_fraction: float,
-    mz_half_width: float,
-    inv2_mz: float,
-    im_half_width: float,
-    min_query_intensity: float,
-) -> np.ndarray:
-    """Greedy m/z-axis cloud suppression on m/z-sorted arrays.
-
-    Returns an ``alive`` mask (in m/z-sorted order). Processes peaks strongest
-    first; within a ``±mz_half_width`` (m/z) by ``±im_half_width`` (1/K0) box,
-    each surviving peak removes weaker alive neighbours that are *offset in m/z*
-    and fall below the 1-D Gaussian envelope ``I_query · peak_fraction ·
-    exp(-Δmz²·inv2_mz)``. Neighbours at the same m/z (directly above/below in
-    ion mobility) are never removed — they are the vertical streak of a real
-    ion. Suppressed peaks cannot themselves suppress (greedy non-max
-    suppression).
-    """
-    n = mz_s.size
-    alive = np.ones(n, dtype=np.bool_)
-    for t in range(int_order_desc.size):
-        i = int_order_desc[t]
-        if not alive[i]:
-            continue
-        ii = int_s[i]
-        if ii < min_query_intensity:
-            continue
-        mzi = mz_s[i]
-        imi = im_s[i]
-        lo = np.searchsorted(mz_s, mzi - mz_half_width, side="left")
-        hi = np.searchsorted(mz_s, mzi + mz_half_width, side="right")
-        for j in range(lo, hi):
-            if j == i or not alive[j]:
-                continue
-            ij = int_s[j]
-            if ij >= ii:
-                continue
-            dmz = mz_s[j] - mzi
-            if dmz == 0.0:
-                # Same m/z = directly above/below in ion mobility: part of the
-                # vertical streak of a real ion, never suppressed.
-                continue
-            dim = im_s[j] - imi
-            if dim < 0.0:
-                dim = -dim
-            if dim > im_half_width:
-                continue
-            weight = np.exp(-(dmz * dmz) * inv2_mz)
-            if ij < ii * peak_fraction * weight:
-                alive[j] = False
-    return alive
-
-
-if _HAS_NUMBA:
-    _gaussian_cloud_kernel = _njit(cache=True)(_gaussian_cloud_kernel_py)
-else:  # pragma: no cover
-    _gaussian_cloud_kernel = _gaussian_cloud_kernel_py
-
-
-def _gaussian_cloud_keep_mask(
-    mz: np.ndarray,
-    im: np.ndarray,
-    intensities: np.ndarray,
-    *,
-    peak_fraction: float,
-    mz_half_width: float,
-    mz_sigma: float,
-    im_half_width: float,
-    min_query_intensity: float,
-) -> np.ndarray:
-    """Keep-mask (original order) for the greedy Gaussian-cloud filter.
-
-    Inputs are in physical units: ``mz`` in Da, ``im`` in 1/K0.
-    """
-    n = intensities.size
-    if n == 0:
-        return np.ones(0, dtype=bool)
-    mz_order = np.argsort(mz, kind="stable")
-    mz_s = np.ascontiguousarray(mz[mz_order], dtype=np.float64)
-    im_s = np.ascontiguousarray(im[mz_order], dtype=np.float64)
-    int_s = np.ascontiguousarray(intensities[mz_order], dtype=np.float64)
-    # Descending-intensity processing order, expressed as positions in mz_s.
-    int_order_desc = np.argsort(int_s, kind="stable")[::-1].astype(np.int64)
-    inv2_mz = 1.0 / (2.0 * mz_sigma * mz_sigma) if mz_sigma > 0 else 0.0
-    alive_s = _gaussian_cloud_kernel(
-        mz_s, im_s, int_s, np.ascontiguousarray(int_order_desc),
-        float(peak_fraction), float(mz_half_width), float(inv2_mz),
-        float(im_half_width), float(min_query_intensity),
-    )
-    keep = np.empty(n, dtype=bool)
-    keep[mz_order] = alive_s
-    return keep
-
-
 @dataclass(frozen=True)
-class GaussianNoiseFilter(NoiseFilter):
-    """Suppress the m/z noise cloud flanking bright peaks.
+class HorizontalHaloFilter(NoiseFilter):
+    """Remove the weak m/z halo flanking bright peaks — left/right only.
 
     High-intensity ions are flanked by a halo of weak peaks — likely from
     charge interactions within the fragment-ion cloud or detector effects —
     that are not resolvable to high-precision m/z values. A real ion forms a
-    *vertical streak* along the ion-mobility axis (the same m/z across many
-    consecutive mobility scans), so this filter only suppresses **along the
-    m/z axis** (peaks to the left and right of a bright peak) and never along
-    ion mobility: a neighbour at the same m/z (directly above/below) is always
-    kept.
+    *vertical streak* along the ion-mobility axis (the same TOF index across
+    many consecutive mobility scans), so this filter only removes peaks to the
+    **left and right** (offset in TOF/m-z index) of a bright neighbour and
+    **never above or below** (offset in ion mobility at the same index).
 
-    Greedy non-maximum suppression: peaks are visited strongest first, and
-    within a ``±mz_half_width`` (Da) by ``±im_half_width`` (1/K0) box each
-    surviving peak drops weaker m/z-offset neighbours whose intensity falls
-    below the 1-D Gaussian envelope
+    For each peak it computes a local reference intensity — the **mean
+    intensity of the surrounding box** ``(±scan_half_width scans,
+    ±mz_idx_half_width TOF indices)`` **excluding the peak's own m/z column**
+    — and drops the peak if its intensity falls below ``peak_fraction`` of
+    that reference. Excluding the peak's own column is what guarantees the
+    vertical streak is never used against it: a bright peak directly above or
+    below sits in the same column and so can never raise the threshold; only
+    genuine left/right neighbours can. A peak with no off-column neighbours in
+    its box is always kept.
 
-        ``I_query · peak_fraction · exp(-Δmz²/2σ_mz²)``.
-
-    With the defaults the envelope peaks at 10% of the bright peak's intensity
-    and decays with a 0.15 Da standard deviation over a ``±0.4`` Da window.
-    ``im_half_width`` only bounds how far up/down the m/z halo is cleared; the
-    mobility distance otherwise does not affect suppression. A suppressed peak
-    cannot itself suppress others.
-
-    Because the envelope is defined in physical units, ``keep_mask`` converts
-    the integer TOF/scan indices to m/z and 1/K0 using the frame's calibration
-    before running. The inner loop is JIT-compiled via Numba, with a
-    pure-Python fallback.
+    Operates entirely in integer ``(scan, TOF index)`` space (no unit
+    conversion); the box means are computed with the vectorised
+    :func:`tdfpy.pipeline.box_smooth`.
     """
 
     peak_fraction: float = 0.1
-    mz_half_width: float = 0.4
-    mz_sigma: float = 0.15
-    im_half_width: float = 0.05
-    min_query_intensity: float = 0.0
+    mz_idx_half_width: int = 100
+    scan_half_width: int = 30
 
     def keep_mask(
         self,
@@ -541,19 +436,29 @@ class GaussianNoiseFilter(NoiseFilter):
         td: "TimsData",
         frame_id: int,
     ) -> np.ndarray:
+        from ..pipeline import box_smooth  # local import avoids a cycle
+
         n = intensities.size
         if n == 0:
             return np.ones(0, dtype=bool)
-        mz = np.asarray(td.indexToMz(frame_id, mz_indices), dtype=np.float64)
-        ook0_per_scan = np.asarray(
-            td.scanNumToOneOverK0(frame_id, np.arange(num_scans, dtype=np.float64))
-        )
-        im = ook0_per_scan[scan_indices]
-        return _gaussian_cloud_keep_mask(
-            mz, im, intensities,
-            peak_fraction=self.peak_fraction,
-            mz_half_width=self.mz_half_width,
-            mz_sigma=self.mz_sigma,
-            im_half_width=self.im_half_width,
-            min_query_intensity=self.min_query_intensity,
-        )
+        ones = np.ones(n, dtype=np.float64)
+        sh = self.scan_half_width
+        mh = self.mz_idx_half_width
+        # Full box (±scan, ±mz_idx) and the same-column strip (±scan, 0 mz_idx).
+        box_sum = box_smooth(scan_indices, mz_indices, intensities,
+                             scan_half_width=sh, mz_idx_half_width=mh, mode="sum")
+        box_cnt = box_smooth(scan_indices, mz_indices, ones,
+                             scan_half_width=sh, mz_idx_half_width=mh, mode="sum")
+        col_sum = box_smooth(scan_indices, mz_indices, intensities,
+                             scan_half_width=sh, mz_idx_half_width=0, mode="sum")
+        col_cnt = box_smooth(scan_indices, mz_indices, ones,
+                             scan_half_width=sh, mz_idx_half_width=0, mode="sum")
+        # Reference = mean intensity of off-column (left/right) box neighbours.
+        off_sum = box_sum - col_sum
+        off_cnt = box_cnt - col_cnt
+        ref = np.zeros(n, dtype=np.float64)
+        has_neighbours = off_cnt > 0
+        ref[has_neighbours] = off_sum[has_neighbours] / off_cnt[has_neighbours]
+        # Keep unless strictly below the fraction of the left/right reference.
+        # Peaks with no off-column neighbours (ref == 0) are always kept.
+        return intensities >= self.peak_fraction * ref

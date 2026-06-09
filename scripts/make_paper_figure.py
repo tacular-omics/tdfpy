@@ -22,7 +22,7 @@ from pathlib import Path
 import numpy as np
 
 import tdfpy
-from tdfpy import GaussianNoiseFilter, VerticalNoiseFilter
+from tdfpy import HorizontalHaloFilter, VerticalNoiseFilter
 from tdfpy.centroiding import merge_peaks
 from tdfpy.pipeline import apply_noise, convert, read_spectrum
 
@@ -31,7 +31,7 @@ OUT = Path("papers/pipeline.png")
 
 MZ_RANGE = (400.0, 1200.0)
 OOK0_RANGE = (0.6, 1.4)
-FILTERS = (VerticalNoiseFilter(), GaussianNoiseFilter())
+FILTERS = (VerticalNoiseFilter(), HorizontalHaloFilter())
 
 
 def _busiest_ms1_frame(td) -> int:
