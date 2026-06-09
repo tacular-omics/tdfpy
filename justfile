@@ -70,6 +70,12 @@ docs-build:
 llms-full:
     uv run python scripts/build_llms_full.py
 
+# Build the JOSS paper PDF to papers/paper.pdf (requires Docker; mirrors the Draft PDF CI)
+paper:
+    docker run --rm --volume "$PWD":/data --user "$(id -u):$(id -g)" \
+        --env JOURNAL=joss openjournals/inara -o pdf papers/paper.md
+    @echo "Wrote papers/paper.pdf"
+
 # Publish to PyPI (requires UV_PUBLISH_TOKEN or interactive auth)
 publish: build
   uv publish
