@@ -135,9 +135,11 @@ if show_overlay and acquisition == "DDA":
 elif show_overlay and acquisition == "PRM":
     features = prm_targets_overlay(analysis_dir, frame_id)
 
-# DIA isolation windows (m/z × 1/K0 rectangles), optional overlay.
+# DIA isolation windows (m/z × 1/K0 rectangles), optional overlay. The scheme
+# is run-wide, so the overlay is frame-independent — it no longer shifts when
+# you change MS1 frames.
 dia_windows = (
-    dia_windows_ook0(analysis_dir, frame_id)
+    dia_windows_ook0(analysis_dir)
     if show_dia_windows and acquisition == "DIA" else []
 )
 

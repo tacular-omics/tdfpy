@@ -772,16 +772,25 @@ def dia_window_scheme(analysis_dir: str) -> pd.DataFrame:
 
 
 @st.cache_data(show_spinner=False)
-def dia_windows_ook0(analysis_dir: str, frame_id: int) -> list[dict]:
-    """DIA windows as (m/z, 1/K0) rectangles for overlaying on an MS1 frame.
+def dia_windows_ook0(analysis_dir: str) -> list[dict]:
+    """DIA windows as (m/z, 1/K0) rectangles for overlaying on the MS1 plane.
 
-    The DIA isolation scheme is fixed across frames, so its scan ranges are
-    mapped to 1/K0 using the calibration of the given MS1 ``frame_id`` (any
-    frame's calibration is close enough for a visual overlay).
+    The DIA isolation scheme is fixed for the whole run, so the overlay is
+    **frame-independent**: m/z bounds come straight from ``IsolationMz`` ±
+    ``IsolationWidth``/2, and the scan ranges are mapped to 1/K0 once, using a
+    single reference MS1 frame's calibration. The mobility calibration is
+    shared across frames, so the rectangles sit at identical ``(m/z, 1/K0)``
+    coordinates on every MS1 frame (they no longer drift when you change
+    frames).
     """
     windows = dia_window_scheme(analysis_dir)
     if windows.empty:
         return []
+    # Reference frame for the scan → 1/K0 mapping: the first MS1 frame. The
+    # mapping is shared across frames, so this anchors the overlay run-wide.
+    frames = PandasTdf(str(Path(analysis_dir) / "analysis.tdf")).frames
+    ms1_ids = frames.loc[frames["MsMsType"] == 0, "Id"]
+    ref_frame = int(ms1_ids.iloc[0]) if not ms1_ids.empty else int(frames["Id"].iloc[0])
     scans = np.unique(
         np.concatenate([
             windows["ScanNumBegin"].to_numpy(dtype=np.int64),
@@ -789,7 +798,7 @@ def dia_windows_ook0(analysis_dir: str, frame_id: int) -> list[dict]:
         ])
     )
     with tdfpy.timsdata_connect(analysis_dir) as td:
-        ook0 = np.asarray(td.scanNumToOneOverK0(frame_id, scans))
+        ook0 = np.asarray(td.scanNumToOneOverK0(ref_frame, scans))
     scan_to_k0 = dict(zip(scans.tolist(), ook0.tolist()))
     out: list[dict] = []
     for _, r in windows.iterrows():
