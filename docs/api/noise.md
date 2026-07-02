@@ -66,3 +66,32 @@ Each subclass exposes the knobs of its estimator as dataclass fields.
     options:
       members:
         - keep_mask
+
+## Precursor-space gates
+
+Acquisition-aware **MS1-only** gates that drop signal the instrument never
+schedules for fragmentation (so it can never become an identification). Each
+reads the relevant region from `analysis.tdf`, converts it once to per-scan
+integer TOF-index intervals via the run calibration, and tests membership with a
+vectorised binary search. Both are no-ops (keep everything) when the run carries
+no region, so they are safe to include unconditionally.
+
+```python
+from tdfpy import SelectionPolygonGate, DiaMs1WindowGate, MadThreshold, get_raw_peaks
+
+# ddaPASEF: keep only MS1 inside the PASEF selection polygon, then denoise.
+peaks = get_raw_peaks(td, frame_id, noise=[SelectionPolygonGate(), MadThreshold(k=3)])
+
+# diaPASEF: keep only MS1 inside the union of isolation windows.
+peaks = get_raw_peaks(td, frame_id, noise=[DiaMs1WindowGate()])
+```
+
+::: tdfpy.SelectionPolygonGate
+    options:
+      members:
+        - keep_mask
+
+::: tdfpy.DiaMs1WindowGate
+    options:
+      members:
+        - keep_mask

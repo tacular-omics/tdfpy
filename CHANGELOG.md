@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Precursor-space MS1 gates (`tdfpy.noise.gates`).** Two acquisition-aware `NoiseFilter`s that drop MS1 signal the instrument never fragments — signal that cannot become an identification. Both convert their `(m/z, 1/K0)` region once to per-scan integer TOF-index intervals (via the run calibration) and test membership with a vectorised binary search; both no-op (keep everything) when the run carries no region. Ported from the `dnoise` Rust tool. Compose like any filter, e.g. `noise=[SelectionPolygonGate(), MadThreshold(k=3)]`.
+  - **`SelectionPolygonGate`** (ddaPASEF) — keeps only MS1 points inside the run's PASEF selection polygon (the "IMS PolygonFilter" read from `analysis.tdf`'s `GroupProperties`). A generalisation of `ChargeStateRegion` from a single line to the real acquisition polygon. Skipped on diaPASEF (where the same property stores window quads). `mz_pad` (Da) / `im_pad` (1/K0) widen the kept region so an edge precursor keeps its isotopic envelope.
+  - **`DiaMs1WindowGate`** (diaPASEF) — keeps only MS1 points inside the union of the isolation windows (`DiaFrameMsMsWindows`); everything outside is a precursor the method never isolates. Windows are padded in physical units (`mz_pad` default 5 Da, `im_pad` default 0.05 1/K0). No-op on ddaPASEF.
+
 ## [2.1.0] - 2026-07-02
 
 ### Fixed
