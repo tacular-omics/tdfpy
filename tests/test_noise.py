@@ -106,6 +106,46 @@ class TestIterativeMedianThreshold:
         assert IterativeMedianThreshold().compute_threshold(NOISE_ARRAY) > 0
 
 
+class TestKeepMaskDegenerate:
+    """The base keep_mask must make degenerate/empty-result cases observable."""
+
+    @staticmethod
+    def _call(f: IntensityThreshold, intensities: np.ndarray) -> np.ndarray:
+        n = intensities.size
+        return f.keep_mask(
+            np.zeros(n, dtype=np.int64),
+            np.zeros(n, dtype=np.int64),
+            intensities,
+            num_scans=1,
+            td=None,  # type: ignore[arg-type]
+            frame_id=7,
+        )
+
+    def test_non_finite_threshold_keeps_all_and_warns(self, caplog):
+        class _NanThreshold(IntensityThreshold):
+            def compute_threshold(self, intensities: np.ndarray) -> float:
+                return float("nan")
+
+        arr = np.array([1.0, 2.0, 3.0])
+        with caplog.at_level("WARNING", logger="tdfpy.noise.intensity"):
+            mask = self._call(_NanThreshold(), arr)
+        assert mask.all()  # degenerate threshold → keep everything, not drop
+        assert "non-finite threshold" in caplog.text
+
+    def test_drop_all_is_warned(self, caplog):
+        # HistogramThreshold on all-equal intensities puts its FWHM threshold
+        # just above the data, removing everything — this must be logged loudly.
+        arr = np.full(500, 5.0)
+        with caplog.at_level("WARNING", logger="tdfpy.noise.intensity"):
+            mask = self._call(HistogramThreshold(), arr)
+        assert mask.sum() == 0
+        assert "removed ALL" in caplog.text
+
+    def test_empty_input_returns_empty(self):
+        mask = self._call(MadThreshold(), np.zeros(0, dtype=np.float64))
+        assert mask.shape == (0,)
+
+
 class TestCoerceFilters:
     def test_none(self):
         assert coerce_filters(None) == ()

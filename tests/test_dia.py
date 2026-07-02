@@ -127,10 +127,10 @@ def test_dia_window_query_by_window_group():
     with DIA(D_PATH) as dia:
         results = list(dia.windows.query(window_group_index=1))
         assert len(results) > 0
-        # window_group_index here matches against the per-window window_index,
-        # which corresponds to the row index in DiaFrameMsMsWindows.
+        # Querying by window group returns every window belonging to that
+        # group (matching how the lookup is keyed and indexed elsewhere).
         for w in results:
-            assert w.window_index == 1
+            assert w.window_group == 1
 
 
 def test_dia_ms1_frame_lookup():
