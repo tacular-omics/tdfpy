@@ -12,6 +12,7 @@ order. Power users can call the ops directly for custom pipelines.
 
 from __future__ import annotations
 
+import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Iterable, Literal
@@ -21,6 +22,8 @@ import numpy as np
 from .noise import NoiseFilter
 from .regions import ChargeStateRegion
 from .timsdata import TimsData, oneOverK0ToCCSforMz
+
+logger = logging.getLogger(__name__)
 
 try:
     from numba import njit as _njit  # ty: ignore[unresolved-import]
@@ -93,9 +96,20 @@ def read_spectrum(td: TimsData, frame_id: int) -> RawSpectrum:
     cursor.execute("SELECT NumScans FROM Frames WHERE Id = ?", (frame_id,))
     result = cursor.fetchone()
     if result is None:
-        raise ValueError(f"Frame {frame_id} not found in database")
+        cursor.execute("SELECT MIN(Id), MAX(Id) FROM Frames")
+        lo, hi = cursor.fetchone()
+        valid = f"{lo}..{hi}" if lo is not None else "none (Frames table is empty)"
+        raise ValueError(
+            f"Frame {frame_id} not found in the Frames table (valid frame IDs: "
+            f"{valid}). Frame IDs are 1-based; iterate a reader (e.g. reader.ms1) "
+            "or read PandasTdf(path).frames['Id'] to list them."
+        )
     (num_scans,) = result
     if num_scans == 0:
+        logger.warning(
+            "read_spectrum: frame %d has NumScans=0; returning an empty spectrum.",
+            frame_id,
+        )
         return RawSpectrum.empty_like(0)
 
     scans = td.readScans(frame_id, 0, num_scans)
@@ -104,7 +118,18 @@ def read_spectrum(td: TimsData, frame_id: int) -> RawSpectrum:
     )
     total_peaks = int(scan_lengths.sum())
     if total_peaks == 0:
+        logger.info(
+            "read_spectrum: frame %d has %d scans but 0 peaks (empty frame).",
+            frame_id,
+            num_scans,
+        )
         return RawSpectrum.empty_like(num_scans)
+    logger.debug(
+        "read_spectrum: frame %d loaded %d peaks across %d scans.",
+        frame_id,
+        total_peaks,
+        num_scans,
+    )
 
     scan_indices = np.repeat(np.arange(num_scans, dtype=np.int64), scan_lengths)
     mz_indices = np.concatenate([idx for idx, _ in scans]).astype(np.int64, copy=False)
@@ -131,6 +156,20 @@ def exclude_region(
         return spectrum
     cutoff = region.index_cutoff_per_scan(td, frame_id, spectrum.num_scans)
     mask = spectrum.mz_indices >= cutoff[spectrum.scan_indices]
+    n_out = int(mask.sum())
+    logger.debug(
+        "exclude_region[frame %d]: kept %d/%d peaks.",
+        frame_id,
+        n_out,
+        len(spectrum),
+    )
+    if n_out == 0:
+        logger.warning(
+            "exclude_region[frame %d]: the region excluded ALL %d peaks. Check the "
+            "ChargeStateRegion line endpoints against this frame's m/z range.",
+            frame_id,
+            len(spectrum),
+        )
     return spectrum.filter(mask)
 
 
@@ -156,7 +195,9 @@ def subset_scans(
         return spectrum
     if scan_num_begin < 0 or scan_num_end < scan_num_begin:
         raise ValueError(
-            f"invalid scan range [{scan_num_begin}, {scan_num_end})"
+            f"Invalid scan range [{scan_num_begin}, {scan_num_end}): the bounds are "
+            "half-open and require scan_num_begin >= 0 and "
+            "scan_num_end >= scan_num_begin."
         )
     mask = (spectrum.scan_indices >= scan_num_begin) & (
         spectrum.scan_indices < scan_num_end
@@ -175,6 +216,7 @@ def apply_noise(
     for f in filters:
         if spectrum.empty:
             break
+        n_in = len(spectrum)
         mask = f.keep_mask(
             spectrum.scan_indices,
             spectrum.mz_indices,
@@ -184,6 +226,23 @@ def apply_noise(
             frame_id=frame_id,
         )
         spectrum = spectrum.filter(mask)
+        n_out = len(spectrum)
+        logger.debug(
+            "apply_noise[frame %d]: %s kept %d/%d peaks (%.1f%% removed)",
+            frame_id,
+            type(f).__name__,
+            n_out,
+            n_in,
+            100.0 * (n_in - n_out) / n_in if n_in else 0.0,
+        )
+        if n_in > 0 and n_out == 0:
+            logger.warning(
+                "apply_noise[frame %d]: filter %s removed ALL %d peaks; the "
+                "downstream spectrum is empty. Check this filter's thresholds.",
+                frame_id,
+                type(f).__name__,
+                n_in,
+            )
     return spectrum
 
 
@@ -217,7 +276,7 @@ def convert(
             dtype=np.float64,
         )
     elif ion_mobility_type == "voltage":
-        ion_mobility_array = td.scanNumToVoltage(frame_id, ion_mobility_array)
+        ion_mobility_array = td.scanNumToVoltage(frame_id, spectrum.scan_indices)
 
     return np.column_stack((mz_array, spectrum.intensities, ion_mobility_array))
 

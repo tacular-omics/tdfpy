@@ -38,14 +38,14 @@ def convert_table_to_df(db_path: str | Path, table_name: str) -> pd.DataFrame:
     db_path = Path(db_path)
     if not db_path.exists():
         raise FileNotFoundError(f"TDF database not found: {db_path}")
-    logger.debug("Fetching " + table_name + " from " + str(db_path))
+    logger.debug("Fetching table %s from %s", table_name, db_path)
     try:
         with sqlite3.connect(str(db_path)) as conn:
-            df = pd.read_sql_query(f"SELECT * FROM {table_name}", conn)
-            return df
-    except Exception as e:
-        logger.error(f"Error fetching table {table_name} from {db_path}: {e}")
-        raise
+            return pd.read_sql_query(f"SELECT * FROM {table_name}", conn)
+    except (sqlite3.Error, pd.errors.DatabaseError) as e:
+        raise RuntimeError(
+            f"Failed to read table {table_name!r} from TDF database {db_path}: {e}"
+        ) from e
 
 
 @dataclass

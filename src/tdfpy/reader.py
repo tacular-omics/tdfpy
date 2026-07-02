@@ -1,3 +1,4 @@
+import logging
 from collections.abc import Generator
 from pathlib import Path
 from typing import Literal, Self
@@ -29,6 +30,8 @@ from .lookup import (
 )
 from .tdf import PandasTdf
 from .timsdata import TimsData
+
+logger = logging.getLogger(__name__)
 
 
 def get_acquisition_type(analysis_dir: str | Path) -> Literal["DDA", "DIA", "PRM", "Unknown"]:
@@ -70,6 +73,12 @@ def get_acquisition_type(analysis_dir: str | Path) -> Literal["DDA", "DIA", "PRM
     if MsMsType.PRM_MS2.value in msms_types:
         return "PRM"
 
+    logger.warning(
+        "get_acquisition_type(%s): no known MS2 MsMsType found (present: %s); "
+        "returning 'Unknown'. Expected one of DDA_MS2=8, DIA_MS2=9, PRM_MS2=10.",
+        analysis_dir,
+        sorted(msms_types),
+    )
     return "Unknown"
 
 
@@ -282,7 +291,7 @@ class DDA(_DFolder):
                     polarity=Polarity.from_str(str(row["Polarity"])),
                     scan_mode=int(row["ScanMode"]),
                     msms_type=msms_type,
-                    tims_id=int(row["TimsId"]),
+                    tims_id=int(row["TimsId"]) if not pd.isna(row["TimsId"]) else None,
                     max_intensity=int(row["MaxIntensity"]),
                     summed_intensities=int(row["SummedIntensities"]),
                     num_scans=int(row["NumScans"]),
@@ -301,9 +310,23 @@ class DDA(_DFolder):
             elif msms_type == MsMsType.DDA_MS2.value:
                 pass
             else:
-                raise ValueError(f"Unknown MsMsType {msms_type} for frame {frame_id}")
+                raise ValueError(
+                    f"Unrecognised MsMsType {msms_type} for frame {frame_id}. "
+                    "Expected one of "
+                    f"{[(t.name, t.value) for t in MsMsType]}. This frame's "
+                    "acquisition type may not match the reader class you are using "
+                    "(DDA/DIA/PRM)."
+                )
 
         self._ms1_frames_lookup = Ms1FrameLookup(self._ms1_frames)
+
+        logger.info(
+            "Opened DDA .d folder %s: %d MS1 frames, %d precursors, %d PASEF windows.",
+            self._analysis_dir,
+            len(self._ms1_frames),
+            len(self._precursors),
+            sum(len(v) for v in self._pasef_msms_infos.values()),
+        )
 
         # remove uneeded dataframes to save memory
         del self._precursor_df
@@ -438,8 +461,8 @@ class DIA(_DFolder):
                     num_scans=int(row["NumScans"]),
                     num_peaks=int(row["NumPeaks"]),
                     mz_calibration=int(row["MzCalibration"]),
-                    t1=int(row["T1"]),
-                    t2=int(row["T2"]),
+                    t1=float(row["T1"]),
+                    t2=float(row["T2"]),
                     tims_calibration=int(row["TimsCalibration"]),
                     property_group=int(row["PropertyGroup"])
                     if not pd.isna(row["PropertyGroup"])
@@ -453,9 +476,23 @@ class DIA(_DFolder):
             elif msms_type == MsMsType.DIA_MS2.value:
                 pass
             else:
-                raise ValueError(f"Unknown MsMsType {msms_type} for frame {frame_id}")
+                raise ValueError(
+                    f"Unrecognised MsMsType {msms_type} for frame {frame_id}. "
+                    "Expected one of "
+                    f"{[(t.name, t.value) for t in MsMsType]}. This frame's "
+                    "acquisition type may not match the reader class you are using "
+                    "(DDA/DIA/PRM)."
+                )
 
         self._ms1_frames_lookup = Ms1FrameLookup(self._ms1_frames)
+
+        logger.info(
+            "Opened DIA .d folder %s: %d MS1 frames, %d windows, %d window groups.",
+            self._analysis_dir,
+            len(self._ms1_frames),
+            len(self._all_dia_windows),
+            len(self._dia_window_groups),
+        )
 
         # remove uneeded dataframes to save memory
         del self._frames_df
@@ -470,7 +507,7 @@ class DIA(_DFolder):
 
     @property
     def windows(self) -> DiaWindowLookup:
-        """Lookup for all DIA windows. Supports indexing by window index and `.query()`."""
+        """Lookup for all DIA windows. Supports indexing by window *group* ID and `.query()`."""
         self._check_open()
         return self._dia_windows_lookup
 
@@ -613,9 +650,23 @@ class PRM(_DFolder):
             elif msms_type == MsMsType.PRM_MS2.value:
                 pass
             else:
-                raise ValueError(f"Unknown MsMsType {msms_type} for frame {frame_id}")
+                raise ValueError(
+                    f"Unrecognised MsMsType {msms_type} for frame {frame_id}. "
+                    "Expected one of "
+                    f"{[(t.name, t.value) for t in MsMsType]}. This frame's "
+                    "acquisition type may not match the reader class you are using "
+                    "(DDA/DIA/PRM)."
+                )
 
         self._ms1_frames_lookup = Ms1FrameLookup(self._ms1_frames)
+
+        logger.info(
+            "Opened PRM .d folder %s: %d MS1 frames, %d targets, %d transitions.",
+            self._analysis_dir,
+            len(self._ms1_frames),
+            len(self._prm_targets),
+            len(self._all_prm_transitions),
+        )
 
         # remove unneeded dataframes to save memory
         del self._frames_df

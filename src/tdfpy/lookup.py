@@ -1,9 +1,28 @@
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from typing import Generic, Literal, TypeVar
 
 from .elems import DiaWindow, DiaWindowGroup, Frame, Precursor, PrmTarget, PrmTransition
 
 T = TypeVar("T", bound=Frame)
+
+
+def _missing_id_error(label: str, requested: int, available: Iterable[int]) -> KeyError:
+    """Build an actionable ``KeyError`` for a lookup miss.
+
+    Names the requested id and summarises what *is* available so callers (and
+    LLM agents) can immediately see the valid range instead of guessing.
+    """
+    ids = sorted(available)
+    if not ids:
+        detail = "none are loaded"
+    elif len(ids) == 1:
+        detail = f"only {ids[0]} is loaded"
+    else:
+        detail = f"loaded range is {ids[0]}..{ids[-1]}, count={len(ids)}"
+    return KeyError(
+        f"{label} {requested} not found ({detail}). Use .get(id, default) to avoid "
+        "raising, or iterate this lookup to list what is available."
+    )
 
 
 class Ms1FrameLookup(Generic[T]):
@@ -23,7 +42,7 @@ class Ms1FrameLookup(Generic[T]):
     def __getitem__(self, frame_id: int) -> T:
         """Get a frame by its ID."""
         if frame_id not in self._frames:
-            raise KeyError(f"Frame ID {frame_id} not found.")
+            raise _missing_id_error("MS1 frame ID", frame_id, self._frames)
         return self._frames[frame_id]
 
     def __len__(self) -> int:
@@ -57,7 +76,9 @@ class DiaWindowLookup:
     def __getitem__(self, window_group_id: int) -> list[DiaWindow]:
         """Get windows by window_group ID. Returns a list as multiple frames can share a window group."""
         if window_group_id not in self._window_map:
-            raise KeyError(f"Window Group ID {window_group_id} not found.")
+            raise _missing_id_error(
+                "DIA window group ID", window_group_id, self._window_map
+            )
         return self._window_map[window_group_id]
 
     def __len__(self) -> int:
@@ -86,9 +107,9 @@ class DiaWindowLookup:
         for window in self._windows:
             if window_group_index is not None:
                 if isinstance(window_group_index, DiaWindowGroup):
-                    if window.window_group != window_group_index.window_index:
+                    if window.window_group != window_group_index.window_group:
                         continue
-                elif window.window_index != window_group_index:
+                elif window.window_group != window_group_index:
                     continue
             if rt_range is not None:
                 if not (rt_range[0] <= window.rt <= rt_range[1]):
@@ -136,7 +157,7 @@ class PrecursorLookup:
     def __getitem__(self, precursor_id: int) -> Precursor:
         """Get a precursor by its ID."""
         if precursor_id not in self._precursors:
-            raise KeyError(f"Precursor ID {precursor_id} not found.")
+            raise _missing_id_error("Precursor ID", precursor_id, self._precursors)
         return self._precursors[precursor_id]
 
     def __len__(self) -> int:
@@ -223,7 +244,7 @@ class PrmTargetLookup:
 
     def __getitem__(self, target_id: int) -> PrmTarget:
         if target_id not in self._targets:
-            raise KeyError(f"Target ID {target_id} not found.")
+            raise _missing_id_error("PRM target ID", target_id, self._targets)
         return self._targets[target_id]
 
     def __len__(self) -> int:
@@ -321,7 +342,9 @@ class PrmTransitionLookup:
     def __getitem__(self, target_id: int) -> list[PrmTransition]:
         """Get transitions by target ID. Returns a list as multiple frames target the same ion."""
         if target_id not in self._target_map:
-            raise KeyError(f"Target ID {target_id} not found.")
+            raise _missing_id_error(
+                "PRM transition target ID", target_id, self._target_map
+            )
         return self._target_map[target_id]
 
     def __len__(self) -> int:

@@ -5,10 +5,14 @@ Produces a smaller, valid .d folder containing only the specified frame range,
 with a rebuilt binary file and filtered SQLite metadata.
 """
 
+import logging
 import shutil
 import sqlite3
 import struct
+from contextlib import closing
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 TDF_FILE = "analysis.tdf"
 TDF_BIN_FILE = "analysis.tdf_bin"
@@ -56,7 +60,20 @@ def slice_d_folder(
 
     _validate_inputs(source_dir, dest_dir, frame_start, frame_end)
 
+    logger.info(
+        "Slicing .d folder %s → %s, frames [%d, %d] (inclusive).",
+        source_dir,
+        dest_dir,
+        frame_start,
+        frame_end,
+    )
+
     if dest_dir.exists():
+        logger.warning(
+            "slice_d_folder: destination %s already exists and will be "
+            "overwritten (rmtree).",
+            dest_dir,
+        )
         shutil.rmtree(dest_dir)
     dest_dir.mkdir(parents=True)
 
@@ -65,7 +82,7 @@ def slice_d_folder(
     dst_tdf = dest_dir / TDF_FILE
     shutil.copy2(src_tdf, dst_tdf)
 
-    with sqlite3.connect(dst_tdf) as conn:
+    with closing(sqlite3.connect(dst_tdf)) as conn, conn:
         # Read original offsets for frames we're keeping (before any DELETEs).
         rows = conn.execute(
             "SELECT Id, TimsId FROM Frames WHERE Id >= ? AND Id <= ? ORDER BY Id",
@@ -73,12 +90,23 @@ def slice_d_folder(
         ).fetchall()
 
         if not rows:
+            lo, hi = conn.execute("SELECT MIN(Id), MAX(Id) FROM Frames").fetchone()
+            available = f"{lo}..{hi}" if lo is not None else "none (Frames table is empty)"
             raise ValueError(
-                f"No frames found in range [{frame_start}, {frame_end}]"
+                f"No frames in the requested range [{frame_start}, {frame_end}] "
+                f"(inclusive). Source .d folder has frame IDs {available}; frame "
+                "IDs are 1-based."
             )
 
         frame_ids = [r[0] for r in rows]
         original_offsets = [r[1] for r in rows]
+
+        logger.info(
+            "slice_d_folder: keeping %d frames (IDs %d..%d).",
+            len(frame_ids),
+            frame_ids[0],
+            frame_ids[-1],
+        )
 
         # Step 2: Rebuild binary file with only kept frames.
         src_bin = source_dir / TDF_BIN_FILE
@@ -95,9 +123,14 @@ def slice_d_folder(
         )
 
     # VACUUM must run outside a transaction.
-    with sqlite3.connect(dst_tdf) as conn:
+    with closing(sqlite3.connect(dst_tdf)) as conn:
         conn.execute("VACUUM")
 
+    logger.info(
+        "slice_d_folder: wrote %s (%d frames, binary rebuilt).",
+        dest_dir,
+        len(frame_ids),
+    )
     return dest_dir
 
 

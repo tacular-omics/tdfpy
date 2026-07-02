@@ -40,12 +40,28 @@ class ChargeStateRegion:
     cap_at_upper_endpoint: bool = True
 
     def __post_init__(self) -> None:
-        (mz_1, _), (mz_2, _) = self.line
+        (mz_1, ook0_1), (mz_2, ook0_2) = self.line
         if mz_1 == mz_2:
-            raise ValueError("ChargeStateRegion line endpoints must differ in m/z")
-        (_, ook0_1), (_, ook0_2) = self.line
+            raise ValueError(
+                "ChargeStateRegion line endpoints must differ in m/z; got both at "
+                f"m/z={mz_1}. Provide two points with distinct m/z, e.g. "
+                "line=((350.0, 0.7), (1200.0, 1.4))."
+            )
         if ook0_1 == ook0_2:
-            raise ValueError("ChargeStateRegion line endpoints must differ in 1/K0")
+            raise ValueError(
+                "ChargeStateRegion line endpoints must differ in 1/K0; got both at "
+                f"1/K0={ook0_1}. Provide two points with distinct 1/K0."
+            )
+        # The exclusion mask assumes 1/K0 increases with m/z (positive slope),
+        # as real timsTOF charge-state bands do. A negative slope would silently
+        # exclude the opposite half-plane, so reject it rather than mislead.
+        if (mz_2 - mz_1) * (ook0_2 - ook0_1) < 0:
+            raise ValueError(
+                "ChargeStateRegion requires a non-negative m/z-vs-1/K0 slope "
+                f"(1/K0 must increase with m/z), but line={self.line} has 1/K0 "
+                "decreasing as m/z increases. Order the points so the higher-m/z "
+                "endpoint also has the higher 1/K0."
+            )
 
     def index_cutoff_per_scan(
         self, td: TimsData, frame_id: int, num_scans: int

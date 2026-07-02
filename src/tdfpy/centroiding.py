@@ -195,7 +195,9 @@ def _merge_peaks_numba(
     mz_tol_abs = 0.0 if mz_is_ppm else mz_tolerance
     mob_tol_factor = im_tolerance if im_is_relative else 0.0
     mob_tol_abs = 0.0 if im_is_relative else im_tolerance
-    _max_peaks = -1 if max_peaks is None else int(max_peaks)
+    # A non-positive (or None) max_peaks means "no limit" — must match the
+    # pure-Python kernel, which treats a falsy max_peaks as unlimited.
+    _max_peaks = -1 if (max_peaks is None or max_peaks <= 0) else int(max_peaks)
     sort_idx = np.argsort(mz_array)
     mz_s = np.ascontiguousarray(mz_array[sort_idx], dtype=np.float64)
     int_s = np.ascontiguousarray(intensity_array[sort_idx], dtype=np.float64)
@@ -435,12 +437,20 @@ def _merge_peaks_python(
             used_mask[peak_idx] = True
             continue
 
-        # Centroid peaks using intensity-weighted average
+        # Centroid peaks using intensity-weighted average. Guard against an
+        # all-zero-intensity cluster (which would divide by zero and emit NaN
+        # m/z and 1/K0); fall back to the seed peak, matching the numba kernel.
         nearby_mz = mz_window[nearby_mask]
         nearby_mobility = mobility_window[nearby_mask]
         total_intensity = np.sum(nearby_intensities)
-        merged_mz = np.dot(nearby_mz, nearby_intensities) / total_intensity
-        merged_mobility = np.dot(nearby_mobility, nearby_intensities) / total_intensity
+        if total_intensity > 0.0:
+            merged_mz = np.dot(nearby_mz, nearby_intensities) / total_intensity
+            merged_mobility = (
+                np.dot(nearby_mobility, nearby_intensities) / total_intensity
+            )
+        else:
+            merged_mz = mz_peak
+            merged_mobility = mobility_peak
 
         merged_mz_list.append(float(merged_mz))
         merged_int_list.append(float(total_intensity))
@@ -482,13 +492,18 @@ def _merge_peaks_python(
                 global_suppress_idx = np.where(suppress)[0] + noise_left_idx
                 used_mask[global_suppress_idx] = True
 
-        if max_peaks and len(merged_mz_list) >= max_peaks:
+        # None or any non-positive max_peaks means "no limit" (kept consistent
+        # with the numba kernel, which normalises the same way).
+        if max_peaks is not None and max_peaks > 0 and len(merged_mz_list) >= max_peaks:
             logger.debug(
                 "Reached max_peaks limit of %d, stopping centroiding", max_peaks
             )
             break
 
-    logger.info(
+    # Per-call summary stays at DEBUG: get_centroided_spectrum emits the
+    # user-facing INFO summary, so logging INFO here too would double up on
+    # every frame (and the numba path logs nothing, so this keeps both consistent).
+    logger.debug(
         "Centroiding complete: %d raw peaks → %d centroided peaks (%.1f%% reduction)",
         len(mz_array),
         len(merged_mz_list),
@@ -609,7 +624,13 @@ def get_centroided_spectrum(
         spectrum = apply_noise(spectrum, filters, td=td, frame_id=frame_id)
 
     if spectrum.empty:
-        logger.warning("Frame %d has 0 peaks, returning empty spectrum", frame_id)
+        # An empty frame is common on sparse acquisitions, so this is INFO, not
+        # a warning. If a *noise filter* emptied a non-empty frame, apply_noise
+        # has already logged a warning naming the responsible filter.
+        logger.info(
+            "Frame %d has 0 peaks after read/smooth/noise; returning empty spectrum.",
+            frame_id,
+        )
         return np.empty((0, 3), dtype=np.float64)
 
     centroider = centroid if centroid is not None else MergePeaksCentroider()
