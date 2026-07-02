@@ -72,6 +72,10 @@ from .structural import (  # noqa: E402
     VerticalNoiseDiagnostics,
     VerticalNoiseFilter,
 )
+from .gates import (  # noqa: E402
+    DiaMs1WindowGate,
+    SelectionPolygonGate,
+)
 
 _STRING_ALIASES: dict[str, type[IntensityThreshold]] = {
     "mad": MadThreshold,
@@ -149,4 +153,6 @@ __all__ = [
     "VerticalNoiseFilter",
     "VerticalNoiseDiagnostics",
     "HorizontalHaloFilter",
+    "SelectionPolygonGate",
+    "DiaMs1WindowGate",
 ]

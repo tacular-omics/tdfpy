@@ -31,6 +31,7 @@ from .lookup import (
 from .noise import (
     AbsoluteThreshold,
     BaselineThreshold,
+    DiaMs1WindowGate,
     HistogramThreshold,
     HorizontalHaloFilter,
     IntensityThreshold,
@@ -39,6 +40,7 @@ from .noise import (
     NoiseFilter,
     NoiseSpec,
     PercentileThreshold,
+    SelectionPolygonGate,
     VerticalNoiseFilter,
     coerce_filters,
 )
@@ -133,6 +135,8 @@ __all__ = [
     "IterativeMedianThreshold",
     "VerticalNoiseFilter",
     "HorizontalHaloFilter",
+    "SelectionPolygonGate",
+    "DiaMs1WindowGate",
     # Visualization
     "plot_centroiding",
 ]
