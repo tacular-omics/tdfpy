@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-07-02
+
+### Fixed
+
+- **`convert(..., ion_mobility_type="voltage")` returned garbage.** The voltage branch fed per-peak 1/K0 values into `scanNumToVoltage`, which expects scan numbers, so every peak's voltage was looked up at ~scan 0. Now passes the peak scan indices.
+- **`Calibration.mode` and `Calibration.std_ppm` always raised `KeyError`.** They read non-existent table keys (`CalibrationMode` / `CalibrationStdPpm`) instead of the real `MzCalibrationMode` / `MzStandardDeviationPPM`.
+- **`DiaWindowLookup.query_range` filtered on the wrong field.** It matched against `window_index` (and, for a `DiaWindowGroup` argument, mixed id spaces) instead of `window_group`, which is how the lookup is keyed everywhere else.
+- **DIA reader truncated `t1`/`t2` to `int`.** The `Frame.t1`/`t2` fields are `float`, and the DDA/PRM readers already read them as such; the DIA reader now matches.
+- **`merge_peaks(..., max_peaks=0)` diverged between the numba and pure-Python kernels** (numba capped after one peak, Python treated it as unlimited). Both now treat `None`/non-positive as "no limit".
+- **Pure-Python centroiding produced `NaN` m/z on an all-zero-intensity cluster** (divide-by-zero) where the numba kernel fell back to the seed peak; the Python path now guards the same way.
+- **`plot_centroiding` "% of intensity" could exceed 100 %.** The lost-intensity fraction now divides by the pre-noise total (kept + rejected).
+
+### Added
+
+- **Actionable exception messages throughout.** Lookup misses (frames, precursors, DIA windows, PRM targets/transitions) now report the requested id *and* the loaded range; "frame not found", scan-range, unknown-`MsMsType`, unknown-polarity, native-timsdata, and frame-size-cap errors now name the offending value and the valid set/constraint. Aimed at making failures self-explanatory to both humans and LLM/agent callers.
+- **Library-wide logging/observability.** Module loggers added to `reader`, `pipeline`, `elems`, `slicer`, and the `noise` filters. Opening a `.d` folder logs a one-line summary; `apply_noise`, `exclude_region`, `read_spectrum`, and the intensity-threshold filters emit debug traces and **warn when an operation removes all peaks or hits a degenerate/non-finite threshold** (so "why is my result empty?" is answerable from the logs). Slicing a folder logs progress and warns before overwriting an existing destination.
+- **`ChargeStateRegion` now rejects a negative m/z-vs-1/K0 slope** in `__post_init__` instead of silently excluding the wrong half-plane.
+
+### Changed
+
+- **`IntensityThreshold.keep_mask` keeps all points (with a warning) on a non-finite threshold** instead of silently dropping every peak on degenerate input.
+- **`extractChromatograms` re-raises exceptions from the user-supplied generator/sink** (chained) rather than swallowing them behind a generic native error.
+- **`slice_d_folder` now closes its SQLite connections** (via `contextlib.closing`).
+- Corrected docstrings that contradicted the code: `scan_num_end` is exclusive (`[begin, end)`), `DIA.windows` indexes by window *group*, and `Precursor.peaks` / `PasefFrameMsmsInfo.peaks` are documented as native-centroided 2-D arrays (vs the raw per-scan lists returned by `Frame`/`DiaWindow`).
+
 ## [2.0.0] - 2026-06-08
 
 ### Added
