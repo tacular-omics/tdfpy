@@ -33,12 +33,33 @@ from weakref import WeakKeyDictionary
 
 import numpy as np
 
+from ..slicer import _table_exists
 from . import NoiseFilter
 
 if TYPE_CHECKING:
     from ..timsdata import TimsData
 
 logger = logging.getLogger(__name__)
+
+
+def _is_ms1_frame(td: "TimsData", frame_id: int) -> bool:
+    """True unless the frame is a known non-MS1 (MS2/PRM) frame.
+
+    These gates encode MS1 precursor-selection regions, so applying them to a
+    fragment frame would test MS2 peaks against the precursor region and drop
+    almost everything. When the frame type can't be determined (no connection,
+    frame absent) we return ``True`` so the gate no-ops (keeps all) rather than
+    silently emptying the spectrum.
+    """
+    from ..elems import MsMsType  # local import avoids a package import cycle
+
+    conn = td.conn
+    if conn is None:
+        return True
+    row = conn.execute(
+        "SELECT MsMsType FROM Frames WHERE Id=?", (int(frame_id),)
+    ).fetchone()
+    return row is None or int(row[0]) == MsMsType.MS1.value
 
 
 # ---------------------------------------------------------------------------
@@ -147,8 +168,14 @@ class PerScanTofIntervals:
         out = np.zeros(n, dtype=bool)
         if n == 0:
             return out
-        order = np.argsort(scan_indices, kind="stable")
-        ss = scan_indices[order]
+        # read_spectrum emits scan_indices already sorted ascending; only pay for
+        # a sort when a caller hands us out-of-order input.
+        if n > 1 and np.any(np.diff(scan_indices) < 0):
+            order = np.argsort(scan_indices, kind="stable")
+            ss = scan_indices[order]
+        else:
+            order = np.arange(n)
+            ss = scan_indices
         # Group the sorted points by scan and test each group in one searchsorted.
         starts = np.concatenate(([0], np.flatnonzero(np.diff(ss)) + 1))
         ends = np.concatenate((starts[1:], [n]))
@@ -241,8 +268,13 @@ def build_window_intervals(
     for scan_lo, scan_hi, tof_lo, tof_hi in boxes:
         if tof_hi < tof_lo:
             continue
-        lo = min(scan_lo, num_scans - 1)
+        # Clamp into [0, num_scans); skip boxes lying wholly outside the range
+        # (a negative hi or an lo past the last scan) rather than letting a
+        # negative bound wrap around via Python indexing.
+        lo = max(0, scan_lo)
         hi = min(scan_hi, num_scans - 1)
+        if hi < lo:
+            continue
         for s in range(lo, hi + 1):
             rows[s].append((tof_lo, tof_hi))
     los, his = zip(*(_coalesce_intervals(r) for r in rows))
@@ -253,13 +285,6 @@ def build_window_intervals(
 # ---------------------------------------------------------------------------
 # TDF metadata readers
 # ---------------------------------------------------------------------------
-
-
-def _has_table(conn, name: str) -> bool:
-    row = conn.execute(
-        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (name,)
-    ).fetchone()
-    return row is not None
 
 
 def read_selection_polygon(td: "TimsData") -> tuple[np.ndarray, np.ndarray] | None:
@@ -274,7 +299,7 @@ def read_selection_polygon(td: "TimsData") -> tuple[np.ndarray, np.ndarray] | No
     conn = td.conn
     if conn is None:
         return None
-    if not _has_table(conn, "PropertyDefinitions") or not _has_table(
+    if not _table_exists(conn, "PropertyDefinitions") or not _table_exists(
         conn, "GroupProperties"
     ):
         return None
@@ -313,7 +338,7 @@ def read_dia_ms1_boxes(td: "TimsData") -> list[tuple[int, int, float, float]]:
     ``DiaFrameMsMsWindows`` is absent or carries no m/z info.
     """
     conn = td.conn
-    if conn is None or not _has_table(conn, "DiaFrameMsMsWindows"):
+    if conn is None or not _table_exists(conn, "DiaFrameMsMsWindows"):
         return []
     rows = conn.execute(
         "SELECT DISTINCT ScanNumBegin, ScanNumEnd, IsolationMz, IsolationWidth "
@@ -337,6 +362,12 @@ def read_dia_ms1_boxes(td: "TimsData") -> list[tuple[int, int, float, float]]:
 # Cache the built per-scan gate per TimsData so it isn't rebuilt for every frame.
 # Keyed by (kind, num_scans, mz_pad, im_pad); the value ``None`` records "no gate
 # for this run" (e.g. no polygon / no windows) so repeated calls stay cheap.
+#
+# The key deliberately omits frame_id: the TOF intervals are baked from the m/z
+# and mobility calibration of whichever MS1 frame first triggers the build, then
+# reused for every MS1 frame in the run. This assumes a single run-wide MS1
+# calibration, which holds for timsTOF acquisitions; a run recalibrated mid-
+# acquisition would apply the first frame's calibration to later frames.
 _GATE_CACHE: "WeakKeyDictionary[TimsData, dict[tuple, PerScanTofIntervals | None]]" = (
     WeakKeyDictionary()
 )
@@ -379,6 +410,14 @@ class SelectionPolygonGate(NoiseFilter):
         td: "TimsData",
         frame_id: int,
     ) -> np.ndarray:
+        if not _is_ms1_frame(td, frame_id):
+            logger.debug(
+                "SelectionPolygonGate applied to non-MS1 frame %d; it gates MS1 "
+                "precursor selection only — keeping all %d points.",
+                frame_id,
+                intensities.size,
+            )
+            return np.ones(intensities.size, dtype=bool)
         key = ("polygon", num_scans, self.mz_pad, self.im_pad)
         gate = _cached(
             td, key, lambda: _build_polygon_gate(td, frame_id, num_scans, self)
@@ -419,6 +458,14 @@ class DiaMs1WindowGate(NoiseFilter):
         td: "TimsData",
         frame_id: int,
     ) -> np.ndarray:
+        if not _is_ms1_frame(td, frame_id):
+            logger.debug(
+                "DiaMs1WindowGate applied to non-MS1 frame %d; it gates MS1 "
+                "precursor selection only — keeping all %d points.",
+                frame_id,
+                intensities.size,
+            )
+            return np.ones(intensities.size, dtype=bool)
         key = ("dia_ms1", num_scans, self.mz_pad, self.im_pad)
         gate = _cached(
             td, key, lambda: _build_dia_ms1_gate(td, frame_id, num_scans, self)

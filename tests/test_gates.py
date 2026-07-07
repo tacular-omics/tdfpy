@@ -140,6 +140,30 @@ def test_window_keep_mask_matches_contains():
     )
 
 
+def test_window_negative_scan_lo_clamps_without_wrapping():
+    # A negative scan_lo must clamp to 0 (not negative-index into the high end).
+    g = build_window_intervals([(-2, 3, 1000, 2000)], num_scans=200)
+    assert g is not None
+    assert g.contains(0, 1500) and g.contains(3, 1500)  # intended low scans
+    assert not g.contains(198, 1500) and not g.contains(199, 1500)  # no wrap
+
+
+def test_window_box_wholly_below_range_is_skipped():
+    # scan_hi < 0 means the box lies entirely below the scan axis -> no rows set.
+    assert build_window_intervals([(-5, -1, 1000, 2000)], num_scans=100) is None
+
+
+def test_keep_mask_handles_unsorted_scan_indices():
+    # The fast path assumes sorted input; out-of-order input must still be correct.
+    g = build_window_intervals([(10, 20, 1000, 2000)], num_scans=100)
+    assert g is not None
+    scan = np.array([9, 15, 15])  # descending-then-equal, not sorted ascending
+    tof = np.array([1500, 3000, 1500])
+    np.testing.assert_array_equal(
+        g.keep_mask(scan, tof), np.array([False, False, True])
+    )
+
+
 # ---------------------------------------------------------------------------
 # TDF metadata readers (fixtures)
 # ---------------------------------------------------------------------------
@@ -214,6 +238,30 @@ def test_dia_ms1_gate_drops_out_of_window_points(dia_td):
     np.testing.assert_array_equal(
         mask, built.keep_mask(spec.scan_indices, spec.mz_indices)
     )
+
+
+def test_dia_ms1_gate_is_noop_on_ms2_frame(dia_td):
+    # The gate encodes MS1 precursor selection; on an MS2 frame it must no-op
+    # (keep all) rather than testing fragment peaks against the precursor region.
+    from tdfpy import read_spectrum
+
+    cur = dia_td.conn.cursor()
+    row = cur.execute(
+        "SELECT Id FROM Frames WHERE MsMsType=9 ORDER BY Id LIMIT 1"
+    ).fetchone()
+    if row is None:
+        pytest.skip("no MS2 frame in fixture")
+    fid = int(row[0])
+    spec = read_spectrum(dia_td, fid)
+    mask = DiaMs1WindowGate().keep_mask(
+        spec.scan_indices,
+        spec.mz_indices,
+        spec.intensities,
+        num_scans=spec.num_scans,
+        td=dia_td,
+        frame_id=fid,
+    )
+    assert mask.all()
 
 
 def test_dia_ms1_gate_padding_keeps_more(dia_td):
