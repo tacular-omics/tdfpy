@@ -71,6 +71,27 @@ def _is_ms1_frame(td: "TimsData", frame_id: int) -> bool:
     return int(frame_id) in ms1
 
 
+def _ms1_only_noop(
+    td: "TimsData", frame_id: int, intensities: np.ndarray, gate_name: str
+) -> np.ndarray | None:
+    """Keep-all mask (with a debug log) when ``gate_name`` must not gate this frame.
+
+    Returns ``None`` when the frame is a confirmed MS1 frame and the gate should
+    proceed. Shared by both gates so their MS1-only no-op contract stays in one
+    place.
+    """
+    if _is_ms1_frame(td, frame_id):
+        return None
+    logger.debug(
+        "%s applied to non-MS1 frame %d; it gates MS1 precursor selection only "
+        "— keeping all %d points.",
+        gate_name,
+        frame_id,
+        intensities.size,
+    )
+    return np.ones(intensities.size, dtype=bool)
+
+
 # ---------------------------------------------------------------------------
 # Pure geometry — no TimsData, unit-testable with identity converters
 # ---------------------------------------------------------------------------
@@ -178,15 +199,19 @@ class PerScanTofIntervals:
         if n == 0:
             return out
         # read_spectrum emits scan_indices already sorted ascending; only pay for
-        # a sort when a caller hands us out-of-order input.
-        if n > 1 and np.any(np.diff(scan_indices) < 0):
+        # a sort when a caller hands us out-of-order input. Reuse the same diff
+        # for both the ordering check and the group-boundary scan.
+        diffs = np.diff(scan_indices)
+        if np.any(diffs < 0):
             order = np.argsort(scan_indices, kind="stable")
             ss = scan_indices[order]
+            group_diffs = np.diff(ss)
         else:
-            order = np.arange(n)
+            order = None  # identity mapping: group slices index directly
             ss = scan_indices
+            group_diffs = diffs
         # Group the sorted points by scan and test each group in one searchsorted.
-        starts = np.concatenate(([0], np.flatnonzero(np.diff(ss)) + 1))
+        starts = np.concatenate(([0], np.flatnonzero(group_diffs) + 1))
         ends = np.concatenate((starts[1:], [n]))
         for st, en in zip(starts, ends):
             s = int(ss[st])
@@ -195,7 +220,7 @@ class PerScanTofIntervals:
             hi = self.hi[s]
             if hi.size == 0:
                 continue
-            pts = order[st:en]
+            pts = slice(st, en) if order is None else order[st:en]
             tofs = tof_indices[pts]
             i = np.searchsorted(hi, tofs, side="left")  # first hi >= tof
             valid = i < hi.size
@@ -421,14 +446,9 @@ class SelectionPolygonGate(NoiseFilter):
         td: "TimsData",
         frame_id: int,
     ) -> np.ndarray:
-        if not _is_ms1_frame(td, frame_id):
-            logger.debug(
-                "SelectionPolygonGate applied to non-MS1 frame %d; it gates MS1 "
-                "precursor selection only — keeping all %d points.",
-                frame_id,
-                intensities.size,
-            )
-            return np.ones(intensities.size, dtype=bool)
+        noop = _ms1_only_noop(td, frame_id, intensities, "SelectionPolygonGate")
+        if noop is not None:
+            return noop
         key = ("polygon", num_scans, self.mz_pad, self.im_pad)
         gate = _cached(
             td, key, lambda: _build_polygon_gate(td, frame_id, num_scans, self)
@@ -469,14 +489,9 @@ class DiaMs1WindowGate(NoiseFilter):
         td: "TimsData",
         frame_id: int,
     ) -> np.ndarray:
-        if not _is_ms1_frame(td, frame_id):
-            logger.debug(
-                "DiaMs1WindowGate applied to non-MS1 frame %d; it gates MS1 "
-                "precursor selection only — keeping all %d points.",
-                frame_id,
-                intensities.size,
-            )
-            return np.ones(intensities.size, dtype=bool)
+        noop = _ms1_only_noop(td, frame_id, intensities, "DiaMs1WindowGate")
+        if noop is not None:
+            return noop
         key = ("dia_ms1", num_scans, self.mz_pad, self.im_pad)
         gate = _cached(
             td, key, lambda: _build_dia_ms1_gate(td, frame_id, num_scans, self)
