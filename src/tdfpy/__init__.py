@@ -71,7 +71,7 @@ from .tdf import PandasTdf
 from .timsdata import TimsData, timsdata_connect
 from .viz import plot_centroiding
 
-__version__ = "2.1.0"
+__version__ = "2.2.0"
 
 __all__ = [
     # I/O
