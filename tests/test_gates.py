@@ -154,11 +154,15 @@ def test_window_box_wholly_below_range_is_skipped():
 
 
 def test_keep_mask_handles_unsorted_scan_indices():
-    # The fast path assumes sorted input; out-of-order input must still be correct.
+    # Genuinely out-of-order input (15 > 9) must take the argsort fallback and
+    # still map the result back to input order correctly.
     g = build_window_intervals([(10, 20, 1000, 2000)], num_scans=100)
     assert g is not None
-    scan = np.array([9, 15, 15])  # descending-then-equal, not sorted ascending
-    tof = np.array([1500, 3000, 1500])
+    scan = np.array([15, 9, 12])  # not non-decreasing -> exercises argsort branch
+    tof = np.array([3000, 1500, 1500])
+    #   (15, 3000) tof past window -> drop
+    #   ( 9, 1500) scan below window -> drop
+    #   (12, 1500) inside -> keep
     np.testing.assert_array_equal(
         g.keep_mask(scan, tof), np.array([False, False, True])
     )
@@ -260,6 +264,24 @@ def test_dia_ms1_gate_is_noop_on_ms2_frame(dia_td):
         num_scans=spec.num_scans,
         td=dia_td,
         frame_id=fid,
+    )
+    assert mask.all()
+
+
+def test_dia_ms1_gate_is_noop_on_unknown_frame(dia_td):
+    # An absent frame id can't be confirmed MS1, so the gate must keep all
+    # rather than testing peaks against another frame's cached region.
+    from tdfpy import read_spectrum
+
+    fid = _first_ms1_frame(dia_td)
+    spec = read_spectrum(dia_td, fid)
+    mask = DiaMs1WindowGate().keep_mask(
+        spec.scan_indices,
+        spec.mz_indices,
+        spec.intensities,
+        num_scans=spec.num_scans,
+        td=dia_td,
+        frame_id=10**9,  # not a real frame id
     )
     assert mask.all()
 

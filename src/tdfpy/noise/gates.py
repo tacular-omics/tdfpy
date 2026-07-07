@@ -42,24 +42,33 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def _is_ms1_frame(td: "TimsData", frame_id: int) -> bool:
-    """True unless the frame is a known non-MS1 (MS2/PRM) frame.
+# Per-run set of MS1 frame ids, built once and cached so the MS1-only guard is a
+# set lookup rather than a SQL round-trip per frame per gate.
+_MS1_FRAMES: "WeakKeyDictionary[TimsData, frozenset[int]]" = WeakKeyDictionary()
 
-    These gates encode MS1 precursor-selection regions, so applying them to a
-    fragment frame would test MS2 peaks against the precursor region and drop
-    almost everything. When the frame type can't be determined (no connection,
-    frame absent) we return ``True`` so the gate no-ops (keeps all) rather than
-    silently emptying the spectrum.
+
+def _is_ms1_frame(td: "TimsData", frame_id: int) -> bool:
+    """True only when ``frame_id`` is a confirmed MS1 frame in this run.
+
+    These gates encode MS1 precursor-selection regions, so callers apply them
+    only when this returns True. A non-MS1 (MS2/PRM) frame, an absent/unknown
+    frame id, or a run with no open connection all return False, so the caller
+    no-ops (keeps everything) rather than testing peaks against the wrong region.
+    The MS1 frame set is queried once per run and cached.
     """
     from ..elems import MsMsType  # local import avoids a package import cycle
 
     conn = td.conn
     if conn is None:
-        return True
-    row = conn.execute(
-        "SELECT MsMsType FROM Frames WHERE Id=?", (int(frame_id),)
-    ).fetchone()
-    return row is None or int(row[0]) == MsMsType.MS1.value
+        return False
+    ms1 = _MS1_FRAMES.get(td)
+    if ms1 is None:
+        rows = conn.execute(
+            "SELECT Id FROM Frames WHERE MsMsType=?", (MsMsType.MS1.value,)
+        ).fetchall()
+        ms1 = frozenset(int(r[0]) for r in rows)
+        _MS1_FRAMES[td] = ms1
+    return int(frame_id) in ms1
 
 
 # ---------------------------------------------------------------------------
@@ -259,7 +268,9 @@ def build_window_intervals(
 ) -> PerScanTofIntervals | None:
     """Build per-scan TOF intervals from ``(scan_lo, scan_hi, tof_lo, tof_hi)`` boxes.
 
-    All bounds are inclusive; scans are clamped into ``0..num_scans``. Returns
+    All bounds are inclusive. Scan bounds are clamped into ``[0, num_scans)``;
+    a box lying wholly outside that range (``scan_hi < 0`` or ``scan_lo >=
+    num_scans``) is skipped rather than folded onto an edge scan. Returns
     ``None`` when there are no usable boxes (e.g. ddaPASEF).
     """
     if not boxes or num_scans == 0:
