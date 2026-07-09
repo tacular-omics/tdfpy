@@ -428,13 +428,14 @@ class SelectionPolygonGate(NoiseFilter):
     stores window-placement quads, not one selection ring, so it is not used).
 
     Parameters (both in physical units, widening the kept region per side so an
-    edge precursor keeps its isotopic envelope / mobility spread):
-        mz_pad: m/z padding in Da (default 0).
-        im_pad: 1/K0 padding (default 0).
+    edge precursor keeps its isotopic envelope / mobility spread rather than being
+    clipped at a hard polygon boundary):
+        mz_pad: m/z padding in Da (default 5.0).
+        im_pad: 1/K0 padding (default 0.05).
     """
 
-    mz_pad: float = 0.0
-    im_pad: float = 0.0
+    mz_pad: float = 5.0
+    im_pad: float = 0.05
 
     def keep_mask(
         self,

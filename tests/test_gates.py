@@ -341,7 +341,10 @@ def test_polygon_gate_filters_with_injected_polygon(dda_td, monkeypatch):
 
     fid = _first_ms1_frame(dda_td)
     spec = read_spectrum(dda_td, fid)
-    mask = SelectionPolygonGate().keep_mask(
+    # Pin zero padding so the kept band is exactly the injected 500..800 polygon
+    # (the ±1 TOF-index slack below is the only tolerance); the padding defaults
+    # are covered separately.
+    mask = SelectionPolygonGate(mz_pad=0.0, im_pad=0.0).keep_mask(
         spec.scan_indices,
         spec.mz_indices,
         spec.intensities,
@@ -355,6 +358,15 @@ def test_polygon_gate_filters_with_injected_polygon(dda_td, monkeypatch):
     kept_mz = np.asarray(dda_td.indexToMz(fid, spec.mz_indices[mask]))
     assert kept_mz.min() > 495.0 and kept_mz.max() < 805.0
     gates_mod._GATE_CACHE.pop(dda_td, None)  # don't leak the injected gate
+
+
+def test_polygon_gate_pads_by_default():
+    # The selection polygon is padded out of the box (5 Da / 0.05 1/K0) so an
+    # edge precursor keeps its isotopic envelope / mobility spread rather than
+    # being clipped at a hard polygon boundary.
+    g = SelectionPolygonGate()
+    assert g.mz_pad == 5.0
+    assert g.im_pad == 0.05
 
 
 def test_polygon_gate_is_noop_without_polygon(dda_td):
