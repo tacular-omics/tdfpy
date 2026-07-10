@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal, overload
 
 import numpy as np
 
@@ -320,6 +320,28 @@ class VerticalNoiseFilter(NoiseFilter):
             scan_indices, mz_indices, intensities, num_scans=num_scans,
             diagnostics=False,
         )
+
+    @overload
+    def run(
+        self,
+        scan_indices: np.ndarray,
+        mz_indices: np.ndarray,
+        intensities: np.ndarray,
+        *,
+        num_scans: int,
+        diagnostics: Literal[False] = ...,
+    ) -> np.ndarray: ...
+
+    @overload
+    def run(
+        self,
+        scan_indices: np.ndarray,
+        mz_indices: np.ndarray,
+        intensities: np.ndarray,
+        *,
+        num_scans: int,
+        diagnostics: Literal[True],
+    ) -> "VerticalNoiseDiagnostics": ...
 
     def run(
         self,
