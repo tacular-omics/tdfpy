@@ -1,4 +1,5 @@
 import datetime
+import logging
 import warnings
 from dataclasses import dataclass
 from enum import Enum, StrEnum
@@ -13,6 +14,8 @@ from .noise import NoiseSpec
 from .pipeline import Centroider, MergePeaksCentroider, Smooth
 from .regions import ChargeStateRegion
 from .timsdata import TimsData, oneOverK0ToCCSforMz
+
+logger = logging.getLogger(__name__)
 
 
 def _frame_raw_peaks(
@@ -66,11 +69,23 @@ def _frame_centroid(
             ion_mobility_type=ion_mobility_type,
             centroid=cfg,
         )
-    except (ImportError, RuntimeError, TypeError, ValueError):
+    except (ImportError, RuntimeError, TypeError, ValueError) as e:
         if not isinstance(cfg, MergePeaksCentroider) or not cfg.use_numba:
             raise
+        # Surface in both channels: warnings.warn for interactive users, and the
+        # logger for observability pipelines (which often suppress warnings).
+        logger.warning(
+            "Numba centroiding failed for frame %d (%s: %s); falling back to the "
+            "pure-Python implementation.",
+            frame_id,
+            type(e).__name__,
+            e,
+        )
         warnings.warn(
-            f"Numba centroiding failed for frame {frame_id}. Falling back to Python implementation.",
+            f"Numba centroiding failed for frame {frame_id} "
+            f"({type(e).__name__}: {e}). Falling back to the pure-Python "
+            "implementation; results are identical but slower. Set "
+            "use_numba=False on the centroider to silence this warning.",
             UserWarning,
             stacklevel=3,
         )
@@ -128,7 +143,10 @@ class Polarity(StrEnum):
         elif s in ("mixed", "mix"):
             return Polarity.MIXED
         else:
-            raise ValueError(f"Unknown polarity string: {s}")
+            raise ValueError(
+                f"Unknown polarity string {s!r}. Expected one of (case-insensitive): "
+                "'positive'/'+', 'negative'/'-', 'unknown'/'?', 'mixed'/'mix'."
+            )
 
 
 @dataclass
@@ -156,7 +174,7 @@ class PasefFrameMsmsInfo(_TdfData):
     |---|---|---|
     | `frame_id` | `int` | Parent MS1 frame ID |
     | `scan_num_begin` | `int` | First mobility scan (inclusive) |
-    | `scan_num_end` | `int` | Last mobility scan (inclusive) |
+    | `scan_num_end` | `int` | Mobility scan range end (exclusive) — the range is `[scan_num_begin, scan_num_end)` |
     | `isolation_mz` | `float` | Isolation window center m/z |
     | `isolation_width` | `float` | Isolation window width in Th |
     | `collision_energy` | `float` | Collision energy in eV |
@@ -187,6 +205,13 @@ class PasefFrameMsmsInfo(_TdfData):
 
     @property
     def peaks(self) -> np.ndarray:
+        """Native-**centroided** MS/MS peaks summed over this window's scan range.
+
+        Returns a single ``(N, 2)`` array of ``[m/z, intensity]`` — note this is
+        already centroided and 2-D, unlike ``Frame.peaks`` /
+        ``DiaWindow.raw_peaks`` which return *raw* peaks as a ``list`` of per-scan
+        arrays. Do not iterate this expecting one entry per scan.
+        """
         scan = self.timsdata.extractCentroidedSpectrumForFrame(
             self.frame_id, self.scan_num_begin, self.scan_num_end
         )
@@ -303,6 +328,13 @@ class Precursor(_TdfData):
 
     @property
     def peaks(self) -> npt.NDArray[np.float64]:
+        """Native-**centroided** PASEF MS/MS peaks for this precursor.
+
+        Returns a single ``(N, 2)`` array of ``[m/z, intensity]`` (already
+        centroided and 2-D), unlike ``Frame.peaks`` / ``DiaWindow.raw_peaks``
+        which return *raw* peaks as a ``list`` of per-scan arrays. Do not iterate
+        this expecting one entry per scan.
+        """
         prec_map: dict[int, Any] = self.timsdata.readPasefMsMs([self.precursor_id])
         if self.precursor_id not in prec_map:
             raise ValueError(f"Precursor ID {self.precursor_id} not found in TimsData.")
@@ -391,7 +423,7 @@ class DiaWindowGroup:
     | `window_index` | `int` | Index of this window within its group |
     | `window_group` | `int` | Window group ID |
     | `scan_num_begin` | `int` | First mobility scan (inclusive) |
-    | `scan_num_end` | `int` | Last mobility scan (inclusive) |
+    | `scan_num_end` | `int` | Mobility scan range end (exclusive) — the range is `[scan_num_begin, scan_num_end)` |
     | `isolation_mz` | `float` | Isolation window center m/z |
     | `isolation_width` | `float` | Isolation window width in Th |
     | `collision_energy` | `float` | Collision energy in eV |
@@ -712,7 +744,7 @@ class PrmTransition(_TdfData):
     |---|---|---|
     | `frame_id` | `int` | Frame ID |
     | `scan_num_begin` | `int` | First mobility scan (inclusive) |
-    | `scan_num_end` | `int` | Last mobility scan (inclusive) |
+    | `scan_num_end` | `int` | Mobility scan range end (exclusive) — the range is `[scan_num_begin, scan_num_end)` |
     | `isolation_mz` | `float` | Isolation window center m/z |
     | `isolation_width` | `float` | Isolation window width in Th |
     | `collision_energy` | `float` | Collision energy in eV |
@@ -866,7 +898,10 @@ class _KeyDf:
 
     def __getitem__(self, key: str) -> str:
         if key not in self.df.index:
-            raise KeyError(f"Calibration ID {key} not found.")
+            raise KeyError(
+                f"Key {key!r} not found in the {type(self).__name__} table. "
+                f"Available keys: {sorted(map(str, self.df.index))}"
+            )
         return self.df.loc[key]
 
 
@@ -910,11 +945,11 @@ class Calibration(_KeyDf):
 
     @property
     def mode(self) -> str:
-        return self["CalibrationMode"]
+        return self["MzCalibrationMode"]
 
     @property
     def std_ppm(self) -> float:
-        return float(self["CalibrationStdPpm"])
+        return float(self["MzStandardDeviationPPM"])
 
     @property
     def reference_masses(self) -> str:

@@ -8,6 +8,7 @@ in :mod:`tdfpy.noise`) maps to these classes with their default fields.
 
 from __future__ import annotations
 
+import logging
 from abc import abstractmethod
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -18,6 +19,8 @@ from . import NoiseFilter
 
 if TYPE_CHECKING:
     from ..timsdata import TimsData
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -46,7 +49,44 @@ class IntensityThreshold(NoiseFilter):
         if intensities.size == 0:
             return np.zeros(0, dtype=bool)
         threshold = self.compute_threshold(intensities)
-        return intensities >= threshold
+        if not np.isfinite(threshold):
+            # Degenerate input (e.g. all-equal intensities, or an empty
+            # baseline slice) can make an estimator return NaN/inf. Rather
+            # than silently drop every peak, keep them all and make it loud.
+            logger.warning(
+                "%s returned a non-finite threshold (%r) for frame %d "
+                "(n=%d, min=%.4g, max=%.4g); keeping ALL points. This usually "
+                "means degenerate input such as all-equal intensities.",
+                type(self).__name__,
+                threshold,
+                frame_id,
+                intensities.size,
+                float(intensities.min()),
+                float(intensities.max()),
+            )
+            return np.ones(intensities.size, dtype=bool)
+        keep = intensities >= threshold
+        n_kept = int(keep.sum())
+        logger.debug(
+            "%s[frame %d]: threshold=%.4g keeps %d/%d points",
+            type(self).__name__,
+            frame_id,
+            threshold,
+            n_kept,
+            intensities.size,
+        )
+        if n_kept == 0:
+            logger.warning(
+                "%s[frame %d]: threshold %.4g removed ALL %d points "
+                "(max intensity was %.4g). The threshold may be too high or the "
+                "intensity distribution degenerate; downstream spectrum is empty.",
+                type(self).__name__,
+                frame_id,
+                threshold,
+                intensities.size,
+                float(intensities.max()),
+            )
+        return keep
 
 
 @dataclass(frozen=True)

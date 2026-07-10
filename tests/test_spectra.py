@@ -172,6 +172,20 @@ class TestSpectra(unittest.TestCase):
                     "max_peaks": 3,
                 },
             },
+            {
+                # Regression: max_peaks=0 must mean "no limit" in BOTH kernels.
+                # Previously numba treated 0 as a real cap (→ 1 peak) while
+                # Python treated it as falsy/unlimited (→ 5 peaks).
+                "mz": np.array([100.0, 200.0, 300.0, 400.0, 500.0]),
+                "intensity": np.array([1000.0, 2000.0, 3000.0, 4000.0, 5000.0]),
+                "im": np.array([0.8, 0.8, 0.8, 0.8, 0.8]),
+                "params": {
+                    "mz_tolerance": 10,
+                    "mz_tolerance_type": "ppm",
+                    "min_peaks": 1,
+                    "max_peaks": 0,
+                },
+            },
         ]
 
         for test in test_cases:
@@ -298,6 +312,60 @@ class TestSpectra(unittest.TestCase):
             peak_noise_end_fraction=0.1,
         )
         self.assertEqual(len(with_filter), 2)
+
+    def test_all_zero_intensity_cluster_no_nan(self):
+        """A zero-intensity cluster must not divide-by-zero into NaN m/z.
+
+        Regression: the Python kernel previously divided by total_intensity with
+        no guard; it now falls back to the seed peak like the numba kernel.
+        """
+        mz = np.array([100.0, 100.0002, 100.0004])
+        intensity = np.zeros(3)
+        im = np.full(3, 0.8)
+        peaks = merge_peaks(
+            mz, intensity, im,
+            mz_tolerance=10, mz_tolerance_type="ppm", min_peaks=1,
+        )
+        self.assertGreaterEqual(peaks.shape[0], 1)
+        self.assertTrue(np.all(np.isfinite(peaks)))
+
+    @unittest.skipIf(not _HAS_NUMBA, "Numba not available")
+    def test_all_zero_intensity_numba_python_equivalence(self):
+        """numba and Python agree on an all-zero-intensity cluster (both finite)."""
+        mz = np.array([100.0, 100.0002, 100.0004])
+        intensity = np.zeros(3)
+        im = np.full(3, 0.8)
+        params = dict(mz_tolerance=10, mz_tolerance_type="ppm", min_peaks=1)
+        py = _merge_peaks_python(mz, intensity, im, **params)
+        nb = _merge_peaks_numba(mz, intensity, im, **params)
+        self.assertEqual(len(py), len(nb))
+        self.assertTrue(np.all(np.isfinite(py)))
+        self.assertTrue(np.all(np.isfinite(nb)))
+        np.testing.assert_allclose(py, nb, rtol=1e-9)
+
+    def test_max_peaks_zero_means_unlimited(self):
+        """max_peaks=0 is falsy → no cap; all distinct peaks are returned."""
+        mz = np.array([100.0, 200.0, 300.0, 400.0, 500.0])
+        intensity = np.array([1000.0, 2000.0, 3000.0, 4000.0, 5000.0])
+        im = np.full(5, 0.8)
+        peaks = merge_peaks(
+            mz, intensity, im,
+            mz_tolerance=10, mz_tolerance_type="ppm",
+            min_peaks=1, max_peaks=0,
+        )
+        self.assertEqual(len(peaks), 5)
+
+    def test_max_peaks_positive_caps_output(self):
+        """A positive max_peaks caps the number of returned centroids."""
+        mz = np.array([100.0, 200.0, 300.0, 400.0, 500.0])
+        intensity = np.array([1000.0, 2000.0, 3000.0, 4000.0, 5000.0])
+        im = np.full(5, 0.8)
+        peaks = merge_peaks(
+            mz, intensity, im,
+            mz_tolerance=10, mz_tolerance_type="ppm",
+            min_peaks=1, max_peaks=2,
+        )
+        self.assertEqual(len(peaks), 2)
 
     @unittest.skipIf(not _HAS_NUMBA, "Numba not available")
     def test_peak_noise_filter_numba_python_equivalence(self):

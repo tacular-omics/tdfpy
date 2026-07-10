@@ -31,6 +31,7 @@ from .lookup import (
 from .noise import (
     AbsoluteThreshold,
     BaselineThreshold,
+    DiaMs1WindowGate,
     HistogramThreshold,
     HorizontalHaloFilter,
     IntensityThreshold,
@@ -39,6 +40,7 @@ from .noise import (
     NoiseFilter,
     NoiseSpec,
     PercentileThreshold,
+    SelectionPolygonGate,
     VerticalNoiseFilter,
     coerce_filters,
 )
@@ -69,7 +71,7 @@ from .tdf import PandasTdf
 from .timsdata import TimsData, timsdata_connect
 from .viz import plot_centroiding
 
-__version__ = "2.0.0"
+__version__ = "2.2.0"
 
 __all__ = [
     # I/O
@@ -133,6 +135,8 @@ __all__ = [
     "IterativeMedianThreshold",
     "VerticalNoiseFilter",
     "HorizontalHaloFilter",
+    "SelectionPolygonGate",
+    "DiaMs1WindowGate",
     # Visualization
     "plot_centroiding",
 ]

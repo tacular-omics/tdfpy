@@ -159,7 +159,11 @@ def plot_centroiding(
     total_c_int = float(int_c.sum())
     total_nr_int = float(int_nr.sum())
     retention_pct = 100.0 * total_c_int / total_raw_int if total_raw_int > 0 else 0.0
-    lost_pct = 100.0 * total_nr_int / total_raw_int if total_raw_int > 0 else 0.0
+    # Fraction of the *pre-noise* intensity (kept + rejected) removed by filtering.
+    total_pre_noise_int = total_raw_int + total_nr_int
+    lost_pct = (
+        100.0 * total_nr_int / total_pre_noise_int if total_pre_noise_int > 0 else 0.0
+    )
 
     # --- optional axis clipping -----------------------------------------------
     def _mask(mz: np.ndarray, im: np.ndarray) -> np.ndarray:

@@ -306,6 +306,27 @@ def test_calibration_reference_masses_value(dda: DDA) -> None:
     assert dda.calibration.reference_masses == "Tuning Mix ES-TOF (ESI)"
 
 
+# Regression: `mode` and `std_ppm` previously read non-existent table keys
+# ("CalibrationMode"/"CalibrationStdPpm") and always raised KeyError. They must
+# read the real KeyNames "MzCalibrationMode" / "MzStandardDeviationPPM".
+
+
+def test_calibration_mode_is_str(dda: DDA) -> None:
+    assert isinstance(dda.calibration.mode, str)
+
+
+def test_calibration_mode_value(dda: DDA) -> None:
+    assert dda.calibration.mode == "3"
+
+
+def test_calibration_std_ppm_is_float(dda: DDA) -> None:
+    assert isinstance(dda.calibration.std_ppm, float)
+
+
+def test_calibration_std_ppm_value(dda: DDA) -> None:
+    assert dda.calibration.std_ppm == pytest.approx(0.130754)
+
+
 # ---------------------------------------------------------------------------
 # Calibration — unknown key raises KeyError
 # ---------------------------------------------------------------------------

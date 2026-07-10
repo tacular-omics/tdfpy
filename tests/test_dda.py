@@ -104,11 +104,11 @@ def test_dda_lookup_features():
         found_ids_rt = [p.precursor_id for p in results_rt]
         assert 1 in found_ids_rt
 
-        # Test Invalid Lookups
-        with pytest.raises(KeyError):
+        # Test Invalid Lookups — messages should name the ID and the valid range.
+        with pytest.raises(KeyError, match=r"Precursor ID 99999 not found"):
             _ = dda.precursors[99999]
 
-        with pytest.raises(KeyError):
+        with pytest.raises(KeyError, match=r"MS1 frame ID 2 not found"):
             # Frame 2 is not MS1
             _ = dda.ms1[2]
 

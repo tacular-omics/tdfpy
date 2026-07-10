@@ -13,8 +13,9 @@ left/right neighbours and never the vertical streak above or below.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal, overload
 
 import numpy as np
 
@@ -28,6 +29,8 @@ except ImportError:  # pragma: no cover
 
 if TYPE_CHECKING:
     from ..timsdata import TimsData
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -318,6 +321,28 @@ class VerticalNoiseFilter(NoiseFilter):
             diagnostics=False,
         )
 
+    @overload
+    def run(
+        self,
+        scan_indices: np.ndarray,
+        mz_indices: np.ndarray,
+        intensities: np.ndarray,
+        *,
+        num_scans: int,
+        diagnostics: Literal[False] = ...,
+    ) -> np.ndarray: ...
+
+    @overload
+    def run(
+        self,
+        scan_indices: np.ndarray,
+        mz_indices: np.ndarray,
+        intensities: np.ndarray,
+        *,
+        num_scans: int,
+        diagnostics: Literal[True],
+    ) -> "VerticalNoiseDiagnostics": ...
+
     def run(
         self,
         scan_indices: np.ndarray,
@@ -377,6 +402,23 @@ class VerticalNoiseFilter(NoiseFilter):
             last_span_intensities = spans
             if not cumulative.any():
                 break
+
+        n_kept = int(cumulative.sum())
+        logger.debug(
+            "VerticalNoiseFilter: kept %d/%d points over %d pass(es) (per-pass: %s).",
+            n_kept,
+            n,
+            len(per_pass_kept) - 1,
+            per_pass_kept,
+        )
+        if n_kept == 0:
+            logger.warning(
+                "VerticalNoiseFilter: removed ALL %d points. The streak thresholds "
+                "may be too strict (min_streak_scans=%d, min_streak_intensity=%.1f).",
+                n,
+                self.min_streak_scans,
+                self.min_streak_intensity,
+            )
 
         if not diagnostics:
             return cumulative

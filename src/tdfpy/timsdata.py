@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 # Get current platform
 platform = sys.platform
-logger.debug(f"sys.platform: {platform}")
+logger.debug("sys.platform: %s", platform)
 
 # Dictionary to map platforms to their respective libraries
 platform_lib_map = {
@@ -53,7 +53,7 @@ def get_lib_name(platform: str) -> str:
 
 # Get library name based on the platform
 libname = get_lib_name(platform)
-logger.debug(f"platform: {platform} selected, libname: {libname}")
+logger.debug("platform: %s selected, libname: %s", platform, libname)
 
 # Get data directory
 data_dir = os.path.dirname(sys.modules["tdfpy"].__file__)  # type: ignore[type-var]
@@ -61,7 +61,7 @@ data_dir = os.path.dirname(sys.modules["tdfpy"].__file__)  # type: ignore[type-v
 # Construct data path
 data_path = os.path.join(data_dir, libname)  # type: ignore[arg-type]
 
-logger.debug(f"data_path: {data_path}")
+logger.debug("data_path: %s", data_path)
 
 # Try to load library
 _dll_load_error: Exception | None = None
@@ -69,10 +69,17 @@ try:
     if os.path.exists(data_path):
         dll = cdll.LoadLibrary(data_path)
     else:
-        logger.debug(f"{data_path} does not exist, trying {libname}")
+        logger.debug("%s does not exist, trying %s", data_path, libname)
         dll = cdll.LoadLibrary(libname)
-except Exception as e:
-    logger.error(f"Error loading library: {e}")
+except Exception as e:  # noqa: BLE001 - stored and re-raised on first native use
+    logger.warning(
+        "Could not load Bruker native library %r (%s: %s). The package remains "
+        "importable, but any native operation will raise ImportError until this "
+        "is resolved.",
+        libname,
+        type(e).__name__,
+        e,
+    )
     dll = None
     _dll_load_error = e
 
@@ -212,12 +219,24 @@ def timsdata_connect(analysis_dir: str | os.PathLike[str]) -> Iterator["TimsData
 
 
 def _throwLastTimsDataError(dll_handle: CDLL) -> None:
-    """Throw last TimsData error string as an exception."""
+    """Throw last TimsData error string as an exception.
+
+    Decodes the native error buffer to ``str`` (a raw ``bytes`` repr is useless
+    to a caller) and substitutes an actionable message when Bruker returns an
+    empty error string, which would otherwise surface as ``RuntimeError('')``.
+    """
 
     err_len = dll_handle.tims_get_last_error_string(None, 0)
     buf = create_string_buffer(err_len)
     dll_handle.tims_get_last_error_string(buf, err_len)
-    raise RuntimeError(buf.value)
+    msg = buf.value.decode("utf-8", errors="replace").strip()
+    if not msg:
+        msg = (
+            "native call failed but returned no error string "
+            "(tims_get_last_error_string was empty). Common causes: an invalid "
+            "frame_id or scan range, or a handle that is already closed."
+        )
+    raise RuntimeError(f"timsdata native error: {msg}")
 
 
 # Convert 1/K0 to CCS for a given charge and mz
@@ -411,7 +430,12 @@ class TimsData:
             if required_len > buf_len:
                 if required_len > 16777216:
                     # arbitrary limit for now...
-                    raise RuntimeError("Maximum expected frame size exceeded.")
+                    raise RuntimeError(
+                        f"Frame {frame_id} (scans {scan_begin}..{scan_end}): decoded "
+                        f"buffer needs {required_len} bytes, exceeding the "
+                        "16777216-byte (16 MiB) safety cap. The frame may be corrupt; "
+                        "only raise this cap if a frame this large is genuinely expected."
+                    )
                 self.initial_frame_buffer_size = required_len / 4 + 1  # grow buffer
             else:
                 break
@@ -611,6 +635,12 @@ class TimsData:
 
         """
 
+        # Exceptions raised inside the user-supplied generator/sink cannot
+        # propagate through the native ctypes callback boundary. We capture them
+        # here and re-raise after the native call so the real cause is surfaced
+        # to the caller instead of being masked by a generic Bruker error.
+        captured: list[tuple[str, BaseException]] = []
+
         @CHROMATOGRAM_JOB_GENERATOR
         def wrap_gen(job: Any, user_data: Any) -> int:
             try:
@@ -618,8 +648,13 @@ class TimsData:
                 return 1
             except StopIteration:
                 return 2
-            except Exception as e:
-                logger.error("extractChromatograms: generator produced exception ", e)
+            except Exception as e:  # noqa: BLE001 - re-raised after native call
+                logger.error(
+                    "extractChromatograms: job generator raised %s: %s",
+                    type(e).__name__,
+                    e,
+                )
+                captured.append(("job generator", e))
                 return 0
 
         @CHROMATOGRAM_TRACE_SINK
@@ -633,8 +668,13 @@ class TimsData:
                     np.array(values[0:num_points], dtype=np.uint64),
                 )
                 return 1
-            except Exception as e:
-                logger.error("extractChromatograms: sink produced exception ", e)
+            except Exception as e:  # noqa: BLE001 - re-raised after native call
+                logger.error(
+                    "extractChromatograms: trace_sink raised %s: %s",
+                    type(e).__name__,
+                    e,
+                )
+                captured.append(("trace_sink", e))
                 return 0
 
         unused_user_data = 0
@@ -642,5 +682,11 @@ class TimsData:
             self.handle, wrap_gen, wrap_sink, unused_user_data
         )
 
+        if captured:
+            where, exc = captured[0]
+            raise RuntimeError(
+                f"extractChromatograms aborted: the user-supplied {where} raised "
+                f"{type(exc).__name__}. See the chained exception for the cause."
+            ) from exc
         if rc == 0:
             _throwLastTimsDataError(self.dll)
