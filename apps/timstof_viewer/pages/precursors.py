@@ -1,8 +1,8 @@
 """Precursors page — accumulated MS2 spectrum per precursor.
 
 Unlike the PASEF MS2 page (which shows full frames with multiple subscans),
-this page shows the *accumulated* spectrum for a single precursor — Bruker's
-``readPasefMsMs`` sums the precursor's PASEF subscans into one 1-D
+this page shows the *accumulated* spectrum for a single precursor: summing its
+PASEF subscans and collapsing the mobility dimension gives one 1-D
 (m/z, intensity) profile.
 """
 

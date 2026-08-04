@@ -13,6 +13,7 @@ tooling under ``apps/`` only.
 
 from __future__ import annotations
 
+import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -48,6 +49,7 @@ from tdfpy import (
     smooth,
     subset_scans,
 )
+from tdfpy.centroiding import get_mobility_collapsed_spectrum
 from tdfpy.pipeline import Centroider
 from tdfpy.tdf import PandasTdf
 
@@ -164,7 +166,10 @@ def run_summary(analysis_dir: str) -> dict:
         if acq == "DDA":
             feature_label, n_features = "Precursors", int(len(pdf.precursors))
         elif acq == "DIA":
-            feature_label, n_features = "DIA windows", int(len(pdf.dia_frame_msms_windows))
+            feature_label, n_features = (
+                "DIA windows",
+                int(len(pdf.dia_frame_msms_windows)),
+            )
         elif acq == "PRM":
             feature_label, n_features = "PRM targets", int(len(pdf.prm_targets))
     except Exception:  # noqa: BLE001
@@ -239,9 +244,14 @@ def data_source_stats(analysis_dir: str) -> dict:
         meta = PandasTdf(str(tdf)).global_metadata
         kv = dict(zip(meta["Key"], meta["Value"]))
         for key in (
-            "InstrumentName", "InstrumentSerialNumber", "AcquisitionSoftware",
-            "AcquisitionSoftwareVersion", "AcquisitionDateTime",
-            "MzAcqRangeLower", "MzAcqRangeUpper", "OneOverK0AcqRangeLower",
+            "InstrumentName",
+            "InstrumentSerialNumber",
+            "AcquisitionSoftware",
+            "AcquisitionSoftwareVersion",
+            "AcquisitionDateTime",
+            "MzAcqRangeLower",
+            "MzAcqRangeUpper",
+            "OneOverK0AcqRangeLower",
             "OneOverK0AcqRangeUpper",
         ):
             if key in kv and kv[key] not in (None, ""):
@@ -309,10 +319,18 @@ def _build_spectrum(
     """
     spectrum = read_spectrum(td, frame_id)
     if scan_range is not None:
-        spectrum = subset_scans(spectrum, scan_num_begin=scan_range[0], scan_num_end=scan_range[1])
+        spectrum = subset_scans(
+            spectrum, scan_num_begin=scan_range[0], scan_num_end=scan_range[1]
+        )
     return _apply_pipeline_steps(
-        spectrum, td, frame_id,
-        exclude=exclude, smooth=smooth, halo=halo, noise_filters=noise_filters)
+        spectrum,
+        td,
+        frame_id,
+        exclude=exclude,
+        smooth=smooth,
+        halo=halo,
+        noise_filters=noise_filters,
+    )
 
 
 def _apply_pipeline_steps(
@@ -396,8 +414,14 @@ def _build_precursor_spectrum(
         num_scans=num_scans,
     )
     combined = _apply_pipeline_steps(
-        combined, td, rep_frame,
-        exclude=exclude, smooth=smooth, halo=halo, noise_filters=noise_filters)
+        combined,
+        td,
+        rep_frame,
+        exclude=exclude,
+        smooth=smooth,
+        halo=halo,
+        noise_filters=noise_filters,
+    )
     return combined, rep_frame
 
 
@@ -414,8 +438,14 @@ def fetch_raw_peaks(
 ) -> np.ndarray:
     with tdfpy.timsdata_connect(analysis_dir) as td:
         spectrum = _build_spectrum(
-            td, frame_id, scan_range=scan_range, exclude=exclude,
-            smooth=smooth, halo=halo, noise_filters=noise_filters)
+            td,
+            frame_id,
+            scan_range=scan_range,
+            exclude=exclude,
+            smooth=smooth,
+            halo=halo,
+            noise_filters=noise_filters,
+        )
         return convert(spectrum, td, frame_id, ion_mobility_type=ion_mobility_type)  # type: ignore[arg-type]
 
 
@@ -433,12 +463,17 @@ def fetch_centroided(
 ) -> np.ndarray:
     with tdfpy.timsdata_connect(analysis_dir) as td:
         spectrum = _build_spectrum(
-            td, frame_id, scan_range=scan_range, exclude=exclude,
-            smooth=smooth, halo=halo, noise_filters=noise_filters)
+            td,
+            frame_id,
+            scan_range=scan_range,
+            exclude=exclude,
+            smooth=smooth,
+            halo=halo,
+            noise_filters=noise_filters,
+        )
         if spectrum.empty:
             return np.empty((0, 3), dtype=np.float64)
-        return centroider(
-            spectrum, td, frame_id, ion_mobility_type=ion_mobility_type)  # type: ignore[arg-type]
+        return centroider(spectrum, td, frame_id, ion_mobility_type=ion_mobility_type)  # type: ignore[arg-type]
 
 
 @st.cache_data(show_spinner=True, hash_funcs={NoiseFilter: lambda f: hash(f)})
@@ -459,8 +494,13 @@ def fetch_precursor_raw_peaks(
         return np.empty((0, 3), dtype=np.float64)
     with tdfpy.timsdata_connect(analysis_dir) as td:
         spectrum, rep = _build_precursor_spectrum(
-            td, segments, exclude=exclude, smooth=smooth, halo=halo,
-            noise_filters=noise_filters)
+            td,
+            segments,
+            exclude=exclude,
+            smooth=smooth,
+            halo=halo,
+            noise_filters=noise_filters,
+        )
         if spectrum.empty or rep is None:
             return np.empty((0, 3), dtype=np.float64)
         return convert(spectrum, td, rep, ion_mobility_type=ion_mobility_type)  # type: ignore[arg-type]
@@ -485,8 +525,13 @@ def fetch_precursor_centroided(
         return np.empty((0, 3), dtype=np.float64)
     with tdfpy.timsdata_connect(analysis_dir) as td:
         spectrum, rep = _build_precursor_spectrum(
-            td, segments, exclude=exclude, smooth=smooth, halo=halo,
-            noise_filters=noise_filters)
+            td,
+            segments,
+            exclude=exclude,
+            smooth=smooth,
+            halo=halo,
+            noise_filters=noise_filters,
+        )
         if spectrum.empty or rep is None:
             return np.empty((0, 3), dtype=np.float64)
         return centroider(spectrum, td, rep, ion_mobility_type=ion_mobility_type)  # type: ignore[arg-type]
@@ -606,31 +651,49 @@ def ms2_segments(analysis_dir: str, frame_id: int, acquisition: str) -> list[dic
             pasef = pdf.pasef_frame_msms_info
             rows = pasef[pasef["Frame"] == frame_id]
             for _, r in rows.iterrows():
-                out.append(_norm(
-                    r["ScanNumBegin"], r["ScanNumEnd"], r["IsolationMz"],
-                    r["IsolationWidth"], r["CollisionEnergy"], r["Precursor"],
-                    f"P{int(r['Precursor'])}",
-                ))
+                out.append(
+                    _norm(
+                        r["ScanNumBegin"],
+                        r["ScanNumEnd"],
+                        r["IsolationMz"],
+                        r["IsolationWidth"],
+                        r["CollisionEnergy"],
+                        r["Precursor"],
+                        f"P{int(r['Precursor'])}",
+                    )
+                )
         elif acquisition == "DIA":
             info = pdf.dia_frame_msms_info
             wins = pdf.dia_frame_msms_windows
             frame_groups = info[info["Frame"] == frame_id]["WindowGroup"].tolist()
             for wg in frame_groups:
                 for _, r in wins[wins["WindowGroup"] == wg].iterrows():
-                    out.append(_norm(
-                        r["ScanNumBegin"], r["ScanNumEnd"], r["IsolationMz"],
-                        r["IsolationWidth"], r["CollisionEnergy"], wg,
-                        f"WG{int(wg)} · {float(r['IsolationMz']):.1f}",
-                    ))
+                    out.append(
+                        _norm(
+                            r["ScanNumBegin"],
+                            r["ScanNumEnd"],
+                            r["IsolationMz"],
+                            r["IsolationWidth"],
+                            r["CollisionEnergy"],
+                            wg,
+                            f"WG{int(wg)} · {float(r['IsolationMz']):.1f}",
+                        )
+                    )
         elif acquisition == "PRM":
             info = pdf.prm_frame_msms_info
             rows = info[info["Frame"] == frame_id]
             for _, r in rows.iterrows():
-                out.append(_norm(
-                    r["ScanNumBegin"], r["ScanNumEnd"], r["IsolationMz"],
-                    r["IsolationWidth"], r["CollisionEnergy"], r["Target"],
-                    f"T{int(r['Target'])} · {float(r['IsolationMz']):.2f}",
-                ))
+                out.append(
+                    _norm(
+                        r["ScanNumBegin"],
+                        r["ScanNumEnd"],
+                        r["IsolationMz"],
+                        r["IsolationWidth"],
+                        r["CollisionEnergy"],
+                        r["Target"],
+                        f"T{int(r['Target'])} · {float(r['IsolationMz']):.2f}",
+                    )
+                )
     except Exception:  # noqa: BLE001
         return []
     return out
@@ -650,10 +713,16 @@ def ms2_segment_rects(analysis_dir: str, frame_id: int, acquisition: str) -> lis
         return []
     bounds = sorted({s["scan_begin"] for s in segs} | {s["scan_end"] for s in segs})
     with tdfpy.timsdata_connect(analysis_dir) as td:
-        ook0 = np.asarray(td.scanNumToOneOverK0(frame_id, np.asarray(bounds, dtype=np.int64)))
+        ook0 = np.asarray(
+            td.scanNumToOneOverK0(frame_id, np.asarray(bounds, dtype=np.int64))
+        )
     k0 = dict(zip(bounds, ook0.tolist()))
     return [
-        {**s, "ook0_begin": float(k0[s["scan_begin"]]), "ook0_end": float(k0[s["scan_end"]])}
+        {
+            **s,
+            "ook0_begin": float(k0[s["scan_begin"]]),
+            "ook0_end": float(k0[s["scan_end"]]),
+        }
         for s in segs
     ]
 
@@ -703,7 +772,9 @@ def precursors_for_ms1_frame(analysis_dir: str, frame_id: int) -> list[dict]:
         need.add(iso["scan_end"])
     scan_list = sorted(need)
     with tdfpy.timsdata_connect(analysis_dir) as td:
-        k0_vals = np.asarray(td.scanNumToOneOverK0(frame_id, np.asarray(scan_list, dtype=np.int64)))
+        k0_vals = np.asarray(
+            td.scanNumToOneOverK0(frame_id, np.asarray(scan_list, dtype=np.int64))
+        )
     k0 = dict(zip(scan_list, k0_vals.tolist()))
 
     out: list[dict] = []
@@ -750,14 +821,18 @@ def prm_targets_overlay(analysis_dir: str, frame_id: int) -> list[dict]:
         return []
     out: list[dict] = []
     for _, row in targets.iterrows():
-        out.append({
-            "target_id": int(row["Id"]),
-            "monoisotopic_mz": float(row["MonoisotopicMz"]),
-            "ook0": float(row["OneOverK0"]),
-            "charge": int(row["Charge"]) if not pd.isna(row["Charge"]) else None,
-            "rt_min": float(row["Time"]) / 60.0,
-            "description": str(row["Description"]) if not pd.isna(row["Description"]) else "",
-        })
+        out.append(
+            {
+                "target_id": int(row["Id"]),
+                "monoisotopic_mz": float(row["MonoisotopicMz"]),
+                "ook0": float(row["OneOverK0"]),
+                "charge": int(row["Charge"]) if not pd.isna(row["Charge"]) else None,
+                "rt_min": float(row["Time"]) / 60.0,
+                "description": str(row["Description"])
+                if not pd.isna(row["Description"])
+                else "",
+            }
+        )
     return out
 
 
@@ -792,25 +867,29 @@ def dia_windows_ook0(analysis_dir: str) -> list[dict]:
     ms1_ids = frames.loc[frames["MsMsType"] == 0, "Id"]
     ref_frame = int(ms1_ids.iloc[0]) if not ms1_ids.empty else int(frames["Id"].iloc[0])
     scans = np.unique(
-        np.concatenate([
-            windows["ScanNumBegin"].to_numpy(dtype=np.int64),
-            windows["ScanNumEnd"].to_numpy(dtype=np.int64),
-        ])
+        np.concatenate(
+            [
+                windows["ScanNumBegin"].to_numpy(dtype=np.int64),
+                windows["ScanNumEnd"].to_numpy(dtype=np.int64),
+            ]
+        )
     )
     with tdfpy.timsdata_connect(analysis_dir) as td:
         ook0 = np.asarray(td.scanNumToOneOverK0(ref_frame, scans))
     scan_to_k0 = dict(zip(scans.tolist(), ook0.tolist()))
     out: list[dict] = []
     for _, r in windows.iterrows():
-        out.append({
-            "window_group": int(r["WindowGroup"]),
-            "mz_begin": float(r["mz_begin"]),
-            "mz_end": float(r["mz_end"]),
-            "isolation_mz": float(r["IsolationMz"]),
-            "ook0_begin": float(scan_to_k0[int(r["ScanNumBegin"])]),
-            "ook0_end": float(scan_to_k0[int(r["ScanNumEnd"])]),
-            "collision_energy": float(r["CollisionEnergy"]),
-        })
+        out.append(
+            {
+                "window_group": int(r["WindowGroup"]),
+                "mz_begin": float(r["mz_begin"]),
+                "mz_end": float(r["mz_end"]),
+                "isolation_mz": float(r["IsolationMz"]),
+                "ook0_begin": float(scan_to_k0[int(r["ScanNumBegin"])]),
+                "ook0_end": float(scan_to_k0[int(r["ScanNumEnd"])]),
+                "collision_energy": float(r["CollisionEnergy"]),
+            }
+        )
     return out
 
 
@@ -831,15 +910,17 @@ def prm_target_transitions(analysis_dir: str, target_id: int) -> list[dict]:
     out: list[dict] = []
     for _, r in rows.iterrows():
         fid = int(r["Frame"])
-        out.append({
-            "frame_id": fid,
-            "rt_min": rt_by_frame.get(fid, float("nan")) / 60.0,
-            "scan_begin": int(r["ScanNumBegin"]),
-            "scan_end": int(r["ScanNumEnd"]),
-            "isolation_mz": float(r["IsolationMz"]),
-            "isolation_width": float(r["IsolationWidth"]),
-            "collision_energy": float(r["CollisionEnergy"]),
-        })
+        out.append(
+            {
+                "frame_id": fid,
+                "rt_min": rt_by_frame.get(fid, float("nan")) / 60.0,
+                "scan_begin": int(r["ScanNumBegin"]),
+                "scan_end": int(r["ScanNumEnd"]),
+                "isolation_mz": float(r["IsolationMz"]),
+                "isolation_width": float(r["IsolationWidth"]),
+                "collision_energy": float(r["CollisionEnergy"]),
+            }
+        )
     return out
 
 
@@ -855,18 +936,23 @@ def list_precursors(analysis_dir: str) -> pd.DataFrame:
 def accumulated_precursor_spectrum(analysis_dir: str, precursor_id: int) -> np.ndarray:
     """The accumulated (summed-over-subscans) MS2 spectrum for one precursor.
 
-    Uses ``readPasefMsMs``, which Bruker returns already accumulated across
-    the precursor's PASEF subscans — a 1-D ``(m/z, intensity)`` profile,
-    distinct from the per-frame multi-subscan view on the PASEF page.
+    Sums every PASEF subscan of the precursor and collapses the mobility
+    dimension, giving a 1-D ``(m/z, intensity)`` profile — distinct from the
+    per-frame multi-subscan view on the PASEF page.
     """
+    with sqlite3.connect(str(Path(analysis_dir) / "analysis.tdf")) as conn:
+        ranges = [
+            (int(frame), int(begin), int(end))
+            for frame, begin, end in conn.execute(
+                "SELECT Frame, ScanNumBegin, ScanNumEnd FROM PasefFrameMsMsInfo "
+                "WHERE Precursor = ? ORDER BY Frame",
+                (precursor_id,),
+            )
+        ]
+    if not ranges:
+        return np.empty((0, 2), dtype=np.float64)
     with tdfpy.timsdata_connect(analysis_dir) as td:
-        prec_map = td.readPasefMsMs([precursor_id])
-        if precursor_id not in prec_map:
-            return np.empty((0, 2), dtype=np.float64)
-        scan = prec_map[precursor_id]
-        mz = np.asarray(scan[0], dtype=np.float64)
-        intensity = np.asarray(scan[1], dtype=np.float64)
-    return np.column_stack((mz, intensity))
+        return get_mobility_collapsed_spectrum(td, ranges)
 
 
 @st.cache_data(show_spinner=False)
@@ -967,14 +1053,34 @@ def build_pipeline_ui(
     if smooth_on:
         col_s1, col_s2 = st.columns(2)
         with col_s1:
-            sm_scan_hw = int(st.number_input(
-                "± scan window", min_value=0, max_value=100, value=1, step=1, key=k("sm_scan")))
+            sm_scan_hw = int(
+                st.number_input(
+                    "± scan window",
+                    min_value=0,
+                    max_value=100,
+                    value=1,
+                    step=1,
+                    key=k("sm_scan"),
+                )
+            )
         with col_s2:
-            sm_mz_hw = int(st.number_input(
-                "± TOF-index window", min_value=0, max_value=200, value=2, step=1, key=k("sm_mz")))
+            sm_mz_hw = int(
+                st.number_input(
+                    "± TOF-index window",
+                    min_value=0,
+                    max_value=200,
+                    value=2,
+                    step=1,
+                    key=k("sm_mz"),
+                )
+            )
         sm_mode = st.radio(
-            "Combine", options=["sum", "mean"], horizontal=True, key=k("sm_mode"),
-            help="sum: add all window intensities. mean: average them.")
+            "Combine",
+            options=["sum", "mean"],
+            horizontal=True,
+            key=k("sm_mode"),
+            help="sum: add all window intensities. mean: average them.",
+        )
         smooth = (sm_scan_hw, sm_mz_hw, sm_mode)
 
     # -- Region exclusion ---------------------------------------------------
@@ -993,17 +1099,27 @@ def build_pipeline_ui(
     if exclude_on:
         col_p1, col_p2 = st.columns(2)
         with col_p1:
-            mz_lo = float(st.number_input("m/z₁", value=350.0, step=10.0, key=k("mz_lo")))
+            mz_lo = float(
+                st.number_input("m/z₁", value=350.0, step=10.0, key=k("mz_lo"))
+            )
             ook0_lo = float(
-                st.number_input("1/K0₁", value=0.7, step=0.05, format="%.3f", key=k("k0_lo"))
+                st.number_input(
+                    "1/K0₁", value=0.7, step=0.05, format="%.3f", key=k("k0_lo")
+                )
             )
         with col_p2:
-            mz_hi = float(st.number_input("m/z₂", value=1200.0, step=10.0, key=k("mz_hi")))
+            mz_hi = float(
+                st.number_input("m/z₂", value=1200.0, step=10.0, key=k("mz_hi"))
+            )
             ook0_hi = float(
-                st.number_input("1/K0₂", value=1.4, step=0.05, format="%.3f", key=k("k0_hi"))
+                st.number_input(
+                    "1/K0₂", value=1.4, step=0.05, format="%.3f", key=k("k0_hi")
+                )
             )
         cap_at_upper = st.checkbox(
-            "Cap at upper endpoint", value=True, key=k("cap"),
+            "Cap at upper endpoint",
+            value=True,
+            key=k("cap"),
             help="When on, also drops anything above the line's higher 1/K0 endpoint.",
         )
         exclude = ChargeStateRegion(
@@ -1026,18 +1142,38 @@ def build_pipeline_ui(
     vim_filter: VerticalNoiseFilter | None = None
     if vim_on:
         with st.expander("VerticalNoiseFilter knobs", expanded=True):
-            vim_mz = int(st.number_input(
-                "mz_idx_half_width (TOF indices)", 0, 20, 3, 1, key=k("vim_mz")))
-            vim_min = int(st.number_input(
-                "min_streak_scans", 1, 100, 5, 1, key=k("vim_min")))
-            vim_gap = int(st.number_input(
-                "max_gap_scans", 0, 20, 1, 1, key=k("vim_gap")))
-            vim_int = float(st.number_input(
-                "min_streak_intensity", 0.0, value=50.0, step=10.0,
-                format="%.3f", key=k("vim_int")))
-            vim_iters = int(st.number_input(
-                "num_iterations", 1, 10, 2, 1, key=k("vim_iters"),
-                help="Re-apply the filter to its own survivors."))
+            vim_mz = int(
+                st.number_input(
+                    "mz_idx_half_width (TOF indices)", 0, 20, 3, 1, key=k("vim_mz")
+                )
+            )
+            vim_min = int(
+                st.number_input("min_streak_scans", 1, 100, 5, 1, key=k("vim_min"))
+            )
+            vim_gap = int(
+                st.number_input("max_gap_scans", 0, 20, 1, 1, key=k("vim_gap"))
+            )
+            vim_int = float(
+                st.number_input(
+                    "min_streak_intensity",
+                    0.0,
+                    value=50.0,
+                    step=10.0,
+                    format="%.3f",
+                    key=k("vim_int"),
+                )
+            )
+            vim_iters = int(
+                st.number_input(
+                    "num_iterations",
+                    1,
+                    10,
+                    2,
+                    1,
+                    key=k("vim_iters"),
+                    help="Re-apply the filter to its own survivors.",
+                )
+            )
         vim_filter = VerticalNoiseFilter(
             mz_idx_half_width=vim_mz,
             min_streak_scans=vim_min,
@@ -1063,20 +1199,53 @@ def build_pipeline_ui(
     halo: HaloSpec | None = None
     if halo_on:
         with st.expander("Halo filter knobs", expanded=True):
-            g_frac = float(st.number_input(
-                "peak_fraction (drop below this × left/right max)", 0.0, 1.0, 0.15, 0.01,
-                format="%.3f", key=k("g_frac")))
-            g_mz_hw = int(st.number_input(
-                "mz_idx_half_width (±TOF indices, ~247/Da)", 0, 1000, 100, 10,
-                key=k("g_mzhw")))
-            g_scan_hw = int(st.number_input(
-                "scan_half_width (±mobility scans, box height)", 0, 200, 2, 1,
-                key=k("g_scanhw")))
+            g_frac = float(
+                st.number_input(
+                    "peak_fraction (drop below this × left/right max)",
+                    0.0,
+                    1.0,
+                    0.15,
+                    0.01,
+                    format="%.3f",
+                    key=k("g_frac"),
+                )
+            )
+            g_mz_hw = int(
+                st.number_input(
+                    "mz_idx_half_width (±TOF indices, ~247/Da)",
+                    0,
+                    1000,
+                    100,
+                    10,
+                    key=k("g_mzhw"),
+                )
+            )
+            g_scan_hw = int(
+                st.number_input(
+                    "scan_half_width (±mobility scans, box height)",
+                    0,
+                    200,
+                    2,
+                    1,
+                    key=k("g_scanhw"),
+                )
+            )
         halo = (g_frac, g_mz_hw, g_scan_hw)
 
-    methods = ("off", "absolute", "mad", "percentile", "histogram", "baseline", "iterative_median")
+    methods = (
+        "off",
+        "absolute",
+        "mad",
+        "percentile",
+        "histogram",
+        "baseline",
+        "iterative_median",
+    )
     method = st.selectbox(
-        "Intensity threshold", options=methods, index=0, key=k("thr_method"),
+        "Intensity threshold",
+        options=methods,
+        index=0,
+        key=k("thr_method"),
         help=(
             "Drop peaks below a computed intensity threshold. Adaptive methods "
             "(mad / iterative_median) derive the floor from the data; "
@@ -1085,32 +1254,62 @@ def build_pipeline_ui(
     )
     threshold_filter: NoiseFilter | None = None
     if method == "absolute":
-        v = float(st.number_input("Absolute threshold", 0.0, value=1.0, step=1.0, key=k("abs_v")))
+        v = float(
+            st.number_input(
+                "Absolute threshold", 0.0, value=1.0, step=1.0, key=k("abs_v")
+            )
+        )
         threshold_filter = AbsoluteThreshold(value=v)
     elif method == "mad":
         with st.expander("MadThreshold knobs"):
-            mad_k = float(st.number_input("k (× scale × MAD)", 0.5, 20.0, 3.0, 0.5, format="%.2f", key=k("mad_k")))
+            mad_k = float(
+                st.number_input(
+                    "k (× scale × MAD)",
+                    0.5,
+                    20.0,
+                    3.0,
+                    0.5,
+                    format="%.2f",
+                    key=k("mad_k"),
+                )
+            )
         threshold_filter = MadThreshold(k=mad_k)
     elif method == "percentile":
         with st.expander("PercentileThreshold knobs"):
-            q = float(st.slider("q (percentile)", 0.0, 100.0, 75.0, 1.0, key=k("pct_q")))
+            q = float(
+                st.slider("q (percentile)", 0.0, 100.0, 75.0, 1.0, key=k("pct_q"))
+            )
         threshold_filter = PercentileThreshold(q=q)
     elif method == "histogram":
         with st.expander("HistogramThreshold knobs"):
             bins = int(st.number_input("bins", 10, 1000, 100, 10, key=k("hist_bins")))
-            hk = float(st.number_input("k (× std)", 0.5, 20.0, 3.0, 0.5, key=k("hist_k")))
+            hk = float(
+                st.number_input("k (× std)", 0.5, 20.0, 3.0, 0.5, key=k("hist_k"))
+            )
         threshold_filter = HistogramThreshold(bins=bins, k=hk)
     elif method == "baseline":
         with st.expander("BaselineThreshold knobs"):
-            bq = float(st.slider("q (bottom percentile)", 0.0, 100.0, 25.0, 1.0, key=k("base_q")))
-            bk = float(st.number_input("k (× std)", 0.5, 20.0, 3.0, 0.5, key=k("base_k")))
+            bq = float(
+                st.slider(
+                    "q (bottom percentile)", 0.0, 100.0, 25.0, 1.0, key=k("base_q")
+                )
+            )
+            bk = float(
+                st.number_input("k (× std)", 0.5, 20.0, 3.0, 0.5, key=k("base_k"))
+            )
         threshold_filter = BaselineThreshold(q=bq, k=bk)
     elif method == "iterative_median":
         with st.expander("IterativeMedianThreshold knobs"):
             passes = int(st.number_input("passes", 1, 20, 3, 1, key=k("itm_p")))
-            inner = float(st.number_input("inner_k", 0.5, 10.0, 2.0, 0.5, key=k("itm_i")))
-            final = float(st.number_input("final_k", 0.5, 20.0, 3.0, 0.5, key=k("itm_f")))
-        threshold_filter = IterativeMedianThreshold(passes=passes, inner_k=inner, final_k=final)
+            inner = float(
+                st.number_input("inner_k", 0.5, 10.0, 2.0, 0.5, key=k("itm_i"))
+            )
+            final = float(
+                st.number_input("final_k", 0.5, 20.0, 3.0, 0.5, key=k("itm_f"))
+            )
+        threshold_filter = IterativeMedianThreshold(
+            passes=passes, inner_k=inner, final_k=final
+        )
 
     noise_filters: tuple[NoiseFilter, ...] = tuple(
         f for f in (vim_filter, threshold_filter) if f is not None
@@ -1122,13 +1321,17 @@ def build_pipeline_ui(
     if show_centroider:
         st.header("Centroiding")
         centroid_on = st.checkbox(
-            "Run centroiding", value=False, key=k("centroid_on"),
+            "Run centroiding",
+            value=False,
+            key=k("centroid_on"),
             help="Runs the chosen centroider on the (filtered) raw peaks.",
         )
         if centroid_on:
             algo = st.radio(
-                "Algorithm", options=["merge_peaks", "watershed"],
-                horizontal=True, key=k("algo"),
+                "Algorithm",
+                options=["merge_peaks", "watershed"],
+                horizontal=True,
+                key=k("algo"),
                 help=(
                     "merge_peaks: greedy tolerance-based merge in float m/z space. "
                     "watershed: intensity-ordered region growing in integer "
@@ -1139,24 +1342,65 @@ def build_pipeline_ui(
                 with st.expander("MergePeaksCentroider knobs", expanded=True):
                     c1, c2 = st.columns([2, 1])
                     with c1:
-                        mz_tol = float(st.number_input(
-                            "m/z tolerance", 0.0, value=8.0, step=1.0, format="%.4f", key=k("mp_mz_tol")))
+                        mz_tol = float(
+                            st.number_input(
+                                "m/z tolerance",
+                                0.0,
+                                value=8.0,
+                                step=1.0,
+                                format="%.4f",
+                                key=k("mp_mz_tol"),
+                            )
+                        )
                     with c2:
-                        mz_unit = st.selectbox("unit", ["ppm", "da"], index=0, key=k("mp_mz_unit"))
+                        mz_unit = st.selectbox(
+                            "unit", ["ppm", "da"], index=0, key=k("mp_mz_unit")
+                        )
                     c3, c4 = st.columns([2, 1])
                     with c3:
-                        im_tol = float(st.number_input(
-                            "IM tolerance", 0.0, value=0.01, step=0.005, format="%.4f", key=k("mp_im_tol")))
+                        im_tol = float(
+                            st.number_input(
+                                "IM tolerance",
+                                0.0,
+                                value=0.01,
+                                step=0.005,
+                                format="%.4f",
+                                key=k("mp_im_tol"),
+                            )
+                        )
                     with c4:
-                        im_unit = st.selectbox("unit", ["relative", "absolute"], index=1, key=k("mp_im_unit"))
-                    min_peaks = int(st.number_input(
-                        "min_peaks", 0, 50, 1, 1, key=k("mp_min"),
-                        help="0 or 1 keeps all clusters."))
-                    max_raw = int(st.number_input(
-                        "max_peaks (0 = no limit)", 0, 1_000_000, 0, 1000, key=k("mp_max")))
+                        im_unit = st.selectbox(
+                            "unit",
+                            ["relative", "absolute"],
+                            index=1,
+                            key=k("mp_im_unit"),
+                        )
+                    min_peaks = int(
+                        st.number_input(
+                            "min_peaks",
+                            0,
+                            50,
+                            1,
+                            1,
+                            key=k("mp_min"),
+                            help="0 or 1 keeps all clusters.",
+                        )
+                    )
+                    max_raw = int(
+                        st.number_input(
+                            "max_peaks (0 = no limit)",
+                            0,
+                            1_000_000,
+                            0,
+                            1000,
+                            key=k("mp_max"),
+                        )
+                    )
                     max_peaks = max_raw if max_raw > 0 else None
                     peak_noise = st.checkbox(
-                        "Peak-satellite suppression", value=False, key=k("mp_pn"),
+                        "Peak-satellite suppression",
+                        value=False,
+                        key=k("mp_pn"),
                         help=(
                             "After each centroid is formed, suppress raw points within "
                             "±window Da of the anchor m/z whose intensity falls below a "
@@ -1164,10 +1408,28 @@ def build_pipeline_ui(
                         ),
                     )
                     if peak_noise:
-                        pn_win = float(st.number_input(
-                            "peak_noise_window (Da)", 0.0001, 10.0, 0.1, 0.01, format="%.4f", key=k("mp_pnw")))
-                        pn_end = float(st.number_input(
-                            "peak_noise_end_fraction", 0.0, 1.0, 0.1, 0.05, format="%.3f", key=k("mp_pne")))
+                        pn_win = float(
+                            st.number_input(
+                                "peak_noise_window (Da)",
+                                0.0001,
+                                10.0,
+                                0.1,
+                                0.01,
+                                format="%.4f",
+                                key=k("mp_pnw"),
+                            )
+                        )
+                        pn_end = float(
+                            st.number_input(
+                                "peak_noise_end_fraction",
+                                0.0,
+                                1.0,
+                                0.1,
+                                0.05,
+                                format="%.3f",
+                                key=k("mp_pne"),
+                            )
+                        )
                     else:
                         pn_win, pn_end = 0.1, 0.1
                 centroider = MergePeaksCentroider(
@@ -1183,28 +1445,71 @@ def build_pipeline_ui(
                 )
             else:  # watershed
                 with st.expander("WatershedCentroider knobs", expanded=True):
-                    a_scan = int(st.number_input(
-                        "attach_scan_half_width", 1, 200, 10, 1, key=k("ws_as")))
-                    a_mz = int(st.number_input(
-                        "attach_mz_idx_half_width", 1, 200, 3, 1, key=k("ws_amz")))
-                    min_seed = float(st.number_input(
-                        "min_seed_intensity", 0.0, value=0.0, step=10.0, key=k("ws_seed"),
-                        help="Points below this can't promote to a new seed."))
-                    min_cent = float(st.number_input(
-                        "min_centroid_intensity", 0.0, value=0.0, step=10.0, key=k("ws_cent"),
-                        help="Final centroids below this summed intensity are dropped."))
-                    st.caption("Pre-centroid box smoothing (0 = off; use the upstream Smoothing step instead)")
+                    a_scan = int(
+                        st.number_input(
+                            "attach_scan_half_width", 1, 200, 10, 1, key=k("ws_as")
+                        )
+                    )
+                    a_mz = int(
+                        st.number_input(
+                            "attach_mz_idx_half_width", 1, 200, 3, 1, key=k("ws_amz")
+                        )
+                    )
+                    min_seed = float(
+                        st.number_input(
+                            "min_seed_intensity",
+                            0.0,
+                            value=0.0,
+                            step=10.0,
+                            key=k("ws_seed"),
+                            help="Points below this can't promote to a new seed.",
+                        )
+                    )
+                    min_cent = float(
+                        st.number_input(
+                            "min_centroid_intensity",
+                            0.0,
+                            value=0.0,
+                            step=10.0,
+                            key=k("ws_cent"),
+                            help="Final centroids below this summed intensity are dropped.",
+                        )
+                    )
+                    st.caption(
+                        "Pre-centroid box smoothing (0 = off; use the upstream Smoothing step instead)"
+                    )
                     s1, s2 = st.columns(2)
                     with s1:
-                        sm_scan = int(st.number_input("smooth_scan_half_width", 0, 50, 0, 1, key=k("ws_sms")))
+                        sm_scan = int(
+                            st.number_input(
+                                "smooth_scan_half_width", 0, 50, 0, 1, key=k("ws_sms")
+                            )
+                        )
                     with s2:
-                        sm_mz = int(st.number_input("smooth_mz_idx_half_width", 0, 50, 0, 1, key=k("ws_smmz")))
+                        sm_mz = int(
+                            st.number_input(
+                                "smooth_mz_idx_half_width",
+                                0,
+                                50,
+                                0,
+                                1,
+                                key=k("ws_smmz"),
+                            )
+                        )
                     st.caption("Per-group leash from seed (0 = no limit)")
                     l1, l2 = st.columns(2)
                     with l1:
-                        leash_scan_raw = int(st.number_input("max_scan_from_seed", 0, 1000, 0, 1, key=k("ws_lscan")))
+                        leash_scan_raw = int(
+                            st.number_input(
+                                "max_scan_from_seed", 0, 1000, 0, 1, key=k("ws_lscan")
+                            )
+                        )
                     with l2:
-                        leash_mz_raw = int(st.number_input("max_mz_idx_from_seed", 0, 1000, 10, 1, key=k("ws_lmz")))
+                        leash_mz_raw = int(
+                            st.number_input(
+                                "max_mz_idx_from_seed", 0, 1000, 10, 1, key=k("ws_lmz")
+                            )
+                        )
                 centroider = WatershedCentroider(
                     attach_scan_half_width=a_scan,
                     attach_mz_idx_half_width=a_mz,
@@ -1215,7 +1520,9 @@ def build_pipeline_ui(
                     max_scan_from_seed=leash_scan_raw if leash_scan_raw > 0 else None,
                     max_mz_idx_from_seed=leash_mz_raw if leash_mz_raw > 0 else None,
                 )
-            centroid_log_y = st.checkbox("Log y-axis (centroid intensity)", value=False, key=k("clog"))
+            centroid_log_y = st.checkbox(
+                "Log y-axis (centroid intensity)", value=False, key=k("clog")
+            )
 
     return exclude, smooth, halo, noise_filters, centroider, centroid_log_y
 
@@ -1257,8 +1564,13 @@ def select_table_row(
     table has no active selection (e.g. on first render or a deep link).
     """
     event = st.dataframe(
-        df, key=key, on_select="rerun", selection_mode="single-row",
-        hide_index=True, use_container_width=True, height=height,
+        df,
+        key=key,
+        on_select="rerun",
+        selection_mode="single-row",
+        hide_index=True,
+        use_container_width=True,
+        height=height,
         column_config=column_config or {},
     )
     rows = list(getattr(event.selection, "rows", []) or []) if event else []
@@ -1278,9 +1590,17 @@ def select_frame_row(
     active selection (used for cross-page deep links).
     """
     df = pd.DataFrame(frames)
-    cols = [c for c in (
-        "frame_id", "rt_min", "ms_ms_type", "num_peaks", "num_scans",
-    ) if c in df.columns]
+    cols = [
+        c
+        for c in (
+            "frame_id",
+            "rt_min",
+            "ms_ms_type",
+            "num_peaks",
+            "num_scans",
+        )
+        if c in df.columns
+    ]
     col_cfg = {
         "frame_id": st.column_config.NumberColumn("Frame"),
         "rt_min": st.column_config.NumberColumn("RT (min)", format="%.2f"),
@@ -1295,7 +1615,10 @@ def select_frame_row(
                 default_pos = i
                 break
     return select_table_row(
-        df[cols], key=key, height=height, default_pos=default_pos,
+        df[cols],
+        key=key,
+        height=height,
+        default_pos=default_pos,
         column_config={c: col_cfg[c] for c in cols},
     )
 
@@ -1337,11 +1660,18 @@ def scatter_mz_im(
     fig = go.Figure()
     fig.add_trace(
         go.Scattergl(
-            x=mz, y=im, mode="markers",
+            x=mz,
+            y=im,
+            mode="markers",
             marker=dict(
-                size=point_size, color=color, colorscale="Viridis",
-                colorbar=dict(title="log10(intensity + 1)" if log_intensity else "intensity"),
-                showscale=True, opacity=0.7,
+                size=point_size,
+                color=color,
+                colorscale="Viridis",
+                colorbar=dict(
+                    title="log10(intensity + 1)" if log_intensity else "intensity"
+                ),
+                showscale=True,
+                opacity=0.7,
             ),
             customdata=np.column_stack([intensity]),
             hovertemplate=(
@@ -1362,15 +1692,21 @@ def scatter_mz_im(
             line = np.minimum(line, max(ook0_a, ook0_b))
         fig.add_trace(
             go.Scattergl(
-                x=sample_mz, y=line, mode="lines",
+                x=sample_mz,
+                y=line,
+                mode="lines",
                 line=dict(color="#ef4444", dash="dash", width=2),
-                name="exclude region", hoverinfo="skip", showlegend=False,
+                name="exclude region",
+                hoverinfo="skip",
+                showlegend=False,
             )
         )
     fig.update_layout(
         xaxis_title="m/z",
         yaxis_title=f"Ion mobility ({ion_mobility_type})",
-        height=height, margin=dict(l=40, r=20, t=40, b=40), template="plotly_white",
+        height=height,
+        margin=dict(l=40, r=20, t=40, b=40),
+        template="plotly_white",
         # Horizontal legend above the plot so overlay labels (precursors /
         # targets / bands) don't collide with the intensity colorbar.
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
@@ -1415,28 +1751,46 @@ def stick_spectrum_im(
         sy = np.empty(3 * n)
         sx[0::3], sx[1::3], sx[2::3] = bm, bm, np.nan
         sy[0::3], sy[1::3], sy[2::3] = 0.0, bi, np.nan
-        fig.add_trace(go.Scattergl(
-            x=sx, y=sy, mode="lines",
-            line=dict(color=bin_colors[b], width=1.2),
-            hoverinfo="skip", showlegend=False,
-        ))
-    fig.add_trace(go.Scattergl(
-        x=c_mz, y=c_int, mode="markers",
-        marker=dict(
-            size=4, color=c_im, colorscale="Viridis", cmin=im_lo, cmax=im_hi,
-            colorbar=dict(title=f"IM ({ion_mobility_type})"), showscale=True, line=dict(width=0),
-        ),
-        customdata=np.column_stack([c_im]),
-        hovertemplate=(
-            "m/z: %{x:.4f}<br>intensity: %{y:,.0f}<br>"
-            f"{ion_mobility_type}: " + "%{customdata[0]:.4f}<extra></extra>"
-        ),
-        showlegend=False,
-    ))
+        fig.add_trace(
+            go.Scattergl(
+                x=sx,
+                y=sy,
+                mode="lines",
+                line=dict(color=bin_colors[b], width=1.2),
+                hoverinfo="skip",
+                showlegend=False,
+            )
+        )
+    fig.add_trace(
+        go.Scattergl(
+            x=c_mz,
+            y=c_int,
+            mode="markers",
+            marker=dict(
+                size=4,
+                color=c_im,
+                colorscale="Viridis",
+                cmin=im_lo,
+                cmax=im_hi,
+                colorbar=dict(title=f"IM ({ion_mobility_type})"),
+                showscale=True,
+                line=dict(width=0),
+            ),
+            customdata=np.column_stack([c_im]),
+            hovertemplate=(
+                "m/z: %{x:.4f}<br>intensity: %{y:,.0f}<br>"
+                f"{ion_mobility_type}: " + "%{customdata[0]:.4f}<extra></extra>"
+            ),
+            showlegend=False,
+        )
+    )
     layout: dict = dict(
-        xaxis_title="m/z", yaxis_title="intensity",
+        xaxis_title="m/z",
+        yaxis_title="intensity",
         yaxis_type="log" if log_y else "linear",
-        height=height, margin=dict(l=40, r=20, t=30, b=40), template="plotly_white",
+        height=height,
+        margin=dict(l=40, r=20, t=30, b=40),
+        template="plotly_white",
     )
     if mz_range is not None:
         layout["xaxis_range"] = [mz_range[0], mz_range[1]]
@@ -1460,24 +1814,39 @@ def stick_spectrum_simple(
     sx[0::3], sx[1::3], sx[2::3] = mz, mz, np.nan
     sy[0::3], sy[1::3], sy[2::3] = 0.0, intensity, np.nan
     fig = go.Figure()
-    fig.add_trace(go.Scattergl(
-        x=sx, y=sy, mode="lines", line=dict(color=color, width=1.0),
-        hoverinfo="skip", showlegend=False,
-    ))
-    fig.add_trace(go.Scattergl(
-        x=mz, y=intensity, mode="markers",
-        marker=dict(size=3, color=color),
-        hovertemplate="m/z: %{x:.4f}<br>intensity: %{y:,.0f}<extra></extra>",
-        showlegend=False,
-    ))
+    fig.add_trace(
+        go.Scattergl(
+            x=sx,
+            y=sy,
+            mode="lines",
+            line=dict(color=color, width=1.0),
+            hoverinfo="skip",
+            showlegend=False,
+        )
+    )
+    fig.add_trace(
+        go.Scattergl(
+            x=mz,
+            y=intensity,
+            mode="markers",
+            marker=dict(size=3, color=color),
+            hovertemplate="m/z: %{x:.4f}<br>intensity: %{y:,.0f}<extra></extra>",
+            showlegend=False,
+        )
+    )
     for mk in markers or []:
         fig.add_vline(
-            x=mk["x"], line=dict(color=mk.get("color", "#ef4444"), dash="dash", width=1),
-            annotation_text=mk.get("label", ""), annotation_position="top",
+            x=mk["x"],
+            line=dict(color=mk.get("color", "#ef4444"), dash="dash", width=1),
+            annotation_text=mk.get("label", ""),
+            annotation_position="top",
         )
     fig.update_layout(
-        xaxis_title="m/z", yaxis_title="intensity",
+        xaxis_title="m/z",
+        yaxis_title="intensity",
         yaxis_type="log" if log_y else "linear",
-        height=height, margin=dict(l=40, r=20, t=30, b=40), template="plotly_white",
+        height=height,
+        margin=dict(l=40, r=20, t=30, b=40),
+        template="plotly_white",
     )
     return fig

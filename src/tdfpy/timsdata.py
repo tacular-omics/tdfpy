@@ -2,9 +2,8 @@
 
 Frame decoding and all coordinate conversions are pure Python/NumPy; see
 :mod:`tdfpy.calibration` for the calibration models. Bruker's native library is
-still required for the two peak-picker entry points
-(:meth:`TimsData.readPasefMsMs` and
-:meth:`TimsData.extractCentroidedSpectrumForFrame`).
+not used at all -- there is no ctypes, no shared object, and no platform
+restriction.
 
 Frame layout of ``analysis.tdf_bin``, per frame, at byte offset ``Frames.TimsId``::
 
@@ -36,20 +35,6 @@ import sqlite3
 import sys
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from ctypes import (
-    CDLL,
-    CFUNCTYPE,
-    POINTER,
-    c_char_p,
-    c_double,
-    c_float,
-    c_int64,
-    c_uint32,
-    c_uint64,
-    c_void_p,
-    cdll,
-    create_string_buffer,
-)
 from enum import Enum
 from typing import Any
 
@@ -59,7 +44,6 @@ import numpy.typing as npt
 from .calibration import (
     MzCalibration,
     TimsCalibration,
-    UnsupportedCalibrationError,
     ccs_to_one_over_k0,
     one_over_k0_to_ccs,
 )
@@ -127,77 +111,6 @@ def _resolve_zstd() -> Callable[[bytes], bytes]:
 
 
 _zstd_decompress = _resolve_zstd()
-
-
-# ---------------------------------------------------------------------------
-# Native library — retained only for Bruker's proprietary peak picker
-# ---------------------------------------------------------------------------
-
-_PLATFORM_LIB = {
-    "win32": "timsdata.dll",
-    "cygwin": "timsdata.dll",
-    "linux": "libtimsdata.so",
-}
-
-MSMS_SPECTRUM_FUNCTOR = CFUNCTYPE(
-    None, c_int64, c_uint32, POINTER(c_double), POINTER(c_float)
-)
-
-
-def _load_native() -> tuple[CDLL | None, Exception | None]:
-    libname = next(
-        (v for k, v in _PLATFORM_LIB.items() if sys.platform.startswith(k)), None
-    )
-    if libname is None:
-        return None, OSError(
-            f"Bruker's native library is not available for {sys.platform!r}."
-        )
-    path = os.path.join(os.path.dirname(__file__), libname)
-    try:
-        return cdll.LoadLibrary(path if os.path.exists(path) else libname), None
-    except Exception as exc:  # noqa: BLE001 - re-raised on first native use
-        logger.debug("could not load %s: %s", libname, exc)
-        return None, exc
-
-
-dll, _dll_load_error = _load_native()
-
-if dll is not None:
-    dll.tims_open_v2.argtypes = [c_char_p, c_uint32, c_uint32]
-    dll.tims_open_v2.restype = c_uint64
-    dll.tims_close.argtypes = [c_uint64]
-    dll.tims_close.restype = None
-    dll.tims_get_last_error_string.argtypes = [c_char_p, c_uint32]
-    dll.tims_get_last_error_string.restype = c_uint32
-    dll.tims_read_pasef_msms.argtypes = [
-        c_uint64,
-        POINTER(c_int64),
-        c_uint32,
-        MSMS_SPECTRUM_FUNCTOR,
-    ]
-    dll.tims_read_pasef_msms.restype = c_uint32
-    dll.tims_extract_centroided_spectrum_for_frame_v2.argtypes = [
-        c_uint64,
-        c_int64,
-        c_uint32,
-        c_uint32,
-        MSMS_SPECTRUM_FUNCTOR,
-        c_void_p,
-    ]
-    dll.tims_extract_centroided_spectrum_for_frame_v2.restype = c_uint32
-
-
-def _throw_last_native_error(dll_handle: CDLL) -> None:
-    err_len = dll_handle.tims_get_last_error_string(None, 0)
-    buf = create_string_buffer(err_len)
-    dll_handle.tims_get_last_error_string(buf, err_len)
-    msg = buf.value.decode("utf-8", errors="replace").strip()
-    if not msg:
-        msg = (
-            "native call failed but returned no error string. Common causes: an "
-            "invalid frame_id or scan range, or a handle that is already closed."
-        )
-    raise RuntimeError(f"timsdata native error: {msg}")
 
 
 class PressureCompensationStrategy(Enum):
@@ -335,8 +248,6 @@ class TimsData:
         #: Callers use this only to test whether the reader is still open.
         self.handle: Any = open(bin_path, "rb")
 
-        self._native_handle: int | None = None
-
     # -- setup ------------------------------------------------------------
 
     def _load_metadata(self) -> None:
@@ -413,9 +324,6 @@ class TimsData:
         if getattr(self, "handle", None) is not None:
             self.handle.close()
             self.handle = None
-        if getattr(self, "_native_handle", None) is not None:
-            dll.tims_close(self._native_handle)  # type: ignore[union-attr]
-            self._native_handle = None
         if getattr(self, "conn", None) is not None:
             self.conn.close()  # type: ignore[union-attr]
             self.conn = None
@@ -513,60 +421,6 @@ class TimsData:
             result.append((tof[start:stop], intensity[start:stop]))
         return result
 
-    # -- native peak picker ----------------------------------------------
-
-    def _native(self) -> int:
-        """Lazily open Bruker's native handle, used only by the peak picker."""
-        if dll is None:
-            raise ImportError(
-                f"Bruker's native library could not be loaded: {_dll_load_error}"
-            ) from _dll_load_error
-        if self._native_handle is None:
-            handle = dll.tims_open_v2(self.analysis_directory.encode("utf-8"), 0, 0)
-            if handle == 0:
-                _throw_last_native_error(dll)
-            self._native_handle = handle
-        return self._native_handle
-
-    def readPasefMsMs(self, precursor_list: list[int]) -> dict[int, tuple[Any, Any]]:
-        """Bruker-centroided PASEF MS/MS spectra, keyed by precursor ID."""
-        handle = self._native()
-        precursors = np.array(precursor_list, dtype=np.int64)
-        result: dict[int, tuple[Any, Any]] = {}
-
-        @MSMS_SPECTRUM_FUNCTOR
-        def callback(precursor_id: int, num_peaks: int, mzs: Any, areas: Any) -> None:
-            result[precursor_id] = (mzs[0:num_peaks], areas[0:num_peaks])
-
-        rc = dll.tims_read_pasef_msms(  # type: ignore[union-attr]
-            handle,
-            precursors.ctypes.data_as(POINTER(c_int64)),
-            len(precursor_list),
-            callback,
-        )
-        if rc == 0:
-            _throw_last_native_error(dll)  # type: ignore[arg-type]
-        return result
-
-    def extractCentroidedSpectrumForFrame(
-        self, frame_id: int, scan_begin: int, scan_end: int
-    ) -> tuple[Any, Any] | None:
-        """Bruker-centroided spectrum for a frame's scan range."""
-        handle = self._native()
-        result: tuple[Any, Any] | None = None
-
-        @MSMS_SPECTRUM_FUNCTOR
-        def callback(_id: int, num_peaks: int, mzs: Any, areas: Any) -> None:
-            nonlocal result
-            result = (mzs[0:num_peaks], areas[0:num_peaks])
-
-        rc = dll.tims_extract_centroided_spectrum_for_frame_v2(  # type: ignore[union-attr]
-            handle, frame_id, scan_begin, scan_end, callback, None
-        )
-        if rc == 0:
-            _throw_last_native_error(dll)  # type: ignore[arg-type]
-        return result
-
 
 @contextmanager
 def timsdata_connect(analysis_dir: str | os.PathLike[str]) -> Iterator[TimsData]:
@@ -588,8 +442,3 @@ def oneOverK0ToCCSforMz(ook0: float, charge: int, mz: float) -> float:
 def ccsToOneOverK0ToCCSforMz(ccs: float, charge: int, mz: float) -> float:
     """Convert CCS to 1/K0 for a given charge and m/z."""
     return ccs_to_one_over_k0(ccs, charge, mz)
-
-
-# Re-exported so callers can catch a single error type for unsupported files.
-UnsupportedTdfError.__module__ = __name__
-_ = UnsupportedCalibrationError  # re-exported via tdfpy.calibration
