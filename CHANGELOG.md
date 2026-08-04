@@ -7,40 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-
-- **`TimsData.read_frame_arrays`** — reads a scan range as three flat parallel
-  arrays (`scan_indices`, `tof_indices`, `intensities`) instead of one array
-  pair per scan. Peaks for a contiguous scan range are already contiguous in the
-  decoded frame, so this slices where `readScans` has to split. Prefer it
-  wherever you would have concatenated `readScans` output back together.
-
-### Performance
-
-- **`read_spectrum` is up to 2x faster** — it no longer splits a frame into
-  per-scan arrays only to immediately concatenate them back. The gain is largest
-  on sparse frames, where the per-scan overhead dominated: 200 mixed DDA frames
-  went from 340 ms to 168 ms, while 5 dense MS1 frames improved ~10%.
-- **`get_mobility_collapsed_spectrum` is 3.6x faster on a whole frame**
-  (74 ms → 21 ms for an MS1 frame) and ~1.3x on small PASEF ranges. The per-peak
-  Python dict rollup is now a vectorised aggregation that picks between
-  `bincount` and `unique` based on how the peak count compares to the TOF grid
-  width — the two run opposite ways, and picking wrongly costs ~10x either way.
-- **Frame decoding avoids one full copy** of every payload by viewing the
-  de-interleaved bytes as `uint32` rather than round-tripping through
-  `ascontiguousarray().tobytes()`.
-- **`merge_peaks` is ~1.45x faster** on an uncapped centroiding run (60 ms →
-  41 ms for a 337k-peak MS1 frame), which makes `get_centroided_spectrum` ~1.3x
-  faster end to end. The greedy kernel ran two binary searches per seed to find
-  each peak's m/z window — half its total time. Because `mz_sorted` is sorted
-  and the window edges are monotone in m/z, one linear two-pointer sweep yields
-  identical bounds. The sweep is skipped when `max_peaks` caps the seed loop,
-  since a cap leaves its fixed cost unamortised. Output is bit-identical across
-  both kernels and every tolerance mode.
-
-Frame decoding remains bit-exact against Bruker over all 1710 fixture frames and
-29,399,513 peaks.
-
 ## [3.0.0] - 2026-08-04
 
 Bruker's `libtimsdata` is gone. tdfpy now reads `analysis.tdf_bin` itself, which
@@ -84,6 +50,11 @@ question, and lifts the Linux/Windows-x86-64 restriction — macOS and ARM work.
   instead, which is off by 6.35 Th (5.4%) on the bundled DDA fixture.
 - **`get_mobility_collapsed_spectrum`** — the mobility-collapse + greedy-merge
   helper backing the two `.peaks` properties.
+- **`TimsData.read_frame_arrays`** — reads a scan range as three flat parallel
+  arrays (`scan_indices`, `tof_indices`, `intensities`) instead of one array
+  pair per scan. Peaks for a contiguous scan range are already contiguous in the
+  decoded frame, so this slices where `readScans` has to split. Prefer it
+  wherever you would have concatenated `readScans` output back together.
 - **`UnsupportedTdfError` / `UnsupportedCalibrationError`.** Formats that have
   not been validated against Bruker's library now raise instead of returning
   plausible-looking numbers: legacy `TimsCompressionType` 1 (per-scan LZF),
@@ -95,6 +66,32 @@ question, and lifts the Linux/Windows-x86-64 restriction — macOS and ARM work.
   decoding is separately verified bit-exact against `tims_read_scans_v2` over
   all 1710 frames and 29,399,513 peaks of the three fixtures. Previously a
   deliberately injected 1e-3 relative m/z error passed the entire suite.
+
+### Performance
+
+- **`read_spectrum` is up to 2x faster** — it no longer splits a frame into
+  per-scan arrays only to immediately concatenate them back. The gain is largest
+  on sparse frames, where the per-scan overhead dominated: 200 mixed DDA frames
+  went from 340 ms to 168 ms, while 5 dense MS1 frames improved ~10%.
+- **`get_mobility_collapsed_spectrum` is 3.6x faster on a whole frame**
+  (74 ms → 21 ms for an MS1 frame) and ~1.3x on small PASEF ranges. The per-peak
+  Python dict rollup is now a vectorised aggregation that picks between
+  `bincount` and `unique` based on how the peak count compares to the TOF grid
+  width — the two run opposite ways, and picking wrongly costs ~10x either way.
+- **Frame decoding avoids one full copy** of every payload by viewing the
+  de-interleaved bytes as `uint32` rather than round-tripping through
+  `ascontiguousarray().tobytes()`.
+- **`merge_peaks` is ~1.45x faster** on an uncapped centroiding run (60 ms →
+  41 ms for a 337k-peak MS1 frame), which makes `get_centroided_spectrum` ~1.3x
+  faster end to end. The greedy kernel ran two binary searches per seed to find
+  each peak's m/z window — half its total time. Because `mz_sorted` is sorted
+  and the window edges are monotone in m/z, one linear two-pointer sweep yields
+  identical bounds. The sweep is skipped when `max_peaks` caps the seed loop,
+  since a cap leaves its fixed cost unamortised. Output is bit-identical across
+  both kernels and every tolerance mode.
+
+Frame decoding remains bit-exact against Bruker over all 1710 fixture frames and
+29,399,513 peaks.
 
 ## [2.2.0] - 2026-07-07
 
