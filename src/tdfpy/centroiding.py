@@ -74,20 +74,49 @@ if _HAS_NUMBA:
         count = 0
         noise_inv_window = 1.0 / peak_noise_window if peak_noise_window > 0.0 else 0.0
         noise_one_minus_end = 1.0 - peak_noise_end_fraction
+
+        # Each seed needs the index range of its m/z window. Two ways to get it:
+        # a binary search per seed, or one linear two-pointer sweep over all
+        # peaks -- the window edges are monotone in m/z and mz_sorted is sorted,
+        # so the sweep is valid and gives identical bounds.
+        #
+        # The sweep is the big win when every peak is a candidate seed (it
+        # measured as half the kernel's time), but it costs a full pass whether
+        # or not the seed loop runs to completion. A max_peaks cap stops that
+        # loop early, leaving the pass unamortised, so cap = search per seed.
+        precompute = max_peaks < 0
+        bounds_len = n if precompute else 1
+        win_left = np.empty(bounds_len, dtype=np.int64)
+        win_right = np.empty(bounds_len, dtype=np.int64)
+        if precompute:
+            lo_ptr = 0
+            hi_ptr = 0
+            for i in range(n):
+                tol = mz_sorted[i] * mz_tol_factor if mz_is_ppm else mz_tol_abs
+                left_mz = mz_sorted[i] - tol
+                right_mz = mz_sorted[i] + tol
+                while lo_ptr < n and mz_sorted[lo_ptr] < left_mz:
+                    lo_ptr += 1
+                if hi_ptr < i:
+                    hi_ptr = i
+                while hi_ptr < n and mz_sorted[hi_ptr] <= right_mz:
+                    hi_ptr += 1
+                win_left[i] = lo_ptr
+                win_right[i] = hi_ptr
+
         for order_idx in range(len(intensity_order)):
             peak_idx = intensity_order[order_idx]
             if used[peak_idx]:
                 continue
             mz_peak = mz_sorted[peak_idx]
             im_peak = im_sorted[peak_idx]
-            if mz_is_ppm:
-                mz_tol = mz_peak * mz_tol_factor
+            if precompute:
+                left_idx = win_left[peak_idx]
+                right_idx = win_right[peak_idx]
             else:
-                mz_tol = mz_tol_abs
-            left_mz = mz_peak - mz_tol
-            right_mz = mz_peak + mz_tol
-            left_idx = np.searchsorted(mz_sorted, left_mz)
-            right_idx = np.searchsorted(mz_sorted, right_mz, side='right')
+                mz_tol = mz_peak * mz_tol_factor if mz_is_ppm else mz_tol_abs
+                left_idx = np.searchsorted(mz_sorted, mz_peak - mz_tol)
+                right_idx = np.searchsorted(mz_sorted, mz_peak + mz_tol, side='right')
 
             # Dynamic IM region growing: start at seed, expand bounds outward
             # one step at a time until no unused peak is within im_tolerance of

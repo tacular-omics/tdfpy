@@ -29,6 +29,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Frame decoding avoids one full copy** of every payload by viewing the
   de-interleaved bytes as `uint32` rather than round-tripping through
   `ascontiguousarray().tobytes()`.
+- **`merge_peaks` is ~1.45x faster** on an uncapped centroiding run (60 ms →
+  41 ms for a 337k-peak MS1 frame), which makes `get_centroided_spectrum` ~1.3x
+  faster end to end. The greedy kernel ran two binary searches per seed to find
+  each peak's m/z window — half its total time. Because `mz_sorted` is sorted
+  and the window edges are monotone in m/z, one linear two-pointer sweep yields
+  identical bounds. The sweep is skipped when `max_peaks` caps the seed loop,
+  since a cap leaves its fixed cost unamortised. Output is bit-identical across
+  both kernels and every tolerance mode.
 
 Frame decoding remains bit-exact against Bruker over all 1710 fixture frames and
 29,399,513 peaks.
