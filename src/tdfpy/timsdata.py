@@ -1,3 +1,35 @@
+"""Reader for Bruker timsTOF ``.d`` folders (``analysis.tdf`` + ``analysis.tdf_bin``).
+
+Frame decoding and all coordinate conversions are pure Python/NumPy; see
+:mod:`tdfpy.calibration` for the calibration models. Bruker's native library is
+still required for the two peak-picker entry points
+(:meth:`TimsData.readPasefMsMs` and
+:meth:`TimsData.extractCentroidedSpectrumForFrame`).
+
+Frame layout of ``analysis.tdf_bin``, per frame, at byte offset ``Frames.TimsId``::
+
+    u32  byte_count     total packet size, including these 8 header bytes
+    u32  scan_count     matches Frames.NumScans
+    ...  payload        zstd-compressed, byte_count - 8 bytes
+
+The decompressed payload is an ``(N, 4)`` matrix of u32 bytes stored
+column-major, so all byte-0s precede all byte-1s and so on. Once transposed back
+into u32 words the layout is::
+
+    word[0]                     scan_count
+    word[1 .. scan_count)       2 * peak count, for the first scan_count-1 scans
+    word[scan_count ..]         interleaved (tof_delta, intensity) pairs
+
+The last scan's peak count is implicit — it is whatever remains. TOF deltas are
+1-based and accumulate within a scan, resetting at each scan boundary, so the TOF
+index is a per-scan cumulative sum minus one.
+
+Intensities are *not* returned as stored: Bruker normalises them to a 100 ms
+accumulation window, and this reader reproduces that.
+"""
+
+from __future__ import annotations
+
 import logging
 import os
 import sqlite3
@@ -8,11 +40,9 @@ from ctypes import (
     CDLL,
     CFUNCTYPE,
     POINTER,
-    Structure,
     c_char_p,
     c_double,
     c_float,
-    c_int32,
     c_int64,
     c_uint32,
     c_uint64,
@@ -26,93 +56,111 @@ from typing import Any
 import numpy as np
 import numpy.typing as npt
 
+from .calibration import (
+    MzCalibration,
+    TimsCalibration,
+    UnsupportedCalibrationError,
+    ccs_to_one_over_k0,
+    one_over_k0_to_ccs,
+)
+
 logger = logging.getLogger(__name__)
 
-# Get current platform
-platform = sys.platform
-logger.debug("sys.platform: %s", platform)
+__all__ = [
+    "PressureCompensationStrategy",
+    "TimsData",
+    "UnsupportedTdfError",
+    "ccsToOneOverK0ToCCSforMz",
+    "oneOverK0ToCCSforMz",
+    "timsdata_connect",
+]
 
-# Dictionary to map platforms to their respective libraries
-platform_lib_map = {
+#: The only ``GlobalMetadata['TimsCompressionType']`` this reader implements.
+#: Type 1 is a legacy per-scan LZF format found on older acquisitions.
+SUPPORTED_COMPRESSION_TYPE = 2
+
+_EMPTY_U32 = np.zeros(0, dtype=np.uint32)
+
+
+class UnsupportedTdfError(NotImplementedError):
+    """Raised for a ``.d`` folder this reader has not been validated against."""
+
+
+# ---------------------------------------------------------------------------
+# zstd backend
+# ---------------------------------------------------------------------------
+
+
+def _resolve_zstd() -> Callable[[bytes], bytes]:
+    """Pick a zstd implementation once, at import.
+
+    Python 3.14 ships zstd in the standard library (PEP 784), but only when
+    CPython was built against libzstd, so the import is still attempted rather
+    than assumed. Otherwise ``zstandard`` or ``pyzstd`` will do. All three are
+    used through their stateless one-shot entry points, which keeps concurrent
+    frame reads safe.
+    """
+    if sys.version_info >= (3, 14):
+        try:
+            from compression.zstd import decompress
+
+            return decompress
+        except ImportError:  # pragma: no cover - build without libzstd
+            pass
+    try:
+        from zstandard import decompress
+
+        return decompress
+    except ImportError:
+        pass
+    try:
+        # Optional third fallback; not a declared dependency.
+        from pyzstd import decompress  # ty: ignore[unresolved-import]
+
+        return decompress
+    except ImportError as exc:  # pragma: no cover - install-time failure
+        raise ImportError(
+            "tdfpy needs a zstd implementation to read analysis.tdf_bin. "
+            "Install `zstandard` (or `pyzstd`), or use Python 3.14+ built with "
+            "zstd in the standard library."
+        ) from exc
+
+
+_zstd_decompress = _resolve_zstd()
+
+
+# ---------------------------------------------------------------------------
+# Native library — retained only for Bruker's proprietary peak picker
+# ---------------------------------------------------------------------------
+
+_PLATFORM_LIB = {
     "win32": "timsdata.dll",
     "cygwin": "timsdata.dll",
     "linux": "libtimsdata.so",
 }
 
-
-# Function to get library name based on the platform
-def get_lib_name(platform: str) -> str:
-    for key, value in platform_lib_map.items():
-        if platform.startswith(key):
-            return value
-    raise OSError(
-        f"Unsupported platform: {platform!r}. "
-        "Bruker's native timsdata library is only available for Linux and Windows."
-    )
-
-
-# Get library name based on the platform
-libname = get_lib_name(platform)
-logger.debug("platform: %s selected, libname: %s", platform, libname)
-
-# Get data directory
-data_dir = os.path.dirname(sys.modules["tdfpy"].__file__)  # type: ignore[type-var]
-
-# Construct data path
-data_path = os.path.join(data_dir, libname)  # type: ignore[arg-type]
-
-logger.debug("data_path: %s", data_path)
-
-# Try to load library
-_dll_load_error: Exception | None = None
-try:
-    if os.path.exists(data_path):
-        dll = cdll.LoadLibrary(data_path)
-    else:
-        logger.debug("%s does not exist, trying %s", data_path, libname)
-        dll = cdll.LoadLibrary(libname)
-except Exception as e:  # noqa: BLE001 - stored and re-raised on first native use
-    logger.warning(
-        "Could not load Bruker native library %r (%s: %s). The package remains "
-        "importable, but any native operation will raise ImportError until this "
-        "is resolved.",
-        libname,
-        type(e).__name__,
-        e,
-    )
-    dll = None
-    _dll_load_error = e
-
 MSMS_SPECTRUM_FUNCTOR = CFUNCTYPE(
     None, c_int64, c_uint32, POINTER(c_double), POINTER(c_float)
 )
-MSMS_PROFILE_SPECTRUM_FUNCTOR = CFUNCTYPE(None, c_int64, c_uint32, POINTER(c_int32))
 
 
-class ChromatogramJob(Structure):
-    _fields_ = [
-        ("id", c_int64),
-        ("time_begin", c_double),
-        ("time_end", c_double),
-        ("mz_min", c_double),
-        ("mz_max", c_double),
-        ("ook0_min", c_double),
-        ("ook0_max", c_double),
-    ]
+def _load_native() -> tuple[CDLL | None, Exception | None]:
+    libname = next(
+        (v for k, v in _PLATFORM_LIB.items() if sys.platform.startswith(k)), None
+    )
+    if libname is None:
+        return None, OSError(
+            f"Bruker's native library is not available for {sys.platform!r}."
+        )
+    path = os.path.join(os.path.dirname(__file__), libname)
+    try:
+        return cdll.LoadLibrary(path if os.path.exists(path) else libname), None
+    except Exception as exc:  # noqa: BLE001 - re-raised on first native use
+        logger.debug("could not load %s: %s", libname, exc)
+        return None, exc
 
 
-CHROMATOGRAM_JOB_GENERATOR = CFUNCTYPE(c_uint32, POINTER(ChromatogramJob), c_void_p)
-CHROMATOGRAM_TRACE_SINK = CFUNCTYPE(
-    c_uint32, c_int64, c_uint32, POINTER(c_int64), POINTER(c_uint64), c_void_p
-)
-
-convfunc_argtypes: list[Any] = [
-    c_uint64,
-    c_int64,
-    POINTER(c_double),
-    POINTER(c_double),
-    c_uint32,
-]
+dll, _dll_load_error = _load_native()
 
 if dll is not None:
     dll.tims_open_v2.argtypes = [c_char_p, c_uint32, c_uint32]
@@ -121,17 +169,6 @@ if dll is not None:
     dll.tims_close.restype = None
     dll.tims_get_last_error_string.argtypes = [c_char_p, c_uint32]
     dll.tims_get_last_error_string.restype = c_uint32
-    dll.tims_has_recalibrated_state.argtypes = [c_uint64]
-    dll.tims_has_recalibrated_state.restype = c_uint32
-    dll.tims_read_scans_v2.argtypes = [
-        c_uint64,
-        c_int64,
-        c_uint32,
-        c_uint32,
-        c_void_p,
-        c_uint32,
-    ]
-    dll.tims_read_scans_v2.restype = c_uint32
     dll.tims_read_pasef_msms.argtypes = [
         c_uint64,
         POINTER(c_int64),
@@ -139,21 +176,6 @@ if dll is not None:
         MSMS_SPECTRUM_FUNCTOR,
     ]
     dll.tims_read_pasef_msms.restype = c_uint32
-    dll.tims_read_pasef_msms_for_frame.argtypes = [c_uint64, c_int64, MSMS_SPECTRUM_FUNCTOR]
-    dll.tims_read_pasef_msms_for_frame.restype = c_uint32
-    dll.tims_read_pasef_profile_msms.argtypes = [
-        c_uint64,
-        POINTER(c_int64),
-        c_uint32,
-        MSMS_PROFILE_SPECTRUM_FUNCTOR,
-    ]
-    dll.tims_read_pasef_profile_msms.restype = c_uint32
-    dll.tims_read_pasef_profile_msms_for_frame.argtypes = [
-        c_uint64,
-        c_int64,
-        MSMS_PROFILE_SPECTRUM_FUNCTOR,
-    ]
-    dll.tims_read_pasef_profile_msms_for_frame.restype = c_uint32
     dll.tims_extract_centroided_spectrum_for_frame_v2.argtypes = [
         c_uint64,
         c_int64,
@@ -163,107 +185,107 @@ if dll is not None:
         c_void_p,
     ]
     dll.tims_extract_centroided_spectrum_for_frame_v2.restype = c_uint32
-    dll.tims_extract_centroided_spectrum_for_frame_ext.argtypes = [
-        c_uint64,
-        c_int64,
-        c_uint32,
-        c_uint32,
-        c_double,
-        MSMS_SPECTRUM_FUNCTOR,
-        c_void_p,
-    ]
-    dll.tims_extract_centroided_spectrum_for_frame_ext.restype = c_uint32
-    dll.tims_extract_profile_for_frame.argtypes = [
-        c_uint64,
-        c_int64,
-        c_uint32,
-        c_uint32,
-        MSMS_PROFILE_SPECTRUM_FUNCTOR,
-        c_void_p,
-    ]
-    dll.tims_extract_profile_for_frame.restype = c_uint32
-    dll.tims_extract_chromatograms.argtypes = [
-        c_uint64,
-        CHROMATOGRAM_JOB_GENERATOR,
-        CHROMATOGRAM_TRACE_SINK,
-        c_void_p,
-    ]
-    dll.tims_extract_chromatograms.restype = c_uint32
-    dll.tims_index_to_mz.argtypes = convfunc_argtypes
-    dll.tims_index_to_mz.restype = c_uint32
-    dll.tims_mz_to_index.argtypes = convfunc_argtypes
-    dll.tims_mz_to_index.restype = c_uint32
-    dll.tims_scannum_to_oneoverk0.argtypes = convfunc_argtypes
-    dll.tims_scannum_to_oneoverk0.restype = c_uint32
-    dll.tims_oneoverk0_to_scannum.argtypes = convfunc_argtypes
-    dll.tims_oneoverk0_to_scannum.restype = c_uint32
-    dll.tims_scannum_to_voltage.argtypes = convfunc_argtypes
-    dll.tims_scannum_to_voltage.restype = c_uint32
-    dll.tims_voltage_to_scannum.argtypes = convfunc_argtypes
-    dll.tims_voltage_to_scannum.restype = c_uint32
-    dll.tims_oneoverk0_to_ccs_for_mz.argtypes = [c_double, c_int32, c_double]
-    dll.tims_oneoverk0_to_ccs_for_mz.restype = c_double
-    dll.tims_ccs_to_oneoverk0_for_mz.argtypes = [c_double, c_int32, c_double]
-    dll.tims_ccs_to_oneoverk0_for_mz.restype = c_double
 
 
-@contextmanager
-def timsdata_connect(analysis_dir: str | os.PathLike[str]) -> Iterator["TimsData"]:
-    td: TimsData | None = None
-    try:
-        td = TimsData(str(analysis_dir))
-        yield td
-    finally:
-        if td:
-            td.close()
-
-
-def _throwLastTimsDataError(dll_handle: CDLL) -> None:
-    """Throw last TimsData error string as an exception.
-
-    Decodes the native error buffer to ``str`` (a raw ``bytes`` repr is useless
-    to a caller) and substitutes an actionable message when Bruker returns an
-    empty error string, which would otherwise surface as ``RuntimeError('')``.
-    """
-
+def _throw_last_native_error(dll_handle: CDLL) -> None:
     err_len = dll_handle.tims_get_last_error_string(None, 0)
     buf = create_string_buffer(err_len)
     dll_handle.tims_get_last_error_string(buf, err_len)
     msg = buf.value.decode("utf-8", errors="replace").strip()
     if not msg:
         msg = (
-            "native call failed but returned no error string "
-            "(tims_get_last_error_string was empty). Common causes: an invalid "
-            "frame_id or scan range, or a handle that is already closed."
+            "native call failed but returned no error string. Common causes: an "
+            "invalid frame_id or scan range, or a handle that is already closed."
         )
     raise RuntimeError(f"timsdata native error: {msg}")
 
 
-# Convert 1/K0 to CCS for a given charge and mz
-def oneOverK0ToCCSforMz(ook0: float, charge: int, mz: float) -> float:
-    if dll is None:
-        raise ImportError(
-            f"libtimsdata native library could not be loaded: {_dll_load_error}"
-        ) from _dll_load_error
-    return float(dll.tims_oneoverk0_to_ccs_for_mz(ook0, charge, mz))
-
-
-# Convert CCS to 1/K0 for a given charge and mz
-def ccsToOneOverK0ToCCSforMz(ccs: float, charge: int, mz: float) -> float:
-    if dll is None:
-        raise ImportError(
-            f"libtimsdata native library could not be loaded: {_dll_load_error}"
-        ) from _dll_load_error
-    return float(dll.tims_ccs_to_oneoverk0_for_mz(ccs, charge, mz))
-
-
 class PressureCompensationStrategy(Enum):
+    """Bruker's per-frame mobility pressure-correction modes.
+
+    Only :attr:`NoPressureCompensation` is implemented. The correction is
+    believed to be driven by ``TimsCalibration.C8``/``C9``, which this reader's
+    mobility model does not consume.
+    """
+
     NoPressureCompensation = 0
     AnalysisGlobalPressureCompensation = 1
     PerFramePressureCompensation = 2
 
 
+# ---------------------------------------------------------------------------
+# Frame decoding
+# ---------------------------------------------------------------------------
+
+
+def _decode_frame(
+    payload: bytes, scan_count: int
+) -> tuple[
+    npt.NDArray[np.int64],
+    npt.NDArray[np.int64],
+    npt.NDArray[np.uint32],
+    npt.NDArray[np.uint32],
+]:
+    """Decode one zstd frame payload.
+
+    Returns ``(scan_starts, scan_counts, tof_indices, raw_intensities)``, where the
+    per-scan slices are ``tof[start:start + count]``.
+    """
+    raw = np.frombuffer(_zstd_decompress(payload), dtype=np.uint8)
+    if raw.size % 4:
+        raise UnsupportedTdfError(
+            f"decompressed frame is {raw.size} bytes, not a multiple of 4; "
+            "the file may be corrupt or use an unexpected layout."
+        )
+    # Byte-plane de-interleaving: the payload stores an (N, 4) u32 byte matrix
+    # column-major, so transposing the (4, N) view restores little-endian words.
+    words = np.frombuffer(
+        np.ascontiguousarray(raw.reshape(4, -1).T).tobytes(), dtype="<u4"
+    )
+
+    total_peaks = (words.size - scan_count) // 2
+    counts = np.empty(scan_count, dtype=np.int64)
+    counts[: scan_count - 1] = words[1:scan_count] >> 1  # stored as 2 * peak count
+    counts[scan_count - 1] = total_peaks - int(counts[: scan_count - 1].sum())
+    if counts[scan_count - 1] < 0:
+        raise UnsupportedTdfError(
+            "frame scan sizes exceed the decoded peak count; the file may be corrupt."
+        )
+
+    payload_words = words[scan_count:]
+    tof_deltas = payload_words[0::2]
+    intensities = payload_words[1::2]
+
+    starts = np.zeros(scan_count, dtype=np.int64)
+    np.cumsum(counts[:-1], out=starts[1:])
+
+    # TOF indices are a cumulative sum of deltas that resets at every scan
+    # boundary. Done as one global cumsum minus the running total carried in at
+    # each boundary, which avoids a Python loop over scans (5-9x faster).
+    running = np.cumsum(tof_deltas, dtype=np.uint32)
+    carry = np.zeros(scan_count, dtype=np.uint32)
+    non_empty = counts > 0
+    prev_index = starts[non_empty] - 1
+    carry[non_empty] = np.where(
+        prev_index >= 0, running[np.maximum(prev_index, 0)], np.uint32(0)
+    )
+    tof = running - np.repeat(carry, counts) - np.uint32(1)  # deltas are 1-based
+
+    return starts, counts, tof, intensities
+
+
+# ---------------------------------------------------------------------------
+# TimsData
+# ---------------------------------------------------------------------------
+
+
 class TimsData:
+    """Random-access reader for a Bruker ``.d`` folder.
+
+    Metadata is loaded eagerly on open; spectral data is read from
+    ``analysis.tdf_bin`` on demand.
+    """
+
     def __init__(
         self,
         analysis_directory: str | os.PathLike[str],
@@ -272,38 +294,111 @@ class TimsData:
     ) -> None:
         analysis_directory = str(analysis_directory)
 
-        if dll is None:
-            raise ImportError(
-                f"libtimsdata native library could not be loaded: {_dll_load_error}"
-            ) from _dll_load_error
+        if use_recalibrated_state:
+            raise UnsupportedTdfError(
+                "use_recalibrated_state=True is not supported; tdfpy reads the "
+                "calibration recorded in analysis.tdf."
+            )
+        if (
+            pressure_compensation_strategy
+            is not PressureCompensationStrategy.NoPressureCompensation
+        ):
+            raise UnsupportedTdfError(
+                f"{pressure_compensation_strategy.name} is not supported; only "
+                "NoPressureCompensation is implemented."
+            )
 
         if not os.path.isdir(analysis_directory):
             raise FileNotFoundError(
                 f"Analysis directory not found: {analysis_directory!r}"
             )
         tdf_path = os.path.join(analysis_directory, "analysis.tdf")
-        if not os.path.exists(tdf_path):
-            raise FileNotFoundError(
-                f"analysis.tdf not found in {analysis_directory!r}"
-            )
+        bin_path = os.path.join(analysis_directory, "analysis.tdf_bin")
+        for path in (tdf_path, bin_path):
+            if not os.path.exists(path):
+                raise FileNotFoundError(
+                    f"{os.path.basename(path)} not found in {analysis_directory!r}"
+                )
 
         self.analysis_directory = analysis_directory
-        self.dll: CDLL = dll
-        self.handle: int | None
-        self.conn: sqlite3.Connection | None
-        self.initial_frame_buffer_size: float
+        self.conn: sqlite3.Connection | None = sqlite3.connect(tdf_path)
+        self.conn.row_factory = sqlite3.Row
 
-        self.handle = self.dll.tims_open_v2(
-            analysis_directory.encode("utf-8"),
-            1 if use_recalibrated_state else 0,
-            pressure_compensation_strategy.value,
-        )
-        if self.handle == 0:
-            _throwLastTimsDataError(self.dll)
+        try:
+            self._load_metadata()
+        except Exception:
+            self.conn.close()
+            self.conn = None
+            raise
 
-        self.conn = sqlite3.connect(os.path.join(analysis_directory, "analysis.tdf"))
+        #: Open binary file object, or ``None`` once :meth:`close` has run.
+        #: Callers use this only to test whether the reader is still open.
+        self.handle: Any = open(bin_path, "rb")
 
-        self.initial_frame_buffer_size = 128  # may grow in readScans()
+        self._native_handle: int | None = None
+
+    # -- setup ------------------------------------------------------------
+
+    def _load_metadata(self) -> None:
+        assert self.conn is not None
+        meta = dict(self.conn.execute("SELECT Key, Value FROM GlobalMetadata"))
+
+        compression = int(meta.get("TimsCompressionType", -1))
+        if compression != SUPPORTED_COMPRESSION_TYPE:
+            raise UnsupportedTdfError(
+                f"TimsCompressionType {compression} is not supported (only "
+                f"{SUPPORTED_COMPRESSION_TYPE} has been validated). Type 1 is a "
+                "legacy LZF format; such files need Bruker's native library."
+            )
+
+        self._mz_calibrations = {
+            int(row["Id"]): MzCalibration.from_row(row)
+            for row in self.conn.execute("SELECT * FROM MzCalibration")
+        }
+        self._tims_calibrations = {
+            int(row["Id"]): TimsCalibration.from_row(row)
+            for row in self.conn.execute("SELECT * FROM TimsCalibration")
+        }
+
+        # (offset, num_scans, accumulation_time, T1, T2, mz_cal_id, tims_cal_id)
+        self._frames: dict[int, tuple[int, int, float, float, float, int, int]] = {
+            int(r["Id"]): (
+                int(r["TimsId"]),
+                int(r["NumScans"]),
+                float(r["AccumulationTime"]),
+                float(r["T1"]),
+                float(r["T2"]),
+                int(r["MzCalibration"]),
+                int(r["TimsCalibration"]),
+            )
+            for r in self.conn.execute(
+                "SELECT Id, TimsId, NumScans, AccumulationTime, T1, T2, "
+                "MzCalibration, TimsCalibration FROM Frames"
+            )
+        }
+
+    def _frame(self, frame_id: int) -> tuple[int, int, float, float, float, int, int]:
+        try:
+            return self._frames[int(frame_id)]
+        except KeyError:
+            if self._frames:
+                lo, hi = min(self._frames), max(self._frames)
+                valid = f"{lo}..{hi}"
+            else:
+                valid = "none (Frames table is empty)"
+            raise ValueError(
+                f"Frame {frame_id} not found in the Frames table "
+                f"(valid frame IDs: {valid}). Frame IDs are 1-based."
+            ) from None
+
+    def _mz_cal(self, frame_id: int) -> tuple[MzCalibration, float, float]:
+        _, _, _, t1, t2, mz_id, _ = self._frame(frame_id)
+        return self._mz_calibrations[mz_id], t1, t2
+
+    def _tims_cal(self, frame_id: int) -> TimsCalibration:
+        return self._tims_calibrations[self._frame(frame_id)[6]]
+
+    # -- lifecycle --------------------------------------------------------
 
     def __enter__(self) -> "TimsData":
         return self
@@ -315,378 +410,186 @@ class TimsData:
         self.close()
 
     def close(self) -> None:
-        if hasattr(self, "handle") and self.handle is not None:
-            self.dll.tims_close(self.handle)
+        if getattr(self, "handle", None) is not None:
+            self.handle.close()
             self.handle = None
-        if hasattr(self, "conn") and self.conn is not None:
-            self.conn.close()
+        if getattr(self, "_native_handle", None) is not None:
+            dll.tims_close(self._native_handle)  # type: ignore[union-attr]
+            self._native_handle = None
+        if getattr(self, "conn", None) is not None:
+            self.conn.close()  # type: ignore[union-attr]
             self.conn = None
 
-    def __callConversionFunc(
-        self,
-        frame_id: int,
-        input_data: npt.NDArray[np.float64] | npt.NDArray[np.uint32] | list[float],
-        func: Callable[..., int],
-    ) -> npt.NDArray[np.float64]:
-        if type(input_data) is np.ndarray and input_data.dtype == np.float64:
-            # already "native" format understood by DLL -> avoid extra copy
-            in_array = input_data
-        else:
-            # convert data to format understood by DLL:
-            in_array = np.array(input_data, dtype=np.float64)
+    def _require_open(self) -> Any:
+        if getattr(self, "handle", None) is None:
+            raise RuntimeError("TimsData connection has been closed.")
+        return self.handle
 
-        cnt = len(in_array)
-        out = np.empty(shape=cnt, dtype=np.float64)
-        success = func(
-            self.handle,
-            frame_id,
-            in_array.ctypes.data_as(POINTER(c_double)),
-            out.ctypes.data_as(POINTER(c_double)),
-            cnt,
-        )
-
-        if success == 0:
-            _throwLastTimsDataError(self.dll)
-
-        return out
+    # -- conversions ------------------------------------------------------
 
     def indexToMz(
-        self,
-        frame_id: int,
-        indices: npt.NDArray[np.float64] | npt.NDArray[np.uint32] | list[float],
+        self, frame_id: int, indices: npt.ArrayLike
     ) -> npt.NDArray[np.float64]:
-        return self.__callConversionFunc(frame_id, indices, self.dll.tims_index_to_mz)
+        """Convert TOF sample indices to m/z for ``frame_id``."""
+        cal, t1, t2 = self._mz_cal(frame_id)
+        return cal.index_to_mz(indices, t1, t2)
 
-    def mzToIndex(
-        self,
-        frame_id: int,
-        mzs: npt.NDArray[np.float64] | npt.NDArray[np.uint32] | list[float],
-    ) -> npt.NDArray[np.float64]:
-        return self.__callConversionFunc(frame_id, mzs, self.dll.tims_mz_to_index)
+    def mzToIndex(self, frame_id: int, mzs: npt.ArrayLike) -> npt.NDArray[np.float64]:
+        """Convert m/z to (fractional) TOF sample indices for ``frame_id``."""
+        cal, t1, t2 = self._mz_cal(frame_id)
+        return cal.mz_to_index(mzs, t1, t2)
 
     def scanNumToOneOverK0(
-        self,
-        frame_id: int,
-        scan_nums: npt.NDArray[np.float64] | npt.NDArray[np.uint32] | list[float],
+        self, frame_id: int, scan_nums: npt.ArrayLike
     ) -> npt.NDArray[np.float64]:
-        return self.__callConversionFunc(
-            frame_id, scan_nums, self.dll.tims_scannum_to_oneoverk0
-        )
+        """Convert scan numbers to inverse reduced mobility (1/K0)."""
+        return self._tims_cal(frame_id).scan_to_one_over_k0(scan_nums)
 
     def oneOverK0ToScanNum(
-        self,
-        frame_id: int,
-        mobilities: npt.NDArray[np.float64] | npt.NDArray[np.uint32] | list[float],
+        self, frame_id: int, mobilities: npt.ArrayLike
     ) -> npt.NDArray[np.float64]:
-        return self.__callConversionFunc(
-            frame_id, mobilities, self.dll.tims_oneoverk0_to_scannum
-        )
+        """Convert 1/K0 to (fractional) scan numbers."""
+        return self._tims_cal(frame_id).one_over_k0_to_scan(mobilities)
 
     def scanNumToVoltage(
-        self,
-        frame_id: int,
-        scan_nums: npt.NDArray[np.float64] | npt.NDArray[np.uint32] | list[float],
+        self, frame_id: int, scan_nums: npt.ArrayLike
     ) -> npt.NDArray[np.float64]:
-        return self.__callConversionFunc(
-            frame_id, scan_nums, self.dll.tims_scannum_to_voltage
-        )
+        """Convert scan numbers to TIMS ramp voltage."""
+        return self._tims_cal(frame_id).scan_to_voltage(scan_nums)
 
     def voltageToScanNum(
-        self,
-        frame_id: int,
-        voltages: npt.NDArray[np.float64] | npt.NDArray[np.uint32] | list[float],
+        self, frame_id: int, voltages: npt.ArrayLike
     ) -> npt.NDArray[np.float64]:
-        return self.__callConversionFunc(
-            frame_id, voltages, self.dll.tims_voltage_to_scannum
-        )
+        """Convert TIMS ramp voltage to (fractional) scan numbers."""
+        return self._tims_cal(frame_id).voltage_to_scan(voltages)
 
-    def readScansDllBuffer(
-        self, frame_id: int, scan_begin: int, scan_end: int
-    ) -> npt.NDArray[np.uint32]:
-        """Read a range of scans from a frame, returning the data in the low-level buffer format defined for
-        the 'tims_read_scans_v2' DLL function (see documentation in 'timsdata.h').
-
-        """
-
-        # buffer-growing loop
-        while True:
-            cnt = int(
-                self.initial_frame_buffer_size
-            )  # necessary cast to run with python 3.5
-            buf = np.empty(shape=cnt, dtype=np.uint32)
-            buf_len = 4 * cnt
-
-            required_len = self.dll.tims_read_scans_v2(
-                self.handle,
-                frame_id,
-                scan_begin,
-                scan_end,
-                buf.ctypes.data_as(POINTER(c_uint32)),
-                buf_len,
-            )
-            if required_len == 0:
-                _throwLastTimsDataError(self.dll)
-
-            if required_len > buf_len:
-                if required_len > 16777216:
-                    # arbitrary limit for now...
-                    raise RuntimeError(
-                        f"Frame {frame_id} (scans {scan_begin}..{scan_end}): decoded "
-                        f"buffer needs {required_len} bytes, exceeding the "
-                        "16777216-byte (16 MiB) safety cap. The frame may be corrupt; "
-                        "only raise this cap if a frame this large is genuinely expected."
-                    )
-                self.initial_frame_buffer_size = required_len / 4 + 1  # grow buffer
-            else:
-                break
-
-        return buf
+    # -- spectral data ----------------------------------------------------
 
     def readScans(
         self, frame_id: int, scan_begin: int, scan_end: int
     ) -> list[tuple[npt.NDArray[np.uint32], npt.NDArray[np.uint32]]]:
-        """Read a range of scans from a frame, returning a list of scans, each scan being represented as a
-        tuple (index_array, intensity_array).
+        """Read scans ``[scan_begin, scan_end)`` of a frame.
 
+        Returns one ``(tof_indices, intensities)`` pair per scan. Intensities are
+        normalised to a 100 ms accumulation window, matching Bruker.
         """
+        fh = self._require_open()
+        offset, num_scans, accum_time, *_ = self._frame(frame_id)
 
-        buf = self.readScansDllBuffer(frame_id, scan_begin, scan_end)
+        fh.seek(offset)
+        header = fh.read(8)
+        if len(header) < 8:
+            raise UnsupportedTdfError(
+                f"Frame {frame_id}: truncated header at offset {offset}."
+            )
+        byte_count, scan_count = np.frombuffer(header, dtype="<u4")
+        payload = fh.read(int(byte_count) - 8)
 
-        result: list[tuple[npt.NDArray[np.uint32], npt.NDArray[np.uint32]]] = []
-        d = scan_end - scan_begin
+        if not payload:
+            return [(_EMPTY_U32, _EMPTY_U32) for _ in range(scan_begin, scan_end)]
+
+        starts, counts, tof, raw_intensity = _decode_frame(payload, int(scan_count))
+
+        # Bruker normalises raw digitiser sums to a 100 ms accumulation window.
+        if accum_time > 0:
+            intensity = np.floor(raw_intensity * (100.0 / accum_time) + 0.5).astype(
+                np.uint32
+            )
+        else:
+            logger.warning(
+                "readScans: frame %d has AccumulationTime=0; "
+                "returning un-normalised intensities.",
+                frame_id,
+            )
+            intensity = raw_intensity.astype(np.uint32)
+
+        result = []
         for i in range(scan_begin, scan_end):
-            npeaks = buf[i - scan_begin]
-            indices = buf[d : d + npeaks]
-            d += npeaks
-            intensities = buf[d : d + npeaks]
-            d += npeaks
-            result.append((indices, intensities))
-
+            if i < 0 or i >= int(scan_count):
+                result.append((_EMPTY_U32, _EMPTY_U32))
+                continue
+            start = int(starts[i])
+            stop = start + int(counts[i])
+            result.append((tof[start:stop], intensity[start:stop]))
         return result
 
-    # read some peak-picked MS/MS spectra for a given list of precursors; returns a dict mapping
-    # 'precursor_id' to a pair of arrays (mz_values, area_values).
+    # -- native peak picker ----------------------------------------------
+
+    def _native(self) -> int:
+        """Lazily open Bruker's native handle, used only by the peak picker."""
+        if dll is None:
+            raise ImportError(
+                f"Bruker's native library could not be loaded: {_dll_load_error}"
+            ) from _dll_load_error
+        if self._native_handle is None:
+            handle = dll.tims_open_v2(self.analysis_directory.encode("utf-8"), 0, 0)
+            if handle == 0:
+                _throw_last_native_error(dll)
+            self._native_handle = handle
+        return self._native_handle
+
     def readPasefMsMs(self, precursor_list: list[int]) -> dict[int, tuple[Any, Any]]:
-        precursors_for_dll = np.array(precursor_list, dtype=np.int64)
-
+        """Bruker-centroided PASEF MS/MS spectra, keyed by precursor ID."""
+        handle = self._native()
+        precursors = np.array(precursor_list, dtype=np.int64)
         result: dict[int, tuple[Any, Any]] = {}
 
         @MSMS_SPECTRUM_FUNCTOR
-        def callback_for_dll(
-            precursor_id: int, num_peaks: int, mz_values: Any, area_values: Any
-        ) -> None:
-            result[precursor_id] = (mz_values[0:num_peaks], area_values[0:num_peaks])
+        def callback(precursor_id: int, num_peaks: int, mzs: Any, areas: Any) -> None:
+            result[precursor_id] = (mzs[0:num_peaks], areas[0:num_peaks])
 
-        rc = self.dll.tims_read_pasef_msms(
-            self.handle,
-            precursors_for_dll.ctypes.data_as(POINTER(c_int64)),
+        rc = dll.tims_read_pasef_msms(  # type: ignore[union-attr]
+            handle,
+            precursors.ctypes.data_as(POINTER(c_int64)),
             len(precursor_list),
-            callback_for_dll,
+            callback,
         )
-
         if rc == 0:
-            _throwLastTimsDataError(self.dll)
-
+            _throw_last_native_error(dll)  # type: ignore[arg-type]
         return result
 
-    # read peak-picked MS/MS spectra for a given frame; returns a dict mapping
-    # 'precursor_id' to a pair of arrays (mz_values, area_values).
-    def readPasefMsMsForFrame(self, frame_id: int) -> dict[int, tuple[Any, Any]]:
-        result: dict[int, tuple[Any, Any]] = {}
-
-        @MSMS_SPECTRUM_FUNCTOR
-        def callback_for_dll(
-            precursor_id: int, num_peaks: int, mz_values: Any, area_values: Any
-        ) -> None:
-            result[precursor_id] = (mz_values[0:num_peaks], area_values[0:num_peaks])
-
-        rc = self.dll.tims_read_pasef_msms_for_frame(
-            self.handle, frame_id, callback_for_dll
-        )
-
-        if rc == 0:
-            _throwLastTimsDataError(self.dll)
-
-        return result
-
-    # read some "quasi profile" MS/MS spectra for a given list of precursors; returns a dict mapping
-    # 'precursor_id' to the profile arrays (intensity_values).
-    def readPasefProfileMsMs(self, precursor_list: list[int]) -> dict[int, Any]:
-        precursors_for_dll = np.array(precursor_list, dtype=np.int64)
-
-        result: dict[int, Any] = {}
-
-        @MSMS_PROFILE_SPECTRUM_FUNCTOR
-        def callback_for_dll(
-            precursor_id: int, num_points: int, intensity_values: Any
-        ) -> None:
-            result[precursor_id] = intensity_values[0:num_points]
-
-        rc = self.dll.tims_read_pasef_profile_msms(
-            self.handle,
-            precursors_for_dll.ctypes.data_as(POINTER(c_int64)),
-            len(precursor_list),
-            callback_for_dll,
-        )
-
-        if rc == 0:
-            _throwLastTimsDataError(self.dll)
-
-        return result
-
-    # read "quasi profile" MS/MS spectra for a given frame; returns a dict mapping
-    # 'precursor_id' to the profile arrays (intensity_values).
-    def readPasefProfileMsMsForFrame(self, frame_id: int) -> dict[int, Any]:
-        result: dict[int, Any] = {}
-
-        @MSMS_PROFILE_SPECTRUM_FUNCTOR
-        def callback_for_dll(
-            precursor_id: int, num_points: int, intensity_values: Any
-        ) -> None:
-            result[precursor_id] = intensity_values[0:num_points]
-
-        rc = self.dll.tims_read_pasef_profile_msms_for_frame(
-            self.handle, frame_id, callback_for_dll
-        )
-
-        if rc == 0:
-            _throwLastTimsDataError(self.dll)
-
-        return result
-
-    # read peak-picked spectra for a tims frame;
-    # returns a pair of arrays (mz_values, area_values).
     def extractCentroidedSpectrumForFrame(
-        self,
-        frame_id: int,
-        scan_begin: int,
-        scan_end: int,
-        peak_picker_resolution: float | None = None,
+        self, frame_id: int, scan_begin: int, scan_end: int
     ) -> tuple[Any, Any] | None:
+        """Bruker-centroided spectrum for a frame's scan range."""
+        handle = self._native()
         result: tuple[Any, Any] | None = None
 
         @MSMS_SPECTRUM_FUNCTOR
-        def callback_for_dll(
-            precursor_id: int, num_peaks: int, mz_values: Any, area_values: Any
-        ) -> None:
+        def callback(_id: int, num_peaks: int, mzs: Any, areas: Any) -> None:
             nonlocal result
-            result = (mz_values[0:num_peaks], area_values[0:num_peaks])
+            result = (mzs[0:num_peaks], areas[0:num_peaks])
 
-        if peak_picker_resolution is None:
-            rc = self.dll.tims_extract_centroided_spectrum_for_frame_v2(
-                self.handle, frame_id, scan_begin, scan_end, callback_for_dll, None
-            )  # python dos not need the additional context, we have nonlocal
-        else:
-            rc = self.dll.tims_extract_centroided_spectrum_for_frame_ext(
-                self.handle,
-                frame_id,
-                scan_begin,
-                scan_end,
-                peak_picker_resolution,
-                callback_for_dll,
-                None,
-            )  # python dos not need the additional context, we have nonlocal
-
-        if rc == 0:
-            _throwLastTimsDataError(self.dll)
-
-        return result
-
-    # read "quasi profile" spectra for a tims frame;
-    # returns the profile array (intensity_values).
-    def extractProfileForFrame(
-        self, frame_id: int, scan_begin: int, scan_end: int
-    ) -> Any | None:
-        result: Any | None = None
-
-        @MSMS_PROFILE_SPECTRUM_FUNCTOR
-        def callback_for_dll(
-            precursor_id: int, num_points: int, intensity_values: Any
-        ) -> None:
-            nonlocal result
-            result = intensity_values[0:num_points]
-
-        rc = self.dll.tims_extract_profile_for_frame(
-            self.handle, frame_id, scan_begin, scan_end, callback_for_dll, None
-        )  # python dos not need the additional context, we have nonlocal
-
-        if rc == 0:
-            _throwLastTimsDataError(self.dll)
-
-        return result
-
-    def extractChromatograms(
-        self,
-        jobs: Iterator[ChromatogramJob],
-        trace_sink: Callable[
-            [int, npt.NDArray[np.int64], npt.NDArray[np.uint64]], None
-        ],
-    ) -> None:
-        """Efficiently extract several MS1-only extracted-ion chromatograms.
-
-        The argument 'jobs' defines which chromatograms are to be extracted; it must be an iterator
-        (generator) object producing a stream of ChromatogramJob objects. The jobs must be produced
-        in the order of ascending 'time_begin'.
-
-        The function 'trace_sink' is called for each extracted trace with three arguments: job ID,
-        numpy array of frame IDs ("x-axis"), numpy array of chromatogram values ("y-axis").
-
-        For more information, see the documentation of the C-language API of the timsdata DLL.
-
-        """
-
-        # Exceptions raised inside the user-supplied generator/sink cannot
-        # propagate through the native ctypes callback boundary. We capture them
-        # here and re-raise after the native call so the real cause is surfaced
-        # to the caller instead of being masked by a generic Bruker error.
-        captured: list[tuple[str, BaseException]] = []
-
-        @CHROMATOGRAM_JOB_GENERATOR
-        def wrap_gen(job: Any, user_data: Any) -> int:
-            try:
-                job[0] = next(jobs)
-                return 1
-            except StopIteration:
-                return 2
-            except Exception as e:  # noqa: BLE001 - re-raised after native call
-                logger.error(
-                    "extractChromatograms: job generator raised %s: %s",
-                    type(e).__name__,
-                    e,
-                )
-                captured.append(("job generator", e))
-                return 0
-
-        @CHROMATOGRAM_TRACE_SINK
-        def wrap_sink(
-            job_id: int, num_points: int, frame_ids: Any, values: Any, user_data: Any
-        ) -> int:
-            try:
-                trace_sink(
-                    job_id,
-                    np.array(frame_ids[0:num_points], dtype=np.int64),
-                    np.array(values[0:num_points], dtype=np.uint64),
-                )
-                return 1
-            except Exception as e:  # noqa: BLE001 - re-raised after native call
-                logger.error(
-                    "extractChromatograms: trace_sink raised %s: %s",
-                    type(e).__name__,
-                    e,
-                )
-                captured.append(("trace_sink", e))
-                return 0
-
-        unused_user_data = 0
-        rc = self.dll.tims_extract_chromatograms(
-            self.handle, wrap_gen, wrap_sink, unused_user_data
+        rc = dll.tims_extract_centroided_spectrum_for_frame_v2(  # type: ignore[union-attr]
+            handle, frame_id, scan_begin, scan_end, callback, None
         )
-
-        if captured:
-            where, exc = captured[0]
-            raise RuntimeError(
-                f"extractChromatograms aborted: the user-supplied {where} raised "
-                f"{type(exc).__name__}. See the chained exception for the cause."
-            ) from exc
         if rc == 0:
-            _throwLastTimsDataError(self.dll)
+            _throw_last_native_error(dll)  # type: ignore[arg-type]
+        return result
+
+
+@contextmanager
+def timsdata_connect(analysis_dir: str | os.PathLike[str]) -> Iterator[TimsData]:
+    """Open a :class:`TimsData` and close it on exit."""
+    td: TimsData | None = None
+    try:
+        td = TimsData(str(analysis_dir))
+        yield td
+    finally:
+        if td:
+            td.close()
+
+
+def oneOverK0ToCCSforMz(ook0: float, charge: int, mz: float) -> float:
+    """Convert 1/K0 to CCS for a given charge and m/z."""
+    return one_over_k0_to_ccs(ook0, charge, mz)
+
+
+def ccsToOneOverK0ToCCSforMz(ccs: float, charge: int, mz: float) -> float:
+    """Convert CCS to 1/K0 for a given charge and m/z."""
+    return ccs_to_one_over_k0(ccs, charge, mz)
+
+
+# Re-exported so callers can catch a single error type for unsupported files.
+UnsupportedTdfError.__module__ = __name__
+_ = UnsupportedCalibrationError  # re-exported via tdfpy.calibration

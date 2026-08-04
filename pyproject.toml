@@ -12,6 +12,11 @@ authors = [
 dependencies = [
     "numpy>=2.0",
     "pandas>=2.0",
+    # Frames in analysis.tdf_bin are zstd-compressed. Python 3.14 ships zstd in
+    # the standard library (PEP 784), so the wheel only needs this on older
+    # interpreters. A 3.14 build made without libzstd will raise an ImportError
+    # naming this package.
+    "zstandard>=0.22; python_version < '3.14'",
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
