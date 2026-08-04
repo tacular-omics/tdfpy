@@ -7,6 +7,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-08-04
+
+Bruker's `libtimsdata` is gone. tdfpy now reads `analysis.tdf_bin` itself, which
+removes 16 MB of proprietary binaries from the wheel, drops the redistribution
+question, and lifts the Linux/Windows-x86-64 restriction — macOS and ARM work.
+
+### Removed
+
+- **`libtimsdata.so` / `timsdata.dll` are no longer bundled or required.** All
+  ctypes is gone. CI now fails if a wheel contains any native binary.
+- **Native entry points with no callers**: `extractProfileForFrame`,
+  `extractChromatograms`, `readPasefProfileMsMs`,
+  `readPasefProfileMsMsForFrame`, `readPasefMsMsForFrame`, and
+  `readScansDllBuffer`. `readPasefMsMs` and
+  `extractCentroidedSpectrumForFrame` are also gone; see *Changed*.
+- **`TimsData.dll` and `TimsData.initial_frame_buffer_size`** attributes.
+
+### Changed
+
+- **BREAKING — `Precursor.peaks` and `PasefFrameMsmsInfo.peaks` no longer call
+  Bruker's peak picker.** They sum intensities per TOF index over the relevant
+  scan ranges (collapsing ion mobility) and centroid with `merge_peaks` at
+  30 ppm. Bruker's algorithm is proprietary and appears to smooth before
+  picking, so peak lists differ slightly. Measured per item over 10 precursors
+  and 12 DIA windows: strong peaks agree to 0.0–1.9 ppm, total ion current to
+  within 4%, 92.8–100% of Bruker's intensity falls within 10 ppm of one of our
+  centroids, and peak counts run 0.95–1.09×. `tests/test_peaks_divergence.py`
+  enforces those bounds.
+- **`TimsData.handle`** is now the open `analysis.tdf_bin` file object rather
+  than a native handle. It is still `None` after `close()`, which is all any
+  caller checked.
+- Wheel gains a `zstandard` dependency on Python < 3.14; 3.14+ uses the
+  standard library's `compression.zstd`.
+
+### Added
+
+- **`tdfpy.calibration`** — the TOF-index↔m/z and scan↔1/K0 models, as pure
+  functions over the `MzCalibration` / `TimsCalibration` tables. Reproduces
+  Bruker to ~1e-10 relative for m/z and ~1e-15 for mobility. Note that no other
+  open-source reader uses these tables; they approximate from `GlobalMetadata`
+  instead, which is off by 6.35 Th (5.4%) on the bundled DDA fixture.
+- **`get_mobility_collapsed_spectrum`** — the mobility-collapse + greedy-merge
+  helper backing the two `.peaks` properties.
+- **`UnsupportedTdfError` / `UnsupportedCalibrationError`.** Formats that have
+  not been validated against Bruker's library now raise instead of returning
+  plausible-looking numbers: legacy `TimsCompressionType` 1 (per-scan LZF),
+  unknown calibration `ModelType`s, `use_recalibrated_state=True`, and any
+  pressure-compensation strategy other than `NoPressureCompensation`.
+- **Golden regression tests.** `tests/data/calibration_golden.json` pins the
+  conversions at 0.01 ppm across 21 frames spanning both PRM calibration rows,
+  the temperature extremes driving `dC1`/`dC2`, and every `MsMsType`. Frame
+  decoding is separately verified bit-exact against `tims_read_scans_v2` over
+  all 1710 frames and 29,399,513 peaks of the three fixtures. Previously a
+  deliberately injected 1e-3 relative m/z error passed the entire suite.
+
 ## [2.2.0] - 2026-07-07
 
 ### Added

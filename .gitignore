@@ -5,9 +5,7 @@ __pycache__/
 
 # C extensions
 *.so
-!src/tdfpy/libtimsdata.so
 *.dll
-!src/tdfpy/timsdata.dll
 
 try.py
 try_slice.py

@@ -34,7 +34,7 @@ jobs:
     - name: Install dependencies
       run: just install
 
-    - name: Build wheel and verify native libraries
+    - name: Build wheel and verify it ships no native libraries
       run: |
         pip install build
         python -m build --wheel --outdir /tmp/verify-dist
@@ -44,12 +44,16 @@ jobs:
         assert wheels, 'No wheel found'
         with zipfile.ZipFile(wheels[0]) as zf:
             names = zf.namelist()
-        missing = [f for f in ('libtimsdata.so', 'timsdata.dll') if not any(f in n for n in names)]
-        if missing:
-            print('FAIL: missing from wheel:', missing)
-            print('Wheel contents:', names)
+        # tdfpy reads .tdf_bin directly; shipping a Bruker blob again would
+        # reintroduce the redistribution question and the platform lock-in.
+        bad = [n for n in names if n.endswith(('.so', '.dll', '.dylib', '.pyd'))]
+        if bad:
+            print('FAIL: wheel contains native binaries:', bad)
             sys.exit(1)
-        print('OK: wheel contains libtimsdata.so and timsdata.dll')
+        if not wheels[0].name.endswith('-py3-none-any.whl'):
+            print('FAIL: expected a pure-Python wheel, got', wheels[0].name)
+            sys.exit(1)
+        print('OK: pure-Python wheel, no native binaries')
         "
 
     - name: Lint with ruff

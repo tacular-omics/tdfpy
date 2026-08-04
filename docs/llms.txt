@@ -2,7 +2,7 @@
 
 > A Python package for parsing and centroiding Bruker timsTOF mass spectrometry data (`.tdf` / `.tdf_bin`). Provides a high-level API for DDA, DIA, and PRM acquisition modes (PASEF / diaPASEF), a composable peak-processing pipeline, and two Numba-accelerated centroiders that treat ion mobility as a first-class clustering dimension.
 
-tdfpy wraps Bruker's native `libtimsdata` C library via `ctypes` and exposes acquisition-mode-aware reader classes (`DDA`, `DIA`, `PRM`) that yield frames, precursors, isolation windows, and PRM transitions as typed Python dataclasses. Every centroiding entry point orchestrates the same composable pipeline (`read_spectrum → exclude_region → apply_noise → centroider`); power users can compose the underlying ops directly. Peaks are returned as `(N, 3)` NumPy arrays of `[m/z, intensity, ion_mobility]`. Install with `pip install tdfpy`; requires Python 3.12+.
+tdfpy decodes `analysis.tdf_bin` directly in Python/NumPy -- no Bruker native library, no platform restriction -- and exposes acquisition-mode-aware reader classes (`DDA`, `DIA`, `PRM`) that yield frames, precursors, isolation windows, and PRM transitions as typed Python dataclasses. Every centroiding entry point orchestrates the same composable pipeline (`read_spectrum → exclude_region → apply_noise → centroider`); power users can compose the underlying ops directly. Peaks are returned as `(N, 3)` NumPy arrays of `[m/z, intensity, ion_mobility]`. Install with `pip install tdfpy`; requires Python 3.12+.
 
 ## Documentation
 

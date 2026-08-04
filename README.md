@@ -30,7 +30,10 @@ tdfpy provides a high-level Python API for reading Bruker timsTOF `.d` folders. 
 pip install tdfpy
 ```
 
-Requires Python 3.12+. The Bruker `libtimsdata` native library is bundled in the wheel (Linux).
+Requires Python 3.12+. Pure Python — `analysis.tdf_bin` is decoded directly, so there is no Bruker
+native library and no platform restriction (Linux, macOS and Windows, x86-64 and ARM). On Python
+3.12/3.13 the `zstandard` package is installed automatically; Python 3.14+ uses the standard
+library's zstd module.
 
 ## Quick Start
 

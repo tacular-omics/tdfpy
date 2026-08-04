@@ -4,7 +4,7 @@ applyTo: "**"
 
 # TDFpy - Bruker timsTOF Data Parser
 
-TDFpy provides low-level and high-level APIs for reading Bruker `.tdf` and `.tdf_bin` files from timsTOF mass spectrometry instruments. The package bridges native C/C++ DLLs with Python for efficient data access. 
+TDFpy provides low-level and high-level APIs for reading Bruker `.tdf` and `.tdf_bin` files from timsTOF mass spectrometry instruments. It decodes the binary format directly in Python/NumPy, with no native library. 
 
 
 ## Updating README / Documentation / Changelog
@@ -14,12 +14,13 @@ When updating these files use neutral language. Avoid over the top adjectives, s
 ## Architecture Overview
 
 ### Three-Layer API Design
-1. **Native DLL Layer** (`timsdata.dll` / `libtimsdata.so`): Bruker's proprietary binary reader
-2. **Low-Level Python Wrapper** (`timsdata.py`): Direct ctypes bindings to DLL functions
-3. **High-Level Pythonic API** (`spectra.py`): NamedTuple-based interface for MS1 spectra with peak merging
+1. **Binary Layer** (`timsdata.py`): decodes `analysis.tdf_bin` frames (zstd + byte-plane de-interleave)
+2. **Calibration Layer** (`calibration.py`): TOF index <-> m/z and scan <-> 1/K0 models from the SQLite tables
+3. **High-Level Pythonic API** (`reader.py` / `elems.py`): acquisition-mode readers and frame elements
 
 Key files:
-- `src/tdfpy/timsdata.py`: ctypes wrapper around Bruker's native library
+- `src/tdfpy/timsdata.py`: pure-Python reader for `.d` folders
+- `src/tdfpy/calibration.py`: calibration models (no I/O)
 - `src/tdfpy/pandas_tdf.py`: DataFrame interface to SQLite metadata tables
 - `src/tdfpy/spectra.py`: High-level MS1 spectrum extraction with centroiding
 - `src/tdfpy/constants.py`: Database table names and physical constants
@@ -81,15 +82,17 @@ with timsdata_connect('path/to/data.d') as td:
     # td.conn and td.handle auto-closed on exit
 ```
 
-### Platform-Specific DLL Loading
-The package dynamically loads platform-specific libraries (Windows DLL vs Linux SO). See `timsdata.py` lines 18-56 for the platform detection logic.
+### Platform Support
+Pure Python, so every platform is supported. Formats that have not been validated against Bruker's
+library (legacy `TimsCompressionType` 1, unknown calibration `ModelType`s, pressure compensation)
+raise rather than returning wrong numbers.
 
 ## Data Flow
 
 1. **Bruker .d folder structure**:
    - `analysis.tdf`: SQLite database with metadata (frames, precursors, calibration)
    - `analysis.tdf_bin`: Binary blob with raw intensity/index arrays
-   - DLL reads binary data via memory-mapped file handles
+   - frames are read from `analysis.tdf_bin` at the byte offset in `Frames.TimsId`
 
 2. **Low-level access** (`TimsData`):
    - `readScans()`: Returns raw (index, intensity) arrays per scan
@@ -138,7 +141,7 @@ SELECT Id FROM Frames WHERE MsMsType != 0 -- MS2/PASEF frames
 - **NumPy**: All array operations, required for performance
 - **Pandas**: DataFrame interface to SQLite tables (`PandasTdf` class)
 - **SQLite3**: Standard library, reads `analysis.tdf` metadata
-- **Bruker DLL**: Proprietary binary (`timsdata.dll` / `libtimsdata.so`) - included in package
+- **zstd**: `zstandard` on Python < 3.14, otherwise the stdlib `compression.zstd` module
 
 ## Version & Release
 

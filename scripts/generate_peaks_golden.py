@@ -6,8 +6,10 @@ picking, so tdfpy's mobility-collapse-and-merge produces a slightly different
 peak list. The reference lists exist so that divergence stays measured and
 bounded rather than drifting silently.
 
-Run this only while ``libtimsdata.so`` / ``timsdata.dll`` is still present; the
-committed JSON is the durable artifact.
+Bruker's library is no longer vendored here, so this needs ``libtimsdata.so``
+from the Bruker timsTOF SDK copied into ``src/tdfpy/``. The committed JSON is
+the durable artifact; regenerate it only to extend coverage, never to make a
+failing test pass.
 
     uv run python scripts/generate_peaks_golden.py
 """

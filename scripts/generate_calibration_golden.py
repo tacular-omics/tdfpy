@@ -1,9 +1,13 @@
 """Capture calibration reference values from Bruker's native ``timsdata`` library.
 
-The output (``tests/data/calibration_golden.json``) pins the index/mz, scan/mobility,
-scan/voltage and CCS conversions so they can be regression-tested *after* the native
-library is removed. Run this only while ``libtimsdata.so`` / ``timsdata.dll`` is still
-present; the committed JSON is the durable artifact.
+The output (``tests/data/calibration_golden.json``) pins the index/mz,
+scan/mobility, scan/voltage and CCS conversions so they can be regression-tested
+without the native library.
+
+Bruker's library is no longer vendored here, so this needs ``libtimsdata.so``
+from the Bruker timsTOF SDK copied into ``src/tdfpy/``. The committed JSON is
+the durable artifact; regenerate it only to extend coverage, never to make a
+failing test pass.
 
     uv run python scripts/generate_calibration_golden.py
 """

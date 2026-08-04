@@ -4,6 +4,7 @@ Package for working with TDF (Bruker Data File) data.
 
 from .centroiding import (
     get_centroided_spectrum,
+    get_mobility_collapsed_spectrum,
     get_raw_peaks,
     merge_peaks,
 )
@@ -68,16 +69,19 @@ from .reader import (
 from .regions import ChargeStateRegion
 from .slicer import slice_d_folder
 from .tdf import PandasTdf
-from .timsdata import TimsData, timsdata_connect
+from .calibration import UnsupportedCalibrationError
+from .timsdata import TimsData, UnsupportedTdfError, timsdata_connect
 from .viz import plot_centroiding
 
-__version__ = "2.2.0"
+__version__ = "3.0.0"
 
 __all__ = [
     # I/O
     "PandasTdf",
     "TimsData",
     "timsdata_connect",
+    "UnsupportedTdfError",
+    "UnsupportedCalibrationError",
     "DDA",
     "DIA",
     "PRM",
@@ -104,6 +108,7 @@ __all__ = [
     # Convenience peak extraction
     "get_raw_peaks",
     "get_centroided_spectrum",
+    "get_mobility_collapsed_spectrum",
     "merge_peaks",
     # Pipeline ops (power-user composable API)
     "RawSpectrum",
