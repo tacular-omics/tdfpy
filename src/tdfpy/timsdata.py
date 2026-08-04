@@ -152,9 +152,9 @@ def _decode_frame(
         )
     # Byte-plane de-interleaving: the payload stores an (N, 4) u32 byte matrix
     # column-major, so transposing the (4, N) view restores little-endian words.
-    words = np.frombuffer(
-        np.ascontiguousarray(raw.reshape(4, -1).T).tobytes(), dtype="<u4"
-    )
+    # .copy().view() reinterprets the one materialised buffer in place; going via
+    # ascontiguousarray().tobytes() would copy it twice.
+    words = raw.reshape(4, -1).T.copy().view("<u4").ravel()
 
     total_peaks = (words.size - scan_count) // 2
     counts = np.empty(scan_count, dtype=np.int64)
@@ -373,16 +373,21 @@ class TimsData:
 
     # -- spectral data ----------------------------------------------------
 
-    def readScans(
-        self, frame_id: int, scan_begin: int, scan_end: int
-    ) -> list[tuple[npt.NDArray[np.uint32], npt.NDArray[np.uint32]]]:
-        """Read scans ``[scan_begin, scan_end)`` of a frame.
-
-        Returns one ``(tof_indices, intensities)`` pair per scan. Intensities are
-        normalised to a 100 ms accumulation window, matching Bruker.
-        """
+    def _decode(
+        self, frame_id: int
+    ) -> (
+        tuple[
+            int,
+            npt.NDArray[np.int64],
+            npt.NDArray[np.int64],
+            npt.NDArray[np.uint32],
+            npt.NDArray[np.uint32],
+        ]
+        | None
+    ):
+        """Read and decode a whole frame, or ``None`` if it holds no data."""
         fh = self._require_open()
-        offset, num_scans, accum_time, *_ = self._frame(frame_id)
+        offset, _num_scans, accum_time, *_ = self._frame(frame_id)
 
         fh.seek(offset)
         header = fh.read(8)
@@ -392,9 +397,8 @@ class TimsData:
             )
         byte_count, scan_count = np.frombuffer(header, dtype="<u4")
         payload = fh.read(int(byte_count) - 8)
-
         if not payload:
-            return [(_EMPTY_U32, _EMPTY_U32) for _ in range(scan_begin, scan_end)]
+            return None
 
         starts, counts, tof, raw_intensity = _decode_frame(payload, int(scan_count))
 
@@ -405,15 +409,68 @@ class TimsData:
             )
         else:
             logger.warning(
-                "readScans: frame %d has AccumulationTime=0; "
-                "returning un-normalised intensities.",
+                "Frame %d has AccumulationTime=0; returning un-normalised intensities.",
                 frame_id,
             )
             intensity = raw_intensity.astype(np.uint32)
 
+        return int(scan_count), starts, counts, tof, intensity
+
+    def read_frame_arrays(
+        self, frame_id: int, scan_begin: int = 0, scan_end: int | None = None
+    ) -> tuple[npt.NDArray[np.int64], npt.NDArray[np.uint32], npt.NDArray[np.uint32]]:
+        """Read scans ``[scan_begin, scan_end)`` as three flat, parallel arrays.
+
+        Returns ``(scan_indices, tof_indices, intensities)``, one entry per peak.
+        This is the cheap path: peaks for a contiguous scan range are already
+        contiguous in the decoded frame, so it slices rather than splitting the
+        frame into per-scan arrays the way :meth:`readScans` must.
+
+        Prefer this whenever you were going to concatenate ``readScans`` output
+        back together.
+        """
+        decoded = self._decode(frame_id)
+        if decoded is None:
+            return (
+                np.zeros(0, dtype=np.int64),
+                _EMPTY_U32,
+                _EMPTY_U32,
+            )
+        scan_count, starts, counts, tof, intensity = decoded
+
+        if scan_end is None:
+            scan_end = scan_count
+        begin = max(0, min(int(scan_begin), scan_count))
+        end = max(begin, min(int(scan_end), scan_count))
+        if begin == end:
+            return np.zeros(0, dtype=np.int64), _EMPTY_U32, _EMPTY_U32
+
+        lo = int(starts[begin])
+        hi = int(starts[end - 1] + counts[end - 1])
+        scan_indices = np.repeat(
+            np.arange(begin, end, dtype=np.int64), counts[begin:end]
+        )
+        return scan_indices, tof[lo:hi], intensity[lo:hi]
+
+    def readScans(
+        self, frame_id: int, scan_begin: int, scan_end: int
+    ) -> list[tuple[npt.NDArray[np.uint32], npt.NDArray[np.uint32]]]:
+        """Read scans ``[scan_begin, scan_end)`` of a frame.
+
+        Returns one ``(tof_indices, intensities)`` pair per scan. Intensities are
+        normalised to a 100 ms accumulation window, matching Bruker.
+
+        See :meth:`read_frame_arrays` for a flat-array alternative that avoids
+        materialising one array pair per scan.
+        """
+        decoded = self._decode(frame_id)
+        if decoded is None:
+            return [(_EMPTY_U32, _EMPTY_U32) for _ in range(scan_begin, scan_end)]
+        scan_count, starts, counts, tof, intensity = decoded
+
         result = []
         for i in range(scan_begin, scan_end):
-            if i < 0 or i >= int(scan_count):
+            if i < 0 or i >= scan_count:
                 result.append((_EMPTY_U32, _EMPTY_U32))
                 continue
             start = int(starts[i])

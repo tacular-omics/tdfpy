@@ -112,11 +112,10 @@ def read_spectrum(td: TimsData, frame_id: int) -> RawSpectrum:
         )
         return RawSpectrum.empty_like(0)
 
-    scans = td.readScans(frame_id, 0, num_scans)
-    scan_lengths = np.fromiter(
-        (len(idx) for idx, _ in scans), dtype=np.int64, count=num_scans
+    scan_indices, mz_indices_u32, intensities_u32 = td.read_frame_arrays(
+        frame_id, 0, num_scans
     )
-    total_peaks = int(scan_lengths.sum())
+    total_peaks = int(scan_indices.size)
     if total_peaks == 0:
         logger.info(
             "read_spectrum: frame %d has %d scans but 0 peaks (empty frame).",
@@ -131,15 +130,10 @@ def read_spectrum(td: TimsData, frame_id: int) -> RawSpectrum:
         num_scans,
     )
 
-    scan_indices = np.repeat(np.arange(num_scans, dtype=np.int64), scan_lengths)
-    mz_indices = np.concatenate([idx for idx, _ in scans]).astype(np.int64, copy=False)
-    intensities = np.concatenate(
-        [intens for _, intens in scans]
-    ).astype(np.float64, copy=False)
     return RawSpectrum(
         scan_indices=scan_indices,
-        mz_indices=mz_indices,
-        intensities=intensities,
+        mz_indices=mz_indices_u32.astype(np.int64, copy=False),
+        intensities=intensities_u32.astype(np.float64, copy=False),
         num_scans=num_scans,
     )
 

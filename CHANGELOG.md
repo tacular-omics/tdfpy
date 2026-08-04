@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`TimsData.read_frame_arrays`** — reads a scan range as three flat parallel
+  arrays (`scan_indices`, `tof_indices`, `intensities`) instead of one array
+  pair per scan. Peaks for a contiguous scan range are already contiguous in the
+  decoded frame, so this slices where `readScans` has to split. Prefer it
+  wherever you would have concatenated `readScans` output back together.
+
+### Performance
+
+- **`read_spectrum` is up to 2x faster** — it no longer splits a frame into
+  per-scan arrays only to immediately concatenate them back. The gain is largest
+  on sparse frames, where the per-scan overhead dominated: 200 mixed DDA frames
+  went from 340 ms to 168 ms, while 5 dense MS1 frames improved ~10%.
+- **`get_mobility_collapsed_spectrum` is 3.6x faster on a whole frame**
+  (74 ms → 21 ms for an MS1 frame) and ~1.3x on small PASEF ranges. The per-peak
+  Python dict rollup is now a vectorised aggregation that picks between
+  `bincount` and `unique` based on how the peak count compares to the TOF grid
+  width — the two run opposite ways, and picking wrongly costs ~10x either way.
+- **Frame decoding avoids one full copy** of every payload by viewing the
+  de-interleaved bytes as `uint32` rather than round-tripping through
+  `ascontiguousarray().tobytes()`.
+
+Frame decoding remains bit-exact against Bruker over all 1710 fixture frames and
+29,399,513 peaks.
+
 ## [3.0.0] - 2026-08-04
 
 Bruker's `libtimsdata` is gone. tdfpy now reads `analysis.tdf_bin` itself, which

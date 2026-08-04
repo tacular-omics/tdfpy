@@ -645,6 +645,32 @@ def get_centroided_spectrum(
     return centroids
 
 
+def _sum_by_tof_index(
+    tof_indices: np.ndarray, intensities: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    """Total the intensity landing on each distinct TOF index.
+
+    Returns ``(tof_indices, summed_intensities)`` sorted ascending by TOF index.
+
+    Two strategies, because their costs run opposite ways. ``bincount`` allocates
+    and scans the whole TOF grid — a few hundred thousand slots regardless of how
+    many peaks there are — so it is near-constant cost and wins on a dense frame.
+    ``unique`` sorts only the peaks, so it wins by an order of magnitude on a
+    narrow scan range that touches a few hundred of those slots. Picking wrongly
+    costs ~10x either way, so compare the two workloads directly: sorting is
+    ``n log n``, scanning the grid is its width, and log2(n) is ~16 at the sizes
+    where the two are close.
+    """
+    intensities = intensities.astype(np.float64, copy=False)
+    grid_width = int(tof_indices.max()) + 1
+    if tof_indices.size * 16 >= grid_width:
+        summed = np.bincount(tof_indices, weights=intensities)
+        keys = np.flatnonzero(summed)
+        return keys, summed[keys]
+    keys, inverse = np.unique(tof_indices, return_inverse=True)
+    return keys, np.bincount(inverse.ravel(), weights=intensities)
+
+
 #: Default m/z tolerance for :func:`get_mobility_collapsed_spectrum`, in ppm.
 #: Chosen by sweeping against Bruker's native peak picker on the bundled
 #: fixtures: it puts the peak count within ~4% of Bruker's while keeping 99% of
@@ -692,24 +718,22 @@ def get_mobility_collapsed_spectrum(
     # Sum intensities per TOF index across every scan of every range. TOF indices
     # are integers on a shared grid within a frame, so this is an exact rollup
     # with no binning error.
-    totals: dict[int, int] = {}
+    tof_chunks: list[np.ndarray] = []
+    intensity_chunks: list[np.ndarray] = []
     for frame_id, scan_begin, scan_end in scan_ranges:
-        for tof_indices, intensities in td.readScans(frame_id, scan_begin, scan_end):
-            for tof_index, intensity in zip(
-                tof_indices.tolist(), intensities.tolist(), strict=True
-            ):
-                totals[tof_index] = totals.get(tof_index, 0) + intensity
+        _, tof_indices, intensities = td.read_frame_arrays(
+            frame_id, scan_begin, scan_end
+        )
+        if tof_indices.size:
+            tof_chunks.append(tof_indices)
+            intensity_chunks.append(intensities)
 
-    if not totals:
+    if not tof_chunks:
         return np.empty((0, 2), dtype=np.float64)
 
-    tof_index_array = np.fromiter(totals.keys(), dtype=np.int64, count=len(totals))
-    intensity_array = np.fromiter(
-        totals.values(), dtype=np.float64, count=len(totals)
+    tof_index_array, intensity_array = _sum_by_tof_index(
+        np.concatenate(tof_chunks), np.concatenate(intensity_chunks)
     )
-    order = np.argsort(tof_index_array)
-    tof_index_array = tof_index_array[order]
-    intensity_array = intensity_array[order]
 
     # The TOF grid is per-frame; all ranges of one precursor share a calibration,
     # so converting with the first frame is exact.

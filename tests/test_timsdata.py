@@ -152,6 +152,51 @@ def test_partial_scan_range_matches_full_read() -> None:
             np.testing.assert_array_equal(inten, expected_int)
 
 
+@pytest.mark.parametrize(
+    "scan_range", [(0, None), (0, 1), (5, 50), (300, 671), (668, 671)]
+)
+def test_read_frame_arrays_matches_read_scans(
+    scan_range: tuple[int, int | None],
+) -> None:
+    """The flat path must be a faithful, cheaper view of ``readScans``.
+
+    ``read_frame_arrays`` slices the decoded frame instead of splitting it per
+    scan, so it is easy for the two to drift on scan-boundary arithmetic. They
+    have to agree peak-for-peak, including which scan each peak belongs to.
+    """
+    if not Path(TDF_PATH).is_dir():
+        pytest.skip("Test data not found")
+    begin, end = scan_range
+    with timsdata.timsdata_connect(TDF_PATH) as td:
+        assert td.conn is not None
+        for row in td.conn.execute(
+            "SELECT Id, NumScans FROM Frames ORDER BY Id LIMIT 20"
+        ).fetchall():
+            fid, num_scans = row["Id"], row["NumScans"]
+            stop = num_scans if end is None else end
+            scans = td.readScans(fid, begin, stop)
+            scan_indices, tof, intensity = td.read_frame_arrays(fid, begin, stop)
+
+            np.testing.assert_array_equal(
+                tof, np.concatenate([idx for idx, _ in scans])
+            )
+            np.testing.assert_array_equal(
+                intensity, np.concatenate([val for _, val in scans])
+            )
+            np.testing.assert_array_equal(
+                scan_indices,
+                np.repeat(np.arange(begin, stop), [len(idx) for idx, _ in scans]),
+            )
+
+
+def test_read_frame_arrays_clamps_out_of_range_scans() -> None:
+    if not Path(TDF_PATH).is_dir():
+        pytest.skip("Test data not found")
+    with timsdata.timsdata_connect(TDF_PATH) as td:
+        scan_indices, tof, intensity = td.read_frame_arrays(1, 10_000, 10_050)
+        assert scan_indices.size == tof.size == intensity.size == 0
+
+
 def test_use_after_close_raises() -> None:
     if not Path(TDF_PATH).is_dir():
         pytest.skip("Test data not found")
