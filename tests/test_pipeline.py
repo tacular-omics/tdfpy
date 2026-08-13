@@ -27,6 +27,40 @@ def _small_spectrum() -> RawSpectrum:
 
 
 # ---------------------------------------------------------------------------
+# RawSpectrum dunder plumbing
+# ---------------------------------------------------------------------------
+
+
+def test_raw_spectrum_equality_does_not_raise() -> None:
+    """Dataclass-generated ``__eq__`` compares the ndarray fields, which raises.
+
+    ``eq=False`` keeps identity semantics instead, so ``==`` is answerable for
+    any pair of spectra — including two that hold equal arrays.
+    """
+    a = _small_spectrum()
+    b = _small_spectrum()
+    assert (a == b) is False  # distinct objects, identity comparison
+    assert (a == a) is True
+    assert (a != b) is True
+
+
+def test_raw_spectrum_is_hashable() -> None:
+    """Hashing must work so a spectrum can go in a set or a dict key."""
+    a = _small_spectrum()
+    b = _small_spectrum()
+    assert isinstance(hash(a), int)
+    assert hash(a) == hash(a)
+    assert len({a, b, a}) == 2
+    assert {a: "first"}[a] == "first"
+
+
+def test_raw_spectrum_empty_and_derived_are_hashable() -> None:
+    empty = RawSpectrum.empty_like(5)
+    filtered = _small_spectrum().filter(np.array([True, False, True, False, True]))
+    hash((empty, filtered))
+
+
+# ---------------------------------------------------------------------------
 # subset_scans — pure Python
 # ---------------------------------------------------------------------------
 

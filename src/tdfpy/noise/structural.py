@@ -67,12 +67,22 @@ if _HAS_NUMBA:
     ):
         """Numba single-pass kernel over m/z-sorted points.
 
-        Mirrors :func:`_single_pass_filter_python` exactly. Uses a forward
+        Mirrors :func:`_single_pass_filter_python` bit-for-bit. Uses a forward
         two-pointer window over the sorted points (centres increase
-        monotonically, so the window bounds never move backward) and keeps an
-        incremental per-scan intensity ``profile`` updated as points enter and
-        leave the ``±mz_idx_half_width`` window. Returns ``(keep_sorted,
+        monotonically, so the window bounds never move backward), then rebuilds
+        the per-scan intensity ``profile`` from the points now inside the
+        ``±mz_idx_half_width`` window. Returns ``(keep_sorted,
         num_columns_with_kept_runs)``.
+
+        The profile is rebuilt rather than maintained incrementally
+        (add on entry, subtract on exit). Incremental updates are cheaper but
+        are only exact on integer intensities: on fractional ones — reachable
+        publicly via ``Smooth(mode="mean")`` ahead of this filter — the
+        subtraction leaves ~1e-13 residues that flip the ``p > 0.0`` occupancy
+        test against the Python reference's per-column ``bincount``. Rebuilding
+        costs ``O(window)`` per column, dominated by the ``O(num_scans)`` scan
+        walk below, and accumulates in the same order ``np.bincount`` does, so
+        both paths produce identical floats.
         """
         n = mz_sorted.size
         u = first_idx.size
@@ -88,12 +98,15 @@ if _HAS_NUMBA:
             center = mz_sorted[first_idx[k]]
             lo_val = center - mz_idx_half_width
             hi_val = center + mz_idx_half_width
+            # Zero only the bins the previous window touched, then refill.
+            for i in range(left, right):
+                profile[scan_sorted[i]] = 0.0
             while right < n and mz_sorted[right] <= hi_val:
-                profile[scan_sorted[right]] += int_sorted[right]
                 right += 1
             while left < n and mz_sorted[left] < lo_val:
-                profile[scan_sorted[left]] -= int_sorted[left]
                 left += 1
+            for i in range(left, right):
+                profile[scan_sorted[i]] += int_sorted[i]
 
             # Walk scans, collecting gap-closed occupied runs that clear the
             # span + intensity thresholds.
@@ -207,7 +220,15 @@ def _single_pass_filter_python(
             span = last_scan - first_scan + 1
             if span < min_streak_scans:
                 continue
-            total_intensity = float(profile[first_scan : last_scan + 1].sum())
+            # Accumulate in ascending scan order rather than via ``.sum()``:
+            # NumPy sums pairwise, which rounds differently from the Numba
+            # kernel's running total and would put the two paths a few ulp
+            # apart across the ``min_streak_intensity`` cut. Unoccupied scans
+            # inside the span contribute an exact 0.0, so skipping them is
+            # equivalent to summing the whole slice.
+            total_intensity = 0.0
+            for occupied_scan in occ_scans[run_start:run_end]:
+                total_intensity += float(profile[occupied_scan])
             if collect_span_intensities:
                 span_intensities.append(total_intensity)
             if total_intensity < float(min_streak_intensity):

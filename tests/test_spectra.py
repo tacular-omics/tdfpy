@@ -409,5 +409,115 @@ class TestSpectra(unittest.TestCase):
         np.testing.assert_allclose(py_peaks[order_py, 2], nb_peaks[order_nb, 2], rtol=1e-9)
 
 
+class TestWatershedCentroiderCall(unittest.TestCase):
+    """``WatershedCentroider.__call__`` against a real MS1 frame.
+
+    The kernel is covered synthetically in test_centroider.py; what only shows
+    up here is how ``__call__`` wires smoothing into the kernel.
+    """
+
+    @staticmethod
+    def _ms1_frame(td) -> int:
+        cursor = td.conn.cursor()
+        cursor.execute("SELECT Id FROM Frames WHERE MsMsType = 0 ORDER BY Id LIMIT 1")
+        return int(cursor.fetchone()[0])
+
+    def test_output_intensity_is_the_raw_sum_when_smoothing(self):
+        """Smoothing reorders the growth; it must not rewrite the intensities.
+
+        With the box-mean weights doubling as the summed output, a centroided
+        frame reported the smoothed total instead of the raw one — silently
+        rescaling everyone's intensities whenever the (default) smoothing
+        half-widths were nonzero.
+        """
+        from tdfpy.pipeline import WatershedCentroider, read_spectrum
+
+        with timsdata.timsdata_connect(TDF_PATH) as td:
+            frame_id = self._ms1_frame(td)
+            spectrum = read_spectrum(td, frame_id)
+            if spectrum.empty:
+                self.skipTest("First MS1 frame has no peaks")
+
+            centroider = WatershedCentroider(
+                smooth_scan_half_width=5, smooth_mz_idx_half_width=3
+            )
+            self.assertGreater(centroider.smooth_scan_half_width, 0)
+            centroids = centroider(spectrum, td, frame_id)
+
+        self.assertGreater(len(centroids), 0)
+        # Every raw point lands in exactly one group (both thresholds are 0),
+        # so the centroid intensities must total the raw input intensity.
+        self.assertAlmostEqual(
+            float(centroids[:, 1].sum()),
+            float(spectrum.intensities.sum()),
+            delta=1e-6 * float(spectrum.intensities.sum()),
+        )
+
+    def test_smoothing_changes_grouping_but_not_the_total(self):
+        """Smoothed and unsmoothed runs differ in grouping, agree on the sum."""
+        from tdfpy.pipeline import WatershedCentroider, read_spectrum
+
+        with timsdata.timsdata_connect(TDF_PATH) as td:
+            frame_id = self._ms1_frame(td)
+            spectrum = read_spectrum(td, frame_id)
+            if spectrum.empty:
+                self.skipTest("First MS1 frame has no peaks")
+            smoothed = WatershedCentroider()(spectrum, td, frame_id)
+            unsmoothed = WatershedCentroider(
+                smooth_scan_half_width=0, smooth_mz_idx_half_width=0
+            )(spectrum, td, frame_id)
+
+        raw_total = float(spectrum.intensities.sum())
+        self.assertNotEqual(len(smoothed), len(unsmoothed))
+        for out in (smoothed, unsmoothed):
+            self.assertAlmostEqual(
+                float(out[:, 1].sum()), raw_total, delta=1e-6 * raw_total
+            )
+
+    def test_single_nonzero_half_width_still_smooths(self):
+        """Skip smoothing only when *both* half-widths are 0.
+
+        The guard used ``and``, so a zero on either axis skipped smoothing
+        entirely — contradicting the documented "set both to 0 to skip" and
+        making one-axis smoothing silently unreachable.
+        """
+        from tdfpy.pipeline import WatershedCentroider, read_spectrum
+
+        with timsdata.timsdata_connect(TDF_PATH) as td:
+            frame_id = self._ms1_frame(td)
+            spectrum = read_spectrum(td, frame_id)
+            if spectrum.empty:
+                self.skipTest("First MS1 frame has no peaks")
+            mz_only = WatershedCentroider(
+                smooth_scan_half_width=0, smooth_mz_idx_half_width=3
+            )(spectrum, td, frame_id)
+            scan_only = WatershedCentroider(
+                smooth_scan_half_width=5, smooth_mz_idx_half_width=0
+            )(spectrum, td, frame_id)
+            none = WatershedCentroider(
+                smooth_scan_half_width=0, smooth_mz_idx_half_width=0
+            )(spectrum, td, frame_id)
+
+        # Each single-axis config must smooth along its own axis, so neither
+        # may reproduce the no-smoothing grouping.
+        self.assertNotEqual(len(mz_only), len(none))
+        self.assertNotEqual(len(scan_only), len(none))
+        self.assertNotEqual(len(mz_only), len(scan_only))
+
+        raw_total = float(spectrum.intensities.sum())
+        for out in (mz_only, scan_only, none):
+            self.assertAlmostEqual(
+                float(out[:, 1].sum()), raw_total, delta=1e-6 * raw_total
+            )
+
+    def test_empty_spectrum_returns_empty(self):
+        from tdfpy.pipeline import RawSpectrum, WatershedCentroider
+
+        with timsdata.timsdata_connect(TDF_PATH) as td:
+            frame_id = self._ms1_frame(td)
+            out = WatershedCentroider()(RawSpectrum.empty_like(10), td, frame_id)
+        self.assertEqual(out.shape, (0, 3))
+
+
 if __name__ == "__main__":
     unittest.main()

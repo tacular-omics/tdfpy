@@ -37,7 +37,7 @@ except ImportError:
 # --------------------------------------------------------------------------
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, eq=False)
 class RawSpectrum:
     """Raw peaks in integer-index (TOF / scan) space.
 
@@ -45,6 +45,13 @@ class RawSpectrum:
     integers, intensity is a 32-bit-ish count. All pipeline ops operate
     on this representation; conversion to m/z and 1/K0 happens once at
     the end via :func:`convert`.
+
+    ``eq=False`` keeps the inherited identity ``==`` and ``hash``. The
+    generated dataclass versions compare and hash the ndarray fields, which
+    raises (``ValueError`` on ``==``, ``TypeError`` on ``hash``) — so a
+    spectrum could not be put in a set, used as a dict key, or compared even
+    incidentally. Element-wise comparison is not what callers of ``==`` on a
+    multi-megabyte spectrum want either; compare the arrays explicitly.
     """
 
     scan_indices: np.ndarray  # int64, len N
@@ -371,10 +378,18 @@ def box_smooth(
     isolated background hits untouched; the mean variant is used internally by
     :class:`WatershedCentroider` to stabilise seed ordering.
 
+    Either half-width may be ``0`` to smooth along the other axis only; ``0``
+    for both is a no-op that returns the input intensities.
+
     Vectorised per mobility-scan: for each scan offset the contributing source
     scan's peaks are searched by a sorted-m/z prefix sum, so cost is
     ``O((2·scan_half_width+1) · N · log N)`` rather than the naïve ``O(N²)``.
+
+    Raises:
+        ValueError: if ``mode`` is neither ``"sum"`` nor ``"mean"``.
     """
+    if mode not in ("sum", "mean"):
+        raise ValueError(f"box_smooth mode must be 'sum' or 'mean', got {mode!r}.")
     n = intensities.size
     if n == 0:
         return np.zeros(0, dtype=np.float64)
@@ -436,7 +451,12 @@ def smooth(
     features that recur across consecutive mobility scans while leaving
     scattered single-hit noise largely unchanged. Composes ahead of
     :func:`apply_noise` in a custom pipeline. See :func:`box_smooth`.
+
+    Raises:
+        ValueError: if ``mode`` is neither ``"sum"`` nor ``"mean"``.
     """
+    if mode not in ("sum", "mean"):
+        raise ValueError(f"smooth mode must be 'sum' or 'mean', got {mode!r}.")
     if spectrum.empty:
         return spectrum
     new_int = box_smooth(
@@ -463,11 +483,22 @@ class Smooth:
     convenience entry points (`get_raw_peaks`, `get_centroided_spectrum`,
     `Frame.centroid()`, …) can accept smoothing as a single `smooth=Smooth(...)`
     argument. Frozen so it is hashable (Streamlit-cacheable).
+
+    Raises:
+        ValueError: if ``mode`` is neither ``"sum"`` nor ``"mean"``. Validated
+            at construction so a typo fails where it was written rather than
+            silently falling through to the ``"sum"`` branch.
     """
 
     scan_half_width: int = 5
     mz_idx_half_width: int = 2
     mode: Literal["sum", "mean"] = "sum"
+
+    def __post_init__(self) -> None:
+        if self.mode not in ("sum", "mean"):
+            raise ValueError(
+                f"Smooth mode must be 'sum' or 'mean', got {self.mode!r}."
+            )
 
     def apply(self, spectrum: RawSpectrum) -> RawSpectrum:
         """Return ``spectrum`` with intensities box-smoothed per this config."""
@@ -485,7 +516,7 @@ _CELL_STRIDE = np.int64(1_000_000_000)
 if _HAS_NUMBA:
     @_njit(cache=True)
     def _watershed_njit_kernel(
-        scan_arr, mz_arr, int_arr, mz_val_arr, im_arr,
+        scan_arr, mz_arr, int_arr, weight_arr, mz_val_arr, im_arr,
         attach_scan_half_width, attach_mz_idx_half_width,
         min_seed_intensity, min_centroid_intensity,
         max_scan_from_seed, max_mz_idx_from_seed,
@@ -496,6 +527,10 @@ if _HAS_NUMBA:
         cell-id-sorted array and using ``np.searchsorted`` to find the
         3×3-cell neighborhood at each query. An ``active`` mask marks
         which points have already joined or seeded a group.
+
+        ``int_arr`` drives seed selection and growth order; ``weight_arr``
+        is what gets summed into the emitted centroids. They are the same
+        array unless the caller smoothed intensities for ordering only.
 
         ``max_scan_from_seed`` and ``max_mz_idx_from_seed`` are leash bounds
         from each group's seed; ``-1`` means "no limit".
@@ -517,6 +552,8 @@ if _HAS_NUMBA:
         seed_intensities = np.empty(n, dtype=np.float64)
         seed_scan = np.empty(n, dtype=np.int64)
         seed_mz = np.empty(n, dtype=np.int64)
+        seed_mz_value = np.empty(n, dtype=np.float64)
+        seed_im_value = np.empty(n, dtype=np.float64)
         n_groups = np.int64(0)
 
         # Descending intensity order. argsort ascending then iterate in reverse.
@@ -585,6 +622,8 @@ if _HAS_NUMBA:
                 seed_intensities[n_groups] = p_int
                 seed_scan[n_groups] = p_scan
                 seed_mz[n_groups] = p_mz
+                seed_mz_value[n_groups] = mz_val_arr[i]
+                seed_im_value[n_groups] = im_arr[i]
                 n_groups += 1
                 active[i] = True
 
@@ -597,7 +636,7 @@ if _HAS_NUMBA:
         for i in range(n):
             if active[i]:
                 g = group_id[i]
-                w = int_arr[i]
+                w = weight_arr[i]
                 total[g] += w
                 sum_mz[g] += mz_val_arr[i] * w
                 sum_im[g] += im_arr[i] * w
@@ -612,10 +651,16 @@ if _HAS_NUMBA:
         for g in range(n_groups):
             if total[g] >= min_centroid_intensity:
                 t = total[g]
-                inv = 1.0 / t if t > 0.0 else 1.0
-                out[k_out, 0] = sum_mz[g] * inv
+                # A group whose members all carry zero intensity has no
+                # weighted mean; fall back to the seed's own coordinates
+                # rather than emitting m/z 0 / IM 0. Matches merge_peaks.
+                if t > 0.0:
+                    out[k_out, 0] = sum_mz[g] / t
+                    out[k_out, 2] = sum_im[g] / t
+                else:
+                    out[k_out, 0] = seed_mz_value[g]
+                    out[k_out, 2] = seed_im_value[g]
                 out[k_out, 1] = t
-                out[k_out, 2] = sum_im[g] * inv
                 k_out += 1
         return out
 
@@ -624,6 +669,7 @@ def _watershed_python_kernel(
     scan_indices: np.ndarray,
     mz_indices: np.ndarray,
     intensities: np.ndarray,
+    weights: np.ndarray,
     mz_values: np.ndarray,
     im_values: np.ndarray,
     *,
@@ -647,6 +693,7 @@ def _watershed_python_kernel(
     scan_arr = np.asarray(scan_indices, dtype=np.int64)
     mz_arr = np.asarray(mz_indices, dtype=np.int64)
     int_arr = np.asarray(intensities, dtype=np.float64)
+    weight_arr = np.asarray(weights, dtype=np.float64)
     mz_val_arr = np.asarray(mz_values, dtype=np.float64)
     im_arr = np.asarray(im_values, dtype=np.float64)
 
@@ -654,6 +701,8 @@ def _watershed_python_kernel(
     seed_intensities: list[float] = []
     seed_scan: list[int] = []
     seed_mz: list[int] = []
+    seed_mz_value: list[float] = []
+    seed_im_value: list[float] = []
     grid: dict[tuple[int, int], list[int]] = {}
 
     intensity_order = np.argsort(int_arr, kind="stable")[::-1]
@@ -717,6 +766,8 @@ def _watershed_python_kernel(
             seed_intensities.append(p_int)
             seed_scan.append(p_scan)
             seed_mz.append(p_mz)
+            seed_mz_value.append(float(mz_val_arr[i]))
+            seed_im_value.append(float(im_arr[i]))
             grid.setdefault((c_scan, c_mz), []).append(i)
         # else: orphan — drop, don't enter grid
 
@@ -726,13 +777,21 @@ def _watershed_python_kernel(
 
     assigned = group_id >= 0
     g = group_id[assigned]
-    w = int_arr[assigned]
+    w = weight_arr[assigned]
     total = np.bincount(g, weights=w, minlength=num_groups)
     sum_mz = np.bincount(g, weights=mz_val_arr[assigned] * w, minlength=num_groups)
     sum_im = np.bincount(g, weights=im_arr[assigned] * w, minlength=num_groups)
-    safe_total = np.where(total > 0, total, 1.0)
-    cent_mz = sum_mz / safe_total
-    cent_im = sum_im / safe_total
+    # A group whose members all carry zero intensity has no weighted mean; fall
+    # back to the seed's own coordinates rather than emitting m/z 0 / IM 0.
+    # Matches merge_peaks and the Numba kernel.
+    positive = total > 0.0
+    safe_total = np.where(positive, total, 1.0)
+    cent_mz = np.where(
+        positive, sum_mz / safe_total, np.asarray(seed_mz_value, dtype=np.float64)
+    )
+    cent_im = np.where(
+        positive, sum_im / safe_total, np.asarray(seed_im_value, dtype=np.float64)
+    )
 
     keep = total >= float(min_centroid_intensity)
     return np.column_stack([cent_mz[keep], total[keep], cent_im[keep]])
@@ -751,6 +810,7 @@ def _watershed_kernel(
     min_centroid_intensity: float,
     max_scan_from_seed: int | None = None,
     max_mz_idx_from_seed: int | None = None,
+    weights: np.ndarray | None = None,
     use_numba: bool = True,
 ) -> np.ndarray:
     """Intensity-ordered region growing in integer (scan, TOF-index) space.
@@ -765,13 +825,22 @@ def _watershed_kernel(
     * Else if ``intensity ≥ min_seed_intensity``, promote to a new seed.
     * Else drop as an orphan (does not claim grid territory).
 
-    Final centroids are intensity-weighted means in float (m/z, IM) space.
-    Groups whose summed intensity falls below ``min_centroid_intensity`` are
-    dropped. See ``apps/ALGORITHM.md`` Stage 3 for the full write-up.
+    Final centroids are intensity-weighted means in float (m/z, IM) space; a
+    group whose members all carry zero intensity falls back to its seed's own
+    coordinates. Groups whose summed intensity falls below
+    ``min_centroid_intensity`` are dropped. See ``apps/ALGORITHM.md`` Stage 3
+    for the full write-up.
 
     ``max_*_from_seed`` is the "leash" — how far any group member can be
     from its seed. ``None`` disables the bound. The cell-neighbor box
     is the local attachment criterion; the leash is the group-wide one.
+
+    ``weights`` splits "what orders the growth" from "what gets summed":
+    ``intensities`` drives seed selection, growth order and
+    ``min_seed_intensity``, while ``weights`` (defaulting to ``intensities``)
+    is what the emitted centroid intensity and the weighted means accumulate.
+    :class:`WatershedCentroider` uses it to order by smoothed intensity while
+    still reporting raw sums.
 
     Dispatches to a Numba-JIT'd kernel when ``use_numba=True`` (default)
     and Numba is available, falling back to the pure-Python implementation
@@ -786,6 +855,7 @@ def _watershed_kernel(
     scan_arr = np.asarray(scan_indices, dtype=np.int64)
     mz_arr = np.asarray(mz_indices, dtype=np.int64)
     int_arr = np.asarray(intensities, dtype=np.float64)
+    weight_arr = int_arr if weights is None else np.asarray(weights, dtype=np.float64)
     mz_val_arr = np.asarray(mz_values, dtype=np.float64)
     im_arr = np.asarray(im_values, dtype=np.float64)
 
@@ -795,13 +865,13 @@ def _watershed_kernel(
 
     if _HAS_NUMBA and use_numba:
         return _watershed_njit_kernel(
-            scan_arr, mz_arr, int_arr, mz_val_arr, im_arr,
+            scan_arr, mz_arr, int_arr, weight_arr, mz_val_arr, im_arr,
             attach_scan_half_width, attach_mz_idx_half_width,
             float(min_seed_intensity), float(min_centroid_intensity),
             max_s, max_m,
         )
     return _watershed_python_kernel(
-        scan_arr, mz_arr, int_arr, mz_val_arr, im_arr,
+        scan_arr, mz_arr, int_arr, weight_arr, mz_val_arr, im_arr,
         attach_scan_half_width=attach_scan_half_width,
         attach_mz_idx_half_width=attach_mz_idx_half_width,
         min_seed_intensity=min_seed_intensity,
@@ -824,7 +894,16 @@ class WatershedCentroider(Centroider):
     The optional ``smooth_*_half_width`` parameters apply a position-preserving
     box-mean filter to intensities *before* seed selection, which prevents
     noisy spikes from outranking the actual peak summit and stabilises
-    seed ordering. Set both to ``0`` to skip.
+    seed ordering. Smoothing affects **ordering only** — the centroid
+    intensities reported (and screened by ``min_centroid_intensity``) are sums
+    of the *raw* input intensities, so a centroided frame conserves the raw
+    total ion current. ``min_seed_intensity`` is a statement about seed
+    selection, so it is compared against the smoothed value instead.
+
+    Smoothing is skipped only when **both** half-widths are ``0``; a single
+    nonzero half-width smooths along that axis alone (e.g.
+    ``smooth_scan_half_width=0`` with ``smooth_mz_idx_half_width=3`` averages
+    across TOF indices within each mobility scan).
 
     The optional ``max_*_from_seed`` parameters are per-group "leashes":
     a follower is rejected if its distance from the candidate group's
@@ -862,12 +941,15 @@ class WatershedCentroider(Centroider):
         mz_values = converted[:, 0]
         im_values = converted[:, 2]
 
-        intensities = spectrum.intensities
-        if self.smooth_scan_half_width > 0 and self.smooth_mz_idx_half_width > 0:
-            intensities = box_smooth(
+        # Smoothed intensities order the growth; the raw ones are what the
+        # centroids sum, so the output conserves the raw total ion current.
+        raw_intensities = spectrum.intensities
+        ordering_intensities = raw_intensities
+        if self.smooth_scan_half_width > 0 or self.smooth_mz_idx_half_width > 0:
+            ordering_intensities = box_smooth(
                 spectrum.scan_indices,
                 spectrum.mz_indices,
-                intensities,
+                raw_intensities,
                 scan_half_width=self.smooth_scan_half_width,
                 mz_idx_half_width=self.smooth_mz_idx_half_width,
                 mode="mean",
@@ -876,7 +958,7 @@ class WatershedCentroider(Centroider):
         return _watershed_kernel(
             spectrum.scan_indices,
             spectrum.mz_indices,
-            intensities,
+            ordering_intensities,
             mz_values,
             im_values,
             attach_scan_half_width=self.attach_scan_half_width,
@@ -885,6 +967,7 @@ class WatershedCentroider(Centroider):
             min_centroid_intensity=self.min_centroid_intensity,
             max_scan_from_seed=self.max_scan_from_seed,
             max_mz_idx_from_seed=self.max_mz_idx_from_seed,
+            weights=raw_intensities,
             use_numba=self.use_numba,
         )
 

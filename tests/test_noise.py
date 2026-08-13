@@ -235,14 +235,24 @@ class TestSubclassRelationships:
         assert issubclass(VerticalNoiseFilter, NoiseFilter)
 
 
-def _synthetic_frame(rng, n_scans=200):
+def _synthetic_frame(rng, n_scans=200, fractional=False):
     """Synthetic (scan, mz_idx, intensity) frame: real vertical streaks +
     neighbour-column spill + scattered single-hit noise.
 
-    Intensities are integers, as in real Bruker data — the kernel's
-    incremental profile is then exact (float counts would accrue round-off).
+    ``fractional=False`` gives the integer counts of real Bruker data;
+    ``fractional=True`` gives the fractional intensities a box-mean smoother
+    produces (``Smooth(mode="mean")`` composed ahead of this filter). Both must
+    take the Numba and Python paths to the same answer — fractional inputs are
+    the case that catches a kernel accumulating its per-scan profile
+    incrementally instead of rebuilding it.
     """
     scans, mz, inten = [], [], []
+
+    def _intensity(lo, hi):
+        if fractional:
+            return float(rng.uniform(lo, hi))
+        return float(rng.integers(lo, hi))
+
     for col in range(12):  # real streaks
         m = 1000 + col * 7
         start = int(rng.integers(0, n_scans - 30))
@@ -250,15 +260,15 @@ def _synthetic_frame(rng, n_scans=200):
         for s in range(start, start + length):
             scans.append(s)
             mz.append(m)
-            inten.append(int(rng.integers(200, 2000)))
+            inten.append(_intensity(200, 2000))
             if rng.random() < 0.3:  # neighbour-column spill
                 scans.append(s)
                 mz.append(m + int(rng.integers(-2, 3)))
-                inten.append(int(rng.integers(100, 500)))
+                inten.append(_intensity(100, 500))
     for _ in range(2000):  # scattered noise
         scans.append(int(rng.integers(0, n_scans)))
         mz.append(int(rng.integers(900, 1100)))
-        inten.append(int(rng.integers(50, 300)))
+        inten.append(_intensity(50, 300))
     return (
         np.asarray(scans, dtype=np.int64),
         np.asarray(mz, dtype=np.int64),
@@ -268,8 +278,14 @@ def _synthetic_frame(rng, n_scans=200):
 
 
 @pytest.mark.skipif(not _HAS_NUMBA, reason="numba not installed")
+@pytest.mark.parametrize("fractional", [False, True], ids=["integer", "fractional"])
 class TestVerticalNumbaEquivalence:
-    """The Numba single-pass kernel must match the pure-Python reference."""
+    """The Numba single-pass kernel must match the pure-Python reference.
+
+    Run over both integer intensities (raw Bruker counts) and fractional ones
+    (post ``Smooth(mode="mean")``): the two paths have to agree exactly on
+    both, with no ``approx`` slack, because the mask is a boolean decision.
+    """
 
     @pytest.mark.parametrize(
         "params",
@@ -280,17 +296,17 @@ class TestVerticalNumbaEquivalence:
             dict(mz_idx_half_width=2, min_streak_scans=1, max_gap_scans=2, min_streak_intensity=1000.0),
         ],
     )
-    def test_single_pass_matches_python(self, params):
+    def test_single_pass_matches_python(self, params, fractional):
         rng = np.random.default_rng(7)
-        scan, mz, inten, ns = _synthetic_frame(rng)
+        scan, mz, inten, ns = _synthetic_frame(rng, fractional=fractional)
         k_nb, nc_nb, nck_nb, _ = _single_pass_filter(scan, mz, inten, ns, **params)
         k_py, nc_py, nck_py, _ = _single_pass_filter_python(scan, mz, inten, ns, **params)
         np.testing.assert_array_equal(k_nb, k_py)
         assert (nc_nb, nck_nb) == (nc_py, nck_py)
 
-    def test_full_filter_iterations_match(self):
+    def test_full_filter_iterations_match(self, fractional):
         rng = np.random.default_rng(11)
-        scan, mz, inten, ns = _synthetic_frame(rng)
+        scan, mz, inten, ns = _synthetic_frame(rng, fractional=fractional)
         filt = VerticalNoiseFilter(
             mz_idx_half_width=3, min_streak_scans=5, max_gap_scans=1,
             min_streak_intensity=50.0, num_iterations=3,
@@ -304,6 +320,9 @@ class TestVerticalNumbaEquivalence:
             _structural._HAS_NUMBA = original
         np.testing.assert_array_equal(numba_mask, py_mask)
 
+
+@pytest.mark.skipif(not _HAS_NUMBA, reason="numba not installed")
+class TestVerticalKernelEdgeCases:
     def test_empty_input(self):
         empty_i = np.zeros(0, dtype=np.int64)
         empty_f = np.zeros(0, dtype=np.float64)
@@ -312,6 +331,37 @@ class TestVerticalNumbaEquivalence:
             mz_idx_half_width=3, min_streak_scans=5, max_gap_scans=1, min_streak_intensity=50.0,
         )
         assert keep.size == 0 and n_cols == 0 and n_kept == 0 and spans.size == 0
+
+    def test_matches_python_after_public_mean_smoothing(self):
+        """The publicly reachable route to fractional intensities.
+
+        ``Smooth(mode="mean")`` ahead of ``VerticalNoiseFilter`` is a supported
+        composition, and it is what turns integer counts into floats whose
+        per-scan sums cannot be maintained by incremental subtraction.
+        """
+        from tdfpy import RawSpectrum, Smooth
+
+        rng = np.random.default_rng(19)
+        scan, mz, inten, ns = _synthetic_frame(rng)
+        smoothed = Smooth(scan_half_width=3, mz_idx_half_width=2, mode="mean").apply(
+            RawSpectrum(
+                scan_indices=scan, mz_indices=mz, intensities=inten, num_scans=ns
+            )
+        )
+        assert not np.allclose(smoothed.intensities, np.round(smoothed.intensities))
+
+        params = dict(
+            mz_idx_half_width=3, min_streak_scans=5, max_gap_scans=1,
+            min_streak_intensity=50.0,
+        )
+        k_nb, nc_nb, nck_nb, _ = _single_pass_filter(
+            scan, mz, smoothed.intensities, ns, **params
+        )
+        k_py, nc_py, nck_py, _ = _single_pass_filter_python(
+            scan, mz, smoothed.intensities, ns, **params
+        )
+        np.testing.assert_array_equal(k_nb, k_py)
+        assert (nc_nb, nck_nb) == (nc_py, nck_py)
 
 
 # --------------------------------------------------------------------------
