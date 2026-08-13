@@ -118,6 +118,18 @@ class MzCalibration:
             c2=float(row["C2"]),
         )
 
+    @property
+    def min_tof_index(self) -> float:
+        """Lowest TOF index this model can convert, i.e. the one where m/z is 0.
+
+        Below it the modelled flight time is shorter than ``C0``, the root of the
+        quadratic goes negative, and squaring it yields a positive but meaningless
+        m/z. On the bundled fixtures this sits far below zero (about -1.2e5 to
+        -2.9e5) because ``DigitizerDelay`` is much larger than ``C0``, so no real
+        TOF index comes near it.
+        """
+        return (self.c0 - self.digitizer_delay) / self.digitizer_timebase
+
     def _c1_at(self, frame_t1: float, frame_t2: float) -> float:
         """``C1`` corrected for this frame's temperatures, in ppm of ``C1``."""
         drift = self.dc1 * (frame_t1 - self.t1) + self.dc2 * (frame_t2 - self.t2)
@@ -126,10 +138,27 @@ class MzCalibration:
     def index_to_mz(
         self, tof_index: ArrayLike, frame_t1: float, frame_t2: float
     ) -> npt.NDArray[np.float64]:
-        """Convert TOF sample indices to m/z for a frame at the given temperatures."""
+        """Convert TOF sample indices to m/z for a frame at the given temperatures.
+
+        Raises:
+            ValueError: If any index falls below :attr:`min_tof_index`, where the
+                model has no non-negative m/z.
+        """
         t = self.digitizer_delay + _as_float_array(tof_index) * self.digitizer_timebase
         k = 1e6 / np.sqrt(self._c1_at(frame_t1, frame_t2))
         d = t - self.c0
+        # Below t == C0 the root is negative, and squaring it hands back a
+        # perfectly plausible positive m/z that is simply wrong. Nothing
+        # downstream can detect that, so refuse rather than approximate.
+        below = d < 0.0
+        if bool(np.any(below)):
+            raise ValueError(
+                f"index_to_mz: {int(np.count_nonzero(below))} of {below.size} TOF "
+                f"index(es) fall below {self.min_tof_index:.6g}, where the modelled "
+                f"flight time is shorter than C0 ({self.c0:.6g}) and the model has "
+                "no non-negative m/z. Squaring the negative root would return a "
+                "plausible but wrong m/z."
+            )
         # Stable root of C2*x^2 + k*x - d = 0 for x = sqrt(mz). Written as
         # 2d / (k + sqrt(...)) rather than (-k + sqrt(...)) / 2*C2 so that it
         # stays accurate as C2 approaches zero and needs no separate branch.

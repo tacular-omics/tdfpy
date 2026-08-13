@@ -19,9 +19,13 @@ into u32 words the layout is::
     word[1 .. scan_count)       2 * peak count, for the first scan_count-1 scans
     word[scan_count ..]         interleaved (tof_delta, intensity) pairs
 
-The last scan's peak count is implicit — it is whatever remains. TOF deltas are
-1-based and accumulate within a scan, resetting at each scan boundary, so the TOF
-index is a per-scan cumulative sum minus one.
+The last scan's peak count is implicit — it is whatever remains. Because the
+peaks are pairs, ``words.size - scan_count`` is necessarily even; that and the
+other layout invariants are checked in :func:`_decode_frame` so a corrupt file
+raises :class:`UnsupportedTdfError` instead of decoding into silent nonsense.
+
+TOF deltas are 1-based and accumulate within a scan, resetting at each scan
+boundary, so the TOF index is a per-scan cumulative sum minus one.
 
 Intensities are *not* returned as stored: Bruker normalises them to a 100 ms
 accumulation window, and this reader reproduces that.
@@ -33,6 +37,8 @@ import logging
 import os
 import sqlite3
 import sys
+import threading
+import warnings
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from enum import Enum
@@ -55,6 +61,7 @@ __all__ = [
     "TimsData",
     "UnsupportedTdfError",
     "ccsToOneOverK0ToCCSforMz",
+    "ccsToOneOverK0forMz",
     "oneOverK0ToCCSforMz",
     "timsdata_connect",
 ]
@@ -64,6 +71,10 @@ __all__ = [
 SUPPORTED_COMPRESSION_TYPE = 2
 
 _EMPTY_U32 = np.zeros(0, dtype=np.uint32)
+
+#: ``os.pread`` is POSIX-only. Where it is missing (Windows) frame reads fall
+#: back to a lock-guarded seek + read on the shared handle.
+_HAS_PREAD = hasattr(os, "pread")
 
 
 class UnsupportedTdfError(NotImplementedError):
@@ -81,8 +92,10 @@ def _resolve_zstd() -> Callable[[bytes], bytes]:
     Python 3.14 ships zstd in the standard library (PEP 784), but only when
     CPython was built against libzstd, so the import is still attempted rather
     than assumed. Otherwise ``zstandard`` or ``pyzstd`` will do. All three are
-    used through their stateless one-shot entry points, which keeps concurrent
-    frame reads safe.
+    used through their stateless one-shot entry points, so decompression itself
+    carries no state between calls. That is only half of what concurrent frame
+    reads need; the other half — not sharing a file position — is
+    :meth:`TimsData._pread`'s job.
     """
     if sys.version_info >= (3, 14):
         try:
@@ -132,7 +145,7 @@ class PressureCompensationStrategy(Enum):
 
 
 def _decode_frame(
-    payload: bytes, scan_count: int
+    payload: bytes, scan_count: int, frame_id: int
 ) -> tuple[
     npt.NDArray[np.int64],
     npt.NDArray[np.int64],
@@ -143,12 +156,17 @@ def _decode_frame(
 
     Returns ``(scan_starts, scan_counts, tof_indices, raw_intensities)``, where the
     per-scan slices are ``tof[start:start + count]``.
+
+    Every layout assumption is checked before any decoding arithmetic runs.
+    Without those checks a corrupt payload escapes as an ``IndexError`` or a
+    NumPy broadcast ``ValueError`` from deep inside the kernel — or, worse, is
+    silently absorbed by the ``// 2`` and decodes into plausible nonsense.
     """
     raw = np.frombuffer(_zstd_decompress(payload), dtype=np.uint8)
     if raw.size % 4:
         raise UnsupportedTdfError(
-            f"decompressed frame is {raw.size} bytes, not a multiple of 4; "
-            "the file may be corrupt or use an unexpected layout."
+            f"Frame {frame_id}: decompressed payload is {raw.size} bytes, not a "
+            "multiple of 4; the file may be corrupt or use an unexpected layout."
         )
     # Byte-plane de-interleaving: the payload stores an (N, 4) u32 byte matrix
     # column-major, so transposing the (4, N) view restores little-endian words.
@@ -156,13 +174,44 @@ def _decode_frame(
     # ascontiguousarray().tobytes() would copy it twice.
     words = raw.reshape(4, -1).T.copy().view("<u4").ravel()
 
-    total_peaks = (words.size - scan_count) // 2
+    if scan_count == 0:
+        raise UnsupportedTdfError(
+            f"Frame {frame_id}: Frames.NumScans is 0, but the frame carries a "
+            f"payload decompressing to {words.size} u32 words. A frame with no "
+            "scans must have an empty payload; the file may be corrupt."
+        )
+    if words.size < scan_count:
+        raise UnsupportedTdfError(
+            f"Frame {frame_id}: decompressed payload holds {words.size} u32 "
+            f"words, fewer than the {scan_count} scan-header words the layout "
+            "requires; the file may be corrupt or truncated."
+        )
+    peak_words = words.size - scan_count
+    if peak_words % 2:
+        raise UnsupportedTdfError(
+            f"Frame {frame_id}: {peak_words} peak words follow the "
+            f"{scan_count}-word scan header, but peaks are stored as "
+            "(tof_delta, intensity) pairs and so must be even in number; the "
+            "file may be corrupt."
+        )
+    # Verified on every frame of example_dda.d / example_dia.d / example_prm.d
+    # (1710 frames): word[0] always equals the frame header's scan_count, which
+    # in turn always equals Frames.NumScans.
+    if int(words[0]) != scan_count:
+        raise UnsupportedTdfError(
+            f"Frame {frame_id}: the payload's leading word declares "
+            f"{int(words[0])} scans but the frame header and Frames.NumScans "
+            f"say {scan_count}; the file may be corrupt."
+        )
+
+    total_peaks = peak_words // 2
     counts = np.empty(scan_count, dtype=np.int64)
     counts[: scan_count - 1] = words[1:scan_count] >> 1  # stored as 2 * peak count
     counts[scan_count - 1] = total_peaks - int(counts[: scan_count - 1].sum())
     if counts[scan_count - 1] < 0:
         raise UnsupportedTdfError(
-            "frame scan sizes exceed the decoded peak count; the file may be corrupt."
+            f"Frame {frame_id}: scan sizes sum to more than the {total_peaks} "
+            "peaks actually decoded; the file may be corrupt."
         )
 
     payload_words = words[scan_count:]
@@ -197,6 +246,14 @@ class TimsData:
 
     Metadata is loaded eagerly on open; spectral data is read from
     ``analysis.tdf_bin`` on demand.
+
+    Reading frames from several threads through one open reader is safe: frame
+    bytes are fetched with :func:`os.pread`, which takes its offset as an
+    argument and so shares no file position between threads, and decompression
+    goes through stateless one-shot entry points. Where ``os.pread`` is
+    unavailable (Windows) the seek + read pair is serialised by a lock instead.
+    ``close()`` is *not* safe to race against an in-flight read, and the
+    ``sqlite3`` connection on :attr:`conn` keeps sqlite3's own thread rules.
     """
 
     def __init__(
@@ -244,9 +301,13 @@ class TimsData:
             self.conn = None
             raise
 
+        #: Serialises seek + read on the shared handle for the no-``pread``
+        #: fallback. Unused, but still created, when ``os.pread`` exists.
+        self._read_lock = threading.Lock()
         #: Open binary file object, or ``None`` once :meth:`close` has run.
         #: Callers use this only to test whether the reader is still open.
         self.handle: Any = open(bin_path, "rb")
+        self._fd: int = self.handle.fileno()
 
     # -- setup ------------------------------------------------------------
 
@@ -333,6 +394,34 @@ class TimsData:
             raise RuntimeError("TimsData connection has been closed.")
         return self.handle
 
+    def _pread(self, count: int, offset: int) -> bytes:
+        """Read ``count`` bytes of ``analysis.tdf_bin`` starting at ``offset``.
+
+        Returns fewer than ``count`` bytes only at end of file, which the caller
+        must treat as a truncated file. Positional reads keep concurrent frame
+        reads from clobbering each other's file position.
+        """
+        self._require_open()
+        if count <= 0:
+            return b""
+        if not _HAS_PREAD:  # the Windows path; tests force it on every platform
+            with self._read_lock:
+                handle = self._require_open()
+                handle.seek(offset)
+                return handle.read(count)
+
+        chunk = os.pread(self._fd, count, offset)
+        if len(chunk) == count:
+            return chunk
+        # Short reads on a regular file mean EOF, but loop rather than assume it.
+        chunks = [chunk]
+        got = len(chunk)
+        while got < count and chunk:
+            chunk = os.pread(self._fd, count - got, offset + got)
+            chunks.append(chunk)
+            got += len(chunk)
+        return b"".join(chunks)
+
     # -- conversions ------------------------------------------------------
 
     def indexToMz(
@@ -386,21 +475,51 @@ class TimsData:
         | None
     ):
         """Read and decode a whole frame, or ``None`` if it holds no data."""
-        fh = self._require_open()
-        offset, _num_scans, accum_time, *_ = self._frame(frame_id)
+        offset, num_scans, accum_time, *_ = self._frame(frame_id)
 
-        fh.seek(offset)
-        header = fh.read(8)
+        header = self._pread(8, offset)
         if len(header) < 8:
             raise UnsupportedTdfError(
-                f"Frame {frame_id}: truncated header at offset {offset}."
+                f"Frame {frame_id}: truncated header at offset {offset} — "
+                f"expected 8 bytes, got {len(header)}. analysis.tdf_bin is "
+                "shorter than the Frames table says it should be."
             )
-        byte_count, scan_count = np.frombuffer(header, dtype="<u4")
-        payload = fh.read(int(byte_count) - 8)
+        byte_count, scan_count = (int(v) for v in np.frombuffer(header, dtype="<u4"))
+
+        # byte_count includes the 8 header bytes, so anything below 8 is
+        # nonsense. Left unchecked it became a negative read length: 7 means
+        # read(-1), which swallows the entire rest of the file (tens of MB)
+        # before zstd silently ignores the trailing garbage, and anything lower
+        # raises an opaque "read length must be non-negative" ValueError from
+        # the io layer. Neither tells the caller their file is corrupt.
+        if byte_count < 8:
+            raise UnsupportedTdfError(
+                f"Frame {frame_id}: header at offset {offset} declares a "
+                f"{byte_count}-byte packet, but the 8-byte header alone is "
+                "larger than that; the file may be corrupt."
+            )
+        # Verified to hold on every frame of all three bundled fixtures.
+        if scan_count != num_scans:
+            raise UnsupportedTdfError(
+                f"Frame {frame_id}: analysis.tdf_bin declares {scan_count} "
+                f"scans but Frames.NumScans is {num_scans}; the metadata and "
+                "the binary disagree, so one of them is corrupt."
+            )
+
+        want = byte_count - 8
+        payload = self._pread(want, offset + 8)
+        if len(payload) < want:
+            raise UnsupportedTdfError(
+                f"Frame {frame_id}: truncated payload at offset {offset + 8} — "
+                f"expected {want} bytes, got {len(payload)}. analysis.tdf_bin "
+                "is shorter than the Frames table says it should be."
+            )
         if not payload:
             return None
 
-        starts, counts, tof, raw_intensity = _decode_frame(payload, int(scan_count))
+        starts, counts, tof, raw_intensity = _decode_frame(
+            payload, scan_count, frame_id
+        )
 
         # Bruker normalises raw digitiser sums to a 100 ms accumulation window.
         if accum_time > 0:
@@ -414,7 +533,7 @@ class TimsData:
             )
             intensity = raw_intensity.astype(np.uint32)
 
-        return int(scan_count), starts, counts, tof, intensity
+        return scan_count, starts, counts, tof, intensity
 
     def read_frame_arrays(
         self, frame_id: int, scan_begin: int = 0, scan_end: int | None = None
@@ -496,6 +615,25 @@ def oneOverK0ToCCSforMz(ook0: float, charge: int, mz: float) -> float:
     return one_over_k0_to_ccs(ook0, charge, mz)
 
 
-def ccsToOneOverK0ToCCSforMz(ccs: float, charge: int, mz: float) -> float:
-    """Convert CCS to 1/K0 for a given charge and m/z."""
+def ccsToOneOverK0forMz(ccs: float, charge: int, mz: float) -> float:
+    """Convert CCS to 1/K0 for a given charge and m/z.
+
+    The exact inverse of :func:`oneOverK0ToCCSforMz`.
+    """
     return ccs_to_one_over_k0(ccs, charge, mz)
+
+
+def ccsToOneOverK0ToCCSforMz(ccs: float, charge: int, mz: float) -> float:
+    """Deprecated alias for :func:`ccsToOneOverK0forMz`.
+
+    The old name was a copy-paste of the forward function's name and reads as
+    "CCS to 1/K0 to CCS", which is not what it does. It stays exported so
+    existing callers keep working.
+    """
+    warnings.warn(
+        "ccsToOneOverK0ToCCSforMz is a misnamed alias and will be removed in a "
+        "future release; use ccsToOneOverK0forMz instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return ccsToOneOverK0forMz(ccs, charge, mz)
