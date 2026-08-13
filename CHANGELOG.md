@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [3.0.0] - 2026-08-04
+## [3.0.0] - 2026-08-12
 
 Bruker's `libtimsdata` is gone. tdfpy now reads `analysis.tdf_bin` itself, which
 removes 16 MB of proprietary binaries from the wheel, drops the redistribution
@@ -66,6 +66,70 @@ question, and lifts the Linux/Windows-x86-64 restriction — macOS and ARM work.
   decoding is separately verified bit-exact against `tims_read_scans_v2` over
   all 1710 frames and 29,399,513 peaks of the three fixtures. Previously a
   deliberately injected 1e-3 relative m/z error passed the entire suite.
+
+### Fixed
+
+- **`slice_d_folder` can no longer destroy data.** It used to delete any
+  existing destination with `rmtree`; passing the source (or a typo'd path) as
+  the destination erased the raw acquisition. It now raises `FileExistsError`
+  for an existing destination and `ValueError` when the destination is the
+  source or inside it, pre-flights NULL `Frames.TimsId` values, and removes
+  the partial destination on any mid-write failure.
+- **DDA files with NULL metadata open again.** A NULL `Frames.PropertyGroup`
+  crashed `DDA(...)` (DIA/PRM already guarded), and a NULL
+  `PasefFrameMsMsInfo.Precursor` failed the whole file; both are now tolerated
+  the way the dataclasses were designed to.
+- **Corrupt `analysis.tdf_bin` input now raises `UnsupportedTdfError`**
+  instead of crashing arbitrarily or reading garbage: undersized frame
+  headers (previously a negative `read()` that swallowed the rest of the
+  file — which zstd then *accepted*), truncated payloads, zero or mismatched
+  scan counts, and payload word counts inconsistent with the documented
+  layout. The header scan count is cross-checked against `Frames.NumScans`
+  and the payload's own count word (verified to hold on all 1710 fixture
+  frames before enforcement).
+- **Concurrent frame reads are now actually safe.** The decoder claimed
+  thread safety but seeked a shared file handle; two threads produced 311
+  corrupted reads out of 1200 under a tight switch interval. Reads now use
+  `os.pread` (lock-guarded fallback where unavailable).
+- **`VerticalNoiseFilter` Numba and Python paths are bit-identical on
+  fractional intensities** (reachable via `Smooth(mode="mean")`); the
+  incremental float profile accrued ±1e-13 residues that flipped occupancy
+  tests on ~1 in 5 peaks in adversarial cases.
+- **`WatershedCentroider` no longer emits phantom `[0, 0, 0]` centroids** for
+  zero-total-intensity groups (it falls back to the seed's coordinates, like
+  `merge_peaks`), and its reported intensities are now sums of *raw* — not
+  smoothed — intensities, so TIC is conserved. Smoothing along a single axis
+  now works (previously any zero half-width silently disabled smoothing
+  entirely), and an invalid `Smooth`/`box_smooth` mode raises `ValueError`.
+- **`get_mobility_collapsed_spectrum` output no longer depends on peak
+  density**: the `bincount` and `unique` rollup strategies disagreed on
+  zero-total TOF bins; both now drop them.
+- **`index_to_mz` rejects TOF indices below the calibration model's domain**
+  instead of returning a plausible-looking wrong m/z.
+- **`PandasTdf` closes its SQLite connections deterministically** (`with
+  sqlite3.connect(...)` only manages the transaction, not the connection).
+- `RawSpectrum` instances no longer raise on `==`/`hash()`.
+
+### Deprecated
+
+- **`ccsToOneOverK0ToCCSforMz` → `ccsToOneOverK0forMz`.** The old name is a
+  typo'd copy-paste artifact; it remains as an alias that emits
+  `DeprecationWarning`.
+
+### Build, docs, and CI
+
+- The sdist shrank from 82 MB to under 0.5 MB — test fixtures, plots, and
+  internal apps are excluded; `junit.xml` and `plots/` are no longer tracked.
+- **`numba` is now a required dependency** (it was an undocumented optional
+  extra, so default installs silently ran the slow pure-Python fallbacks).
+- The JOSS paper, `CITATION.cff`, README, and docs no longer describe the
+  removed `libtimsdata`/ctypes architecture or credit "Bruker's algorithm"
+  for MS2 peaks; packaging metadata migrated to PEP 639 and `setup.py` was
+  removed.
+- CI now tests the interpreter each matrix leg asks for (the 3.14 leg was
+  silently testing 3.12), adds Python 3.13, and the publish workflow verifies
+  the tag matches `__version__` and that the published wheel contains no
+  native binaries.
 
 ### Performance
 

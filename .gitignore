@@ -229,3 +229,4 @@ papers/*.jats
 # Test-run artifacts and generated plots (scripts/noise_comparison.py writes plots/)
 junit.xml
 plots/
+.claude/

@@ -33,7 +33,7 @@ tdfpy provides an API that works with familiar objects — no need to think abou
 
 **MS1 Spectra** — MS1 objects include a Numba-accelerated centroiding function that returns a 3D NumPy array containing m/z, intensity, and 1/K0 values.
 
-**Precursors (DDA)** — Precursors are already centroided using Bruker's built-in C extensions.
+**Precursors (DDA)** — `precursor.peaks` returns an MS2 peak list centroided by tdfpy itself: intensities are summed per TOF index across the precursor's scan range (collapsing ion mobility) and merged at 30 ppm.
 
 **Windows (DIA)** — DIA windows also have access to the centroiding function. Note that the ion mobility dimension in DIA frames corresponds to precursor ions from the MS1 frame, not fragment ions (TIMS components are positioned before the fragmentation cell).
 
@@ -119,7 +119,7 @@ with DDA(D_PATH) as dda:
     # Iterate over precursors (MS2)
     for precursor in dda.precursors:
         print(f"Precursor {precursor.precursor_id}: {precursor.largest_peak_mz:.4f} m/z")
-        # Raw centroided peaks from Bruker's algorithm
+        # MS2 peaks centroided by tdfpy (ion mobility collapsed, merged at 30 ppm)
         peaks = precursor.peaks
         break
 ```
@@ -997,6 +997,35 @@ Each subclass exposes the knobs of its estimator as dataclass fields.
 ::: tdfpy.noise.VerticalNoiseDiagnostics
 
 ::: tdfpy.HorizontalHaloFilter
+    options:
+      members:
+        - keep_mask
+
+## Precursor-space gates
+
+Acquisition-aware **MS1-only** gates that drop signal the instrument never
+schedules for fragmentation (so it can never become an identification). Each
+reads the relevant region from `analysis.tdf`, converts it once to per-scan
+integer TOF-index intervals via the run calibration, and tests membership with a
+vectorised binary search. Both are no-ops (keep everything) when the run carries
+no region, so they are safe to include unconditionally.
+
+```python
+from tdfpy import SelectionPolygonGate, DiaMs1WindowGate, MadThreshold, get_raw_peaks
+
+# ddaPASEF: keep only MS1 inside the PASEF selection polygon, then denoise.
+peaks = get_raw_peaks(td, frame_id, noise=[SelectionPolygonGate(), MadThreshold(k=3)])
+
+# diaPASEF: keep only MS1 inside the union of isolation windows.
+peaks = get_raw_peaks(td, frame_id, noise=[DiaMs1WindowGate()])
+```
+
+::: tdfpy.SelectionPolygonGate
+    options:
+      members:
+        - keep_mask
+
+::: tdfpy.DiaMs1WindowGate
     options:
       members:
         - keep_mask

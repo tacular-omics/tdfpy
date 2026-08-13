@@ -175,7 +175,7 @@ from tdfpy import DDA, DIA, PRM, get_acquisition_type, slice_d_folder
 # Frame elements (dataclasses, do not construct directly)
 from tdfpy import (
     Frame, DDAMs1Frame, DIAMs1Frame, PRMMs1Frame,
-    DiaWindow, DiaWindowGroup, Precursor,
+    DiaWindow, DiaWindowGroup, Precursor, PasefFrameMsmsInfo,
     PrmTarget, PrmTransition,
     MetaData, Calibration,
 )
@@ -196,6 +196,7 @@ from tdfpy import (
 from tdfpy import (
     RawSpectrum, read_spectrum, subset_scans,
     exclude_region, apply_noise, convert, centroid_peaks,
+    smooth, box_smooth, Smooth,
 )
 
 # Centroiders
@@ -204,19 +205,23 @@ from tdfpy import Centroider, MergePeaksCentroider, WatershedCentroider
 # Region exclusion
 from tdfpy import ChargeStateRegion
 
-# Noise filters
+# Noise filters and precursor-space gates
 from tdfpy import (
     NoiseFilter, NoiseSpec, coerce_filters,
     IntensityThreshold, AbsoluteThreshold, MadThreshold,
     PercentileThreshold, HistogramThreshold, BaselineThreshold,
-    IterativeMedianThreshold, VerticalNoiseFilter,
+    IterativeMedianThreshold, VerticalNoiseFilter, HorizontalHaloFilter,
+    SelectionPolygonGate, DiaMs1WindowGate,
 )
 
 # Visualization
 from tdfpy import plot_centroiding
 
-# Low-level
-from tdfpy import PandasTdf, TimsData, timsdata_connect
+# Low-level and errors
+from tdfpy import (
+    PandasTdf, TimsData, timsdata_connect,
+    UnsupportedTdfError, UnsupportedCalibrationError,
+)
 ```
 
 ## What Not To Do
