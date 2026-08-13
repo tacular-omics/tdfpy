@@ -262,6 +262,100 @@ class TestWatershedLeash:
         assert np.array_equal(canon(py), canon(nb))
 
 
+class TestWatershedZeroIntensity:
+    """A group with no intensity has no weighted mean — use the seed's position.
+
+    Dividing by a "safe" 1.0 instead put the centroid at m/z 0 / IM 0, a
+    coordinate no input point occupied. merge_peaks already falls back to the
+    seed peak in the same situation.
+    """
+
+    @pytest.mark.parametrize("use_numba", [True, False], ids=["numba", "python"])
+    def test_single_zero_intensity_point_keeps_its_coordinates(self, use_numba):
+        out = _watershed_kernel(
+            np.array([7], dtype=np.int64),
+            np.array([1000], dtype=np.int64),
+            np.array([0.0]),
+            np.array([500.25]),
+            np.array([1.125]),
+            attach_scan_half_width=10, attach_mz_idx_half_width=3,
+            min_seed_intensity=0.0, min_centroid_intensity=0.0,
+            use_numba=use_numba,
+        )
+        assert out.shape == (1, 3)
+        assert out[0, 0] == pytest.approx(500.25)
+        assert out[0, 1] == pytest.approx(0.0)
+        assert out[0, 2] == pytest.approx(1.125)
+
+    @pytest.mark.parametrize("use_numba", [True, False], ids=["numba", "python"])
+    def test_zero_group_alongside_a_real_one(self, use_numba):
+        # Two zero-intensity points that group together, well away from a
+        # normal blob. The zero group must report the seed's coordinates and
+        # must not drag the real centroid anywhere.
+        scan = np.array([0, 1, 100, 101], dtype=np.int64)
+        mz_idx = np.array([10, 11, 900, 901], dtype=np.int64)
+        intens = np.array([0.0, 0.0, 300.0, 100.0])
+        mz_v = np.array([200.0, 200.1, 700.0, 700.1])
+        im_v = np.array([0.60, 0.61, 1.40, 1.41])
+        out = _watershed_kernel(
+            scan, mz_idx, intens, mz_v, im_v,
+            attach_scan_half_width=5, attach_mz_idx_half_width=5,
+            min_seed_intensity=0.0, min_centroid_intensity=0.0,
+            use_numba=use_numba,
+        )
+        assert out.shape == (2, 3)
+        zero_row = out[out[:, 1] == 0.0]
+        assert zero_row.shape == (1, 3)
+        # Either zero-intensity point may seed (both tie at 0.0), but the
+        # centroid must sit on one of them, never at the origin.
+        assert zero_row[0, 0] == pytest.approx(200.0) or zero_row[0, 0] == pytest.approx(200.1)
+        assert zero_row[0, 2] == pytest.approx(0.60) or zero_row[0, 2] == pytest.approx(0.61)
+        real_row = out[out[:, 1] > 0.0][0]
+        assert real_row[1] == pytest.approx(400.0)
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        dict(min_seed_intensity=0.0, min_centroid_intensity=0.0),
+        dict(min_seed_intensity=40.0, min_centroid_intensity=0.0),
+        dict(min_seed_intensity=0.0, min_centroid_intensity=250.0),
+        dict(min_seed_intensity=25.0, min_centroid_intensity=120.0),
+    ],
+)
+def test_watershed_numba_matches_python_on_random_grid(params):
+    """Randomised 2-D (scan, TOF) sweep with heavy ties and live thresholds.
+
+    Intensities are drawn from a small integer set on purpose: ties are where
+    the two kernels' different neighbourhood traversals could diverge, so the
+    tiebreak chain (distance → seed intensity → point index) gets exercised
+    rather than avoided.
+    """
+    rng = np.random.default_rng(2024)
+    n = 400
+    scan = rng.integers(0, 40, n).astype(np.int64)
+    mz_idx = rng.integers(0, 60, n).astype(np.int64)
+    # Deduplicate: two points at the same (scan, TOF index) is not a state the
+    # reader can produce, and it makes the ordering ambiguous.
+    _, unique_idx = np.unique(
+        np.column_stack([scan, mz_idx]), axis=0, return_index=True
+    )
+    scan, mz_idx = scan[unique_idx], mz_idx[unique_idx]
+    intens = rng.choice([10.0, 20.0, 30.0, 50.0], size=scan.size)
+    mz_v = mz_idx * 0.01 + 300.0
+    im_v = scan * 0.01 + 0.8
+
+    common = dict(
+        attach_scan_half_width=3, attach_mz_idx_half_width=2,
+        max_scan_from_seed=8, max_mz_idx_from_seed=6, **params,
+    )
+    nb = _watershed_kernel(scan, mz_idx, intens, mz_v, im_v, use_numba=True, **common)
+    py = _watershed_kernel(scan, mz_idx, intens, mz_v, im_v, use_numba=False, **common)
+    assert nb.shape == py.shape
+    canon = lambda a: np.array(sorted(map(tuple, np.round(a, 9))))  # noqa: E731
+    np.testing.assert_allclose(canon(nb), canon(py), rtol=0, atol=1e-9)
+
+
 class TestWatershedSeparation:
     def test_blobs_outside_box_split(self):
         # Two blobs 100 scans apart, attach_scan_half_width=10 → must split.
@@ -343,6 +437,72 @@ class TestBoxSmoothIntensities:
         assert out[2] == pytest.approx(15.0)  # 1+2+3+4+5
         assert out[0] == pytest.approx(1 + 2 + 3)  # scans 0..2
 
+    def test_both_half_widths_cover_the_full_2d_window(self):
+        """Exercise the 2-D window: neither half-width is 0.
+
+        A 3x3 patch of TOF indices 10..12 across scans 0..2, all intensity 1,
+        plus one point far away in TOF that must stay outside the box. With
+        ``scan_half_width=1`` and ``mz_idx_half_width=1`` the centre point sees
+        all 9 patch members; each corner sees only its 4-member quadrant.
+        """
+        scan, mz, intens = [], [], []
+        for s in range(3):
+            for m in (10, 11, 12):
+                scan.append(s)
+                mz.append(m)
+                intens.append(1.0)
+        scan.append(1)   # far in TOF: inside the scan window, outside the m/z one
+        mz.append(50)
+        intens.append(1.0)
+        scan_a = np.array(scan, dtype=np.int64)
+        mz_a = np.array(mz, dtype=np.int64)
+        int_a = np.array(intens)
+
+        out = box_smooth(
+            scan_a, mz_a, int_a,
+            scan_half_width=1, mz_idx_half_width=1, mode="sum",
+        )
+        centre = np.flatnonzero((scan_a == 1) & (mz_a == 11))[0]
+        corner = np.flatnonzero((scan_a == 0) & (mz_a == 10))[0]
+        edge = np.flatnonzero((scan_a == 0) & (mz_a == 11))[0]
+        far = np.flatnonzero(mz_a == 50)[0]
+        assert out[centre] == pytest.approx(9.0)  # 3 scans x 3 TOF indices
+        assert out[corner] == pytest.approx(4.0)  # 2 scans x 2 TOF indices
+        assert out[edge] == pytest.approx(6.0)    # 2 scans x 3 TOF indices
+        assert out[far] == pytest.approx(1.0)     # only itself
+
+        means = box_smooth(
+            scan_a, mz_a, int_a,
+            scan_half_width=1, mz_idx_half_width=1, mode="mean",
+        )
+        # Every window is all-ones, so each mean is 1.0 regardless of size —
+        # which also proves the count is gathered over the same 2-D window.
+        np.testing.assert_allclose(means, 1.0)
+
+    def test_both_half_widths_with_varying_intensities(self):
+        # Same 3x3 patch, but intensities 1..9 so the window sum is sensitive
+        # to which members it gathers, not just how many.
+        scan = np.repeat(np.arange(3), 3).astype(np.int64)
+        mz = np.tile(np.array([10, 11, 12]), 3).astype(np.int64)
+        intens = np.arange(1.0, 10.0)
+        out = box_smooth(
+            scan, mz, intens, scan_half_width=1, mz_idx_half_width=1, mode="sum"
+        )
+        assert out[4] == pytest.approx(intens.sum())          # centre: all 9
+        assert out[0] == pytest.approx(1 + 2 + 4 + 5)         # top-left quadrant
+        assert out[8] == pytest.approx(5 + 6 + 8 + 9)         # bottom-right quadrant
+
+    def test_invalid_mode_rejected(self):
+        scan = np.zeros(3, dtype=np.int64)
+        mz = np.arange(3, dtype=np.int64)
+        intens = np.ones(3)
+        with pytest.raises(ValueError, match="must be 'sum' or 'mean'"):
+            box_smooth(
+                scan, mz, intens,
+                scan_half_width=1, mz_idx_half_width=1,
+                mode="median",  # type: ignore[arg-type]
+            )
+
     def test_sum_mode_amplifies_streak_over_isolated_noise(self):
         # A vertical streak (same mz across scans) sums up; a lone hit doesn't.
         scan = np.array([0, 1, 2, 3, 4, 0], dtype=np.int64)
@@ -405,3 +565,29 @@ class TestSmoothConfig:
         via_cfg = cfg.apply(spec)
         via_op = smooth(spec, scan_half_width=2, mz_idx_half_width=0, mode="sum")
         np.testing.assert_array_equal(via_cfg.intensities, via_op.intensities)
+
+    def test_invalid_mode_rejected_at_construction(self):
+        from tdfpy import Smooth
+
+        # Anything but "sum"/"mean" used to fall through to the "sum" branch.
+        with pytest.raises(ValueError, match="must be 'sum' or 'mean'"):
+            Smooth(mode="median")  # type: ignore[arg-type]
+
+    def test_smooth_op_rejects_invalid_mode(self):
+        from tdfpy.pipeline import RawSpectrum, smooth
+
+        spec = RawSpectrum(
+            scan_indices=np.array([0, 1], dtype=np.int64),
+            mz_indices=np.array([10, 11], dtype=np.int64),
+            intensities=np.array([1.0, 2.0]),
+            num_scans=2,
+        )
+        with pytest.raises(ValueError, match="must be 'sum' or 'mean'"):
+            smooth(spec, mode="median")  # type: ignore[arg-type]
+
+    def test_smooth_op_rejects_invalid_mode_even_when_empty(self):
+        # The empty-spectrum short circuit must not skip validation.
+        from tdfpy.pipeline import RawSpectrum, smooth
+
+        with pytest.raises(ValueError, match="must be 'sum' or 'mean'"):
+            smooth(RawSpectrum.empty_like(4), mode="median")  # type: ignore[arg-type]

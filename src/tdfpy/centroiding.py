@@ -680,6 +680,8 @@ def _sum_by_tof_index(
     """Total the intensity landing on each distinct TOF index.
 
     Returns ``(tof_indices, summed_intensities)`` sorted ascending by TOF index.
+    Bins totalling zero are dropped: they carry no signal, and a zero-intensity
+    peak would only give the downstream centroider a point it cannot weight.
 
     Two strategies, because their costs run opposite ways. ``bincount`` allocates
     and scans the whole TOF grid — a few hundred thousand slots regardless of how
@@ -689,6 +691,10 @@ def _sum_by_tof_index(
     costs ~10x either way, so compare the two workloads directly: sorting is
     ``n log n``, scanning the grid is its width, and log2(n) is ~16 at the sizes
     where the two are close.
+
+    Which branch runs is a pure performance decision, so both must return the
+    same thing — hence the explicit zero-drop on the ``unique`` side too, where
+    ``bincount`` gets it for free from ``flatnonzero``.
     """
     intensities = intensities.astype(np.float64, copy=False)
     grid_width = int(tof_indices.max()) + 1
@@ -697,7 +703,9 @@ def _sum_by_tof_index(
         keys = np.flatnonzero(summed)
         return keys, summed[keys]
     keys, inverse = np.unique(tof_indices, return_inverse=True)
-    return keys, np.bincount(inverse.ravel(), weights=intensities)
+    summed = np.bincount(inverse.ravel(), weights=intensities, minlength=keys.size)
+    nonzero = np.flatnonzero(summed)
+    return keys[nonzero], summed[nonzero]
 
 
 #: Default m/z tolerance for :func:`get_mobility_collapsed_spectrum`, in ppm.
@@ -732,8 +740,11 @@ def get_mobility_collapsed_spectrum(
         use_numba: Use the JIT-compiled merge kernel when available.
 
     Returns:
-        An ``(N, 2)`` array of ``[mz, intensity]`` sorted by descending
-        intensity, as :func:`merge_peaks` produces.
+        An ``(N, 2)`` array of ``[mz, intensity]`` in the order
+        :func:`merge_peaks` emits centroids — descending *seed* intensity,
+        i.e. ordered by the brightest raw point that anchored each centroid,
+        not by the centroid's own summed intensity. Sort explicitly if you
+        need descending centroid intensity.
 
     Note:
         Results are close to Bruker's peak picker but not identical to it --
