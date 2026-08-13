@@ -17,6 +17,9 @@ dependencies = [
     # interpreters. A 3.14 build made without libzstd will raise an ImportError
     # naming this package.
     "zstandard>=0.22; python_version < '3.14'",
+    # Numba is a hard dependency: every JIT kernel has a pure-Python fallback,
+    # but the documented performance of the centroiding stack assumes the JIT.
+    "numba>=0.59",
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
@@ -24,7 +27,6 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
     "Development Status :: 5 - Production/Stable",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Topic :: Scientific/Engineering :: Bio-Informatics",
     "Topic :: Scientific/Engineering :: Chemistry",
@@ -33,7 +35,8 @@ classifiers = [
 ]
 readme = "README.md"
 requires-python = ">=3.12"
-license = {file = "LICENSE"}
+license = "MIT"
+license-files = ["LICENSE"]
 keywords = ["bruker", "timstof", "mass-spectrometry", "proteomics", "tdf", "dia", "dda", "pasef", "ion-mobility"]
 
 [project.urls]
@@ -43,7 +46,6 @@ Repository = "https://github.com/tacular-omics/tdfpy"
 Changelog = "https://github.com/tacular-omics/tdfpy/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
-numba = ["numba>=0.59"]
 viz = ["matplotlib>=3.7"]
 
 [tool.hatch.version]
@@ -52,13 +54,25 @@ path = "src/tdfpy/__init__.py"
 [tool.hatch.build.targets.wheel]
 packages = ["src/tdfpy"]
 
+[tool.hatch.build.targets.sdist]
+# The sdist carries the source, the tests, and the paperwork — not the ~80 MB
+# of example .d folders, rendered plots, dev dashboards, or CI leftovers.
+exclude = [
+    "tests/data/*.d",
+    "plots/",
+    "apps/",
+    "papers/",
+    "docs/llms-full.txt",
+    "junit.xml",
+    "logo.png",
+]
+
 [dependency-groups]
 docs = [
     "mkdocs-material>=9.0",
     "mkdocstrings[python]>=0.25",
 ]
 dev = [
-    "numba>=0.59",
     "pytest>=7.0",
     "pytest-examples>=0.0.14",
     "ty>=0.0.9",

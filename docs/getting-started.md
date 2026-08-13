@@ -37,7 +37,7 @@ with DDA(D_PATH) as dda:
     # Iterate over precursors (MS2)
     for precursor in dda.precursors:
         print(f"Precursor {precursor.precursor_id}: {precursor.largest_peak_mz:.4f} m/z")
-        # Raw centroided peaks from Bruker's algorithm
+        # MS2 peaks centroided by tdfpy (ion mobility collapsed, merged at 30 ppm)
         peaks = precursor.peaks
         break
 ```

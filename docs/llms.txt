@@ -13,7 +13,7 @@ tdfpy decodes `analysis.tdf_bin` directly in Python/NumPy -- no Bruker native li
 
 - [Readers](https://tacular-omics.github.io/tdfpy/api/readers.md): `DDA`, `DIA`, `PRM`, `get_acquisition_type` — open a `.d` folder via context manager
 - [Frames](https://tacular-omics.github.io/tdfpy/api/frames.md): `Frame`, `DDAMs1Frame`, `DIAMs1Frame`, `PRMMs1Frame` — MS1 frame dataclasses with `.raw_peaks()` and `.centroid()` methods
-- [Precursor](https://tacular-omics.github.io/tdfpy/api/precursor.md): `Precursor` — DDA MS2 spectra (Bruker-centroided), charge / m/z / ion mobility / CCS
+- [Precursor](https://tacular-omics.github.io/tdfpy/api/precursor.md): `Precursor` — DDA MS2 spectra (centroided by tdfpy: mobility collapse + 30 ppm merge), charge / m/z / ion mobility / CCS
 - [DIA Windows](https://tacular-omics.github.io/tdfpy/api/windows.md): `DiaWindow`, `DiaWindowGroup` — DIA isolation windows with scan-range-scoped centroiding
 - [PRM Data Elements](https://tacular-omics.github.io/tdfpy/api/prm.md): `PrmTarget`, `PrmTransition` — targeted acquisition primitives
 - [Metadata](https://tacular-omics.github.io/tdfpy/api/metadata.md): `MetaData`, `Calibration` — instrument and acquisition metadata
@@ -22,14 +22,14 @@ tdfpy decodes `analysis.tdf_bin` directly in Python/NumPy -- no Bruker native li
 ## Peak Processing
 
 - [Centroiding](https://tacular-omics.github.io/tdfpy/api/centroiding.md): `get_raw_peaks`, `get_centroided_spectrum`, `merge_peaks` — convenience entry points and parameter reference
-- [Pipeline](https://tacular-omics.github.io/tdfpy/api/pipeline.md): `RawSpectrum`, `read_spectrum`, `subset_scans`, `exclude_region`, `apply_noise`, `convert`, `centroid_peaks`, `Centroider` ABC, `MergePeaksCentroider`, `WatershedCentroider` — composable ops and centroider implementations
-- [Noise filters](https://tacular-omics.github.io/tdfpy/api/noise.md): `NoiseFilter` ABC, `MadThreshold`, `PercentileThreshold`, `HistogramThreshold`, `BaselineThreshold`, `IterativeMedianThreshold`, `AbsoluteThreshold`, structural `VerticalNoiseFilter` — chain via `noise=[…]`
+- [Pipeline](https://tacular-omics.github.io/tdfpy/api/pipeline.md): `RawSpectrum`, `read_spectrum`, `subset_scans`, `exclude_region`, `Smooth`, `smooth`, `box_smooth`, `apply_noise`, `convert`, `centroid_peaks`, `Centroider` ABC, `MergePeaksCentroider`, `WatershedCentroider` — composable ops and centroider implementations
+- [Noise filters](https://tacular-omics.github.io/tdfpy/api/noise.md): `NoiseFilter` ABC, `coerce_filters`, `IntensityThreshold`, `MadThreshold`, `PercentileThreshold`, `HistogramThreshold`, `BaselineThreshold`, `IterativeMedianThreshold`, `AbsoluteThreshold`, structural `VerticalNoiseFilter` and `HorizontalHaloFilter`, precursor-space gates `SelectionPolygonGate` (ddaPASEF) and `DiaMs1WindowGate` (diaPASEF) — chain via `noise=[…]`
 - [Region exclusion](https://tacular-omics.github.io/tdfpy/api/regions.md): `ChargeStateRegion` — drop the singly-charged contamination band in timsTOF MS1
 
 ## Utilities
 
 - [Utilities](https://tacular-omics.github.io/tdfpy/utilities.md): `slice_d_folder` — extract a frame-range subset of a `.d` folder
-- [PandasTDF](https://tacular-omics.github.io/tdfpy/api/low-level.md): `PandasTdf` — pandas DataFrame wrapper around `analysis.tdf` SQLite
+- [PandasTDF](https://tacular-omics.github.io/tdfpy/api/low-level.md): `PandasTdf` — pandas DataFrame wrapper around `analysis.tdf` SQLite; `TimsData` / `timsdata_connect` — pure-Python `analysis.tdf_bin` frame reader
 - `plot_centroiding`: 2×2 diagnostic panel — raw peaks, centroids, noise-rejected, 1D spectrum comparison
 
 ## Optional

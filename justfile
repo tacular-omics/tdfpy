@@ -2,11 +2,15 @@
 default:
   @just --list
 
-# Install dependencies
+# Install dependencies (dev included)
 install:
-  uv sync 
+  uv sync
 
-# Install with dev dependencies
+# Alias for install — the name CONTRIBUTING.md and AGENTS.md point contributors at
+install-dev:
+  uv sync
+
+# Install runtime dependencies only, no dev group
 install-prod:
   uv sync --no-dev
 

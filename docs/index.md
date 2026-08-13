@@ -19,7 +19,7 @@ tdfpy provides an API that works with familiar objects — no need to think abou
 
 **MS1 Spectra** — MS1 objects include a Numba-accelerated centroiding function that returns a 3D NumPy array containing m/z, intensity, and 1/K0 values.
 
-**Precursors (DDA)** — Precursors are already centroided using Bruker's built-in C extensions.
+**Precursors (DDA)** — `precursor.peaks` returns an MS2 peak list centroided by tdfpy itself: intensities are summed per TOF index across the precursor's scan range (collapsing ion mobility) and merged at 30 ppm.
 
 **Windows (DIA)** — DIA windows also have access to the centroiding function. Note that the ion mobility dimension in DIA frames corresponds to precursor ions from the MS1 frame, not fragment ions (TIMS components are positioned before the fragmentation cell).
 

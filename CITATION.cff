@@ -2,7 +2,7 @@ cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
 type: software
 title: "tdfpy: A Python package for parsing and centroiding Bruker timsTOF mass spectrometry data"
-version: v1.3.0
+version: v3.0.0
 authors:
   - family-names: Garrett
     given-names: Patrick T.
@@ -14,9 +14,9 @@ authors:
     affiliation: "The Scripps Research Institute, United States"
 repository-code: https://github.com/tacular-omics/tdfpy
 license: MIT
-# TODO: replace with Zenodo DOI after cutting v1.3.0 release.
+# TODO: replace with the Zenodo DOI minted for the v3.0.0 GitHub release.
 doi: 10.5281/zenodo.PENDING
-date-released: "2026-05-30"
+date-released: "2026-08-12"
 keywords:
   - Python
   - Proteomics
