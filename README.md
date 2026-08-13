@@ -47,7 +47,7 @@ with DDA("sample.d") as dda:
 
     for precursor in dda.precursors:
         print(precursor.largest_peak_mz, precursor.charge)
-        peaks = precursor.peaks  # centroided MS2 via Bruker's algorithm
+        peaks = precursor.peaks  # MS2 centroided by tdfpy (mobility collapse + merge)
 
 # DIA acquisition
 with DIA("sample.d") as dia:

@@ -3,6 +3,9 @@ name: Upload Python Package
 on:
   release:
     types: [published]
+  # Manual runs are allowed, but the guard below refuses anything that is not a
+  # vX.Y.Z tag matching tdfpy.__version__ — a mis-dispatch from a branch cannot
+  # publish.
   workflow_dispatch:
 
 permissions:
@@ -20,10 +23,51 @@ jobs:
       with:
         python-version: "3.12"
 
+    - name: Verify the tag matches tdfpy.__version__
+      env:
+        EVENT_NAME: ${{ github.event_name }}
+        REF_TYPE: ${{ github.ref_type }}
+        RELEASE_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || github.ref_name }}
+      run: |
+        if [ "$EVENT_NAME" != "release" ] && [ "$REF_TYPE" != "tag" ]; then
+          echo "FAIL: manual dispatch must target a vX.Y.Z tag, got $REF_TYPE '$RELEASE_TAG'"
+          exit 1
+        fi
+        VERSION=$(python -c "
+        import pathlib, re
+        src = pathlib.Path('src/tdfpy/__init__.py').read_text()
+        print(re.search(r'^__version__ = [\x22\x27]([^\x22\x27]+)', src, re.M).group(1))
+        ")
+        if [ "$RELEASE_TAG" != "v$VERSION" ]; then
+          echo "FAIL: tag '$RELEASE_TAG' does not match tdfpy.__version__ '$VERSION' (expected 'v$VERSION')"
+          exit 1
+        fi
+        echo "OK: publishing $RELEASE_TAG (tdfpy $VERSION)"
+
     - name: Build wheel and sdist
       run: |
         pip install build
         python -m build --outdir dist
+
+    - name: Verify the wheel ships no native libraries
+      run: |
+        python -c "
+        import zipfile, sys, pathlib
+        wheels = list(pathlib.Path('dist').glob('*.whl'))
+        assert wheels, 'No wheel found'
+        with zipfile.ZipFile(wheels[0]) as zf:
+            names = zf.namelist()
+        # tdfpy reads .tdf_bin directly; shipping a Bruker blob again would
+        # reintroduce the redistribution question and the platform lock-in.
+        bad = [n for n in names if n.endswith(('.so', '.dll', '.dylib', '.pyd'))]
+        if bad:
+            print('FAIL: wheel contains native binaries:', bad)
+            sys.exit(1)
+        if not wheels[0].name.endswith('-py3-none-any.whl'):
+            print('FAIL: expected a pure-Python wheel, got', wheels[0].name)
+            sys.exit(1)
+        print('OK: pure-Python wheel, no native binaries')
+        "
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v7
@@ -42,6 +86,8 @@ jobs:
         name: dist
         path: dist
 
+    # TODO: migrate to PyPI trusted publishing (needs a publisher configured on
+    # the PyPI project side; then drop PYPI_API_TOKEN and add id-token: write).
     - name: Publish package
       uses: pypa/gh-action-pypi-publish@release/v1
       with:

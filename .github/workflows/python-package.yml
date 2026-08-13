@@ -13,9 +13,14 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest]
-        python-version: ["3.12", "3.14"]
+        python-version: ["3.12", "3.13", "3.14"]
 
     runs-on: ${{ matrix.os }}
+
+    # Without this, `uv sync` resolves against the interpreter pinned in
+    # .python-version and every matrix leg silently tests the same version.
+    env:
+      UV_PYTHON: ${{ matrix.python-version }}
 
     steps:
     - uses: actions/checkout@v6
@@ -33,6 +38,9 @@ jobs:
 
     - name: Install dependencies
       run: just install
+
+    - name: Verify the interpreter matches this matrix leg
+      run: uv run python -c "import sys; assert '.'.join(map(str, sys.version_info[:2])) == '${{ matrix.python-version }}', sys.version"
 
     - name: Build wheel and verify it ships no native libraries
       run: |
