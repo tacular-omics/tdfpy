@@ -424,7 +424,7 @@ class DiaWindowGroup:
 
     | Field | Type | Description |
     |---|---|---|
-    | `window_index` | `int` | Index of this window within its group |
+    | `window_index` | `int` | Global 0-based row index of this window in the `DiaFrameMsMsWindows` table (not an index within the group) |
     | `window_group` | `int` | Window group ID |
     | `scan_num_begin` | `int` | First mobility scan (inclusive) |
     | `scan_num_end` | `int` | Mobility scan range end (exclusive) — the range is `[scan_num_begin, scan_num_end)` |
