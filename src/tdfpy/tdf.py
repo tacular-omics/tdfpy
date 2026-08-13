@@ -5,6 +5,7 @@ file in the format of pandas dataframes
 
 import logging
 import sqlite3
+from contextlib import closing
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -40,7 +41,9 @@ def convert_table_to_df(db_path: str | Path, table_name: str) -> pd.DataFrame:
         raise FileNotFoundError(f"TDF database not found: {db_path}")
     logger.debug("Fetching table %s from %s", table_name, db_path)
     try:
-        with sqlite3.connect(str(db_path)) as conn:
+        # sqlite3.Connection's own context manager commits or rolls back the
+        # transaction; it does not close the connection. closing() does.
+        with closing(sqlite3.connect(str(db_path))) as conn:
             return pd.read_sql_query(f"SELECT * FROM {table_name}", conn)
     except (sqlite3.Error, pd.errors.DatabaseError) as e:
         raise RuntimeError(
@@ -63,7 +66,7 @@ class PandasTdf:
     @property
     def calibration_info(self) -> pd.DataFrame:
         """
-        The 'CALIBRATION_INFO' table as a pandas DataFrame.
+        The 'CalibrationInfo' table as a pandas DataFrame.
         :return: table as a pandas DataFrame
         """
         return convert_table_to_df(self.db_path, TableNames.CALIBRATION_INFO)
@@ -71,7 +74,7 @@ class PandasTdf:
     @property
     def dia_frame_msms_info(self) -> pd.DataFrame:
         """
-        The 'DIA_FRAME_MSMS_INFO' table as a pandas DataFrame.
+        The 'DiaFrameMsMsInfo' table as a pandas DataFrame.
         :return: table as a pandas DataFrame
         """
         return convert_table_to_df(self.db_path, TableNames.DIA_FRAME_MSMS_INFO)
@@ -79,7 +82,7 @@ class PandasTdf:
     @property
     def dia_frame_msms_window_groups(self) -> pd.DataFrame:
         """
-        The 'DIA_FRAME_MSMS_WINDOW_GROUPS' table as a pandas DataFrame.
+        The 'DiaFrameMsMsWindowGroups' table as a pandas DataFrame.
         :return: table as a pandas DataFrame
         """
         return convert_table_to_df(
@@ -89,7 +92,7 @@ class PandasTdf:
     @property
     def dia_frame_msms_windows(self) -> pd.DataFrame:
         """
-        The 'DIA_FRAME_MSMS_WINDOWS' table as a pandas DataFrame.
+        The 'DiaFrameMsMsWindows' table as a pandas DataFrame.
         :return: table as a pandas DataFrame
         """
         return convert_table_to_df(self.db_path, TableNames.DIA_FRAME_MSMS_WINDOWS)
@@ -97,7 +100,7 @@ class PandasTdf:
     @property
     def error_log(self) -> pd.DataFrame:
         """
-        The 'ERROR_LOG' table as a pandas DataFrame.
+        The 'ErrorLog' table as a pandas DataFrame.
         :return: table as a pandas DataFrame
         """
         return convert_table_to_df(self.db_path, TableNames.ERROR_LOG)
@@ -105,7 +108,7 @@ class PandasTdf:
     @property
     def frame_msms_info(self) -> pd.DataFrame:
         """
-        The 'FRAME_MSMS_WINDOW' table as a pandas DataFrame.
+        The 'FrameMsMsInfo' table as a pandas DataFrame.
         :return: table as a pandas DataFrame
         """
         return convert_table_to_df(self.db_path, TableNames.FRAME_MSMS_WINDOW)
@@ -113,7 +116,7 @@ class PandasTdf:
     @property
     def frame_properties(self) -> pd.DataFrame:
         """
-        The 'FRAME_PROPERTIES' table as a pandas DataFrame.
+        The 'FrameProperties' table as a pandas DataFrame.
         :return: table as a pandas DataFrame
         """
         return convert_table_to_df(self.db_path, TableNames.FRAME_PROPERTIES)
@@ -121,7 +124,7 @@ class PandasTdf:
     @property
     def frames(self) -> pd.DataFrame:
         """
-        The 'FRAMES' table as a pandas DataFrame.
+        The 'Frames' table as a pandas DataFrame.
         :return: table as a pandas DataFrame
         """
         return convert_table_to_df(self.db_path, TableNames.FRAMES)
@@ -129,7 +132,7 @@ class PandasTdf:
     @property
     def global_metadata(self) -> pd.DataFrame:
         """
-        The 'GLOBAL_METADATA' table as a pandas DataFrame.
+        The 'GlobalMetadata' table as a pandas DataFrame.
         :return: table as a pandas DataFrame
         """
         return convert_table_to_df(self.db_path, TableNames.GLOBAL_METADATA)
@@ -137,7 +140,7 @@ class PandasTdf:
     @property
     def group_properties(self) -> pd.DataFrame:
         """
-        The 'GROUP_PROPERTIES' table as a pandas DataFrame.
+        The 'GroupProperties' table as a pandas DataFrame.
         :return: table as a pandas DataFrame
         """
         return convert_table_to_df(self.db_path, TableNames.GROUP_PROPERTIES)
@@ -145,7 +148,7 @@ class PandasTdf:
     @property
     def mz_calibration(self) -> pd.DataFrame:
         """
-        The 'MZ_CALIBRATION' table as a pandas DataFrame.
+        The 'MzCalibration' table as a pandas DataFrame.
         :return: table as a pandas DataFrame
         """
         return convert_table_to_df(self.db_path, TableNames.MZ_CALIBRATION)
@@ -153,7 +156,7 @@ class PandasTdf:
     @property
     def pasef_frame_msms_info(self) -> pd.DataFrame:
         """
-        The 'PASEF_FRAMES_MSMS_INFO' table as a pandas DataFrame.
+        The 'PasefFrameMsMsInfo' table as a pandas DataFrame.
         :return: table as a pandas DataFrame
         """
         return convert_table_to_df(self.db_path, TableNames.PASEF_FRAME_MSMS_INFO)
@@ -161,7 +164,7 @@ class PandasTdf:
     @property
     def precursors(self) -> pd.DataFrame:
         """
-        The 'PRECURSORS' table as a pandas DataFrame.
+        The 'Precursors' table as a pandas DataFrame.
         :return: table as a pandas DataFrame
         """
         return convert_table_to_df(self.db_path, TableNames.PRECURSORS)
@@ -169,7 +172,7 @@ class PandasTdf:
     @property
     def properties(self) -> pd.DataFrame:
         """
-        The 'PROPERTIES' table as a pandas DataFrame.
+        The 'Properties' table as a pandas DataFrame.
         :return: table as a pandas DataFrame
         """
         return convert_table_to_df(self.db_path, TableNames.PROPERTIES)
@@ -177,7 +180,7 @@ class PandasTdf:
     @property
     def property_definitions(self) -> pd.DataFrame:
         """
-        The 'PROPERTY_DEFINITIONS' table as a pandas DataFrame.
+        The 'PropertyDefinitions' table as a pandas DataFrame.
         :return: table as a pandas DataFrame
         """
         return convert_table_to_df(self.db_path, TableNames.PROPERTY_DEFINITIONS)
@@ -185,7 +188,7 @@ class PandasTdf:
     @property
     def property_groups(self) -> pd.DataFrame:
         """
-        The 'PROPERTY_GROUPS' table as a pandas DataFrame.
+        The 'PropertyGroups' table as a pandas DataFrame.
         :return: table as a pandas DataFrame
         """
         return convert_table_to_df(self.db_path, TableNames.PROPERTY_GROUPS)
@@ -193,7 +196,7 @@ class PandasTdf:
     @property
     def segments(self) -> pd.DataFrame:
         """
-        The 'SEGMENTS' table as a pandas DataFrame.
+        The 'Segments' table as a pandas DataFrame.
         :return: table as a pandas DataFrame
         """
         return convert_table_to_df(self.db_path, TableNames.SEGMENTS)
@@ -201,7 +204,7 @@ class PandasTdf:
     @property
     def tims_calibration(self) -> pd.DataFrame:
         """
-        The 'TIMS_CALIBRATION' table as a pandas DataFrame.
+        The 'TimsCalibration' table as a pandas DataFrame.
         :return: table as a pandas DataFrame
         """
         return convert_table_to_df(self.db_path, TableNames.TIMS_CALIBRATION)
@@ -209,7 +212,7 @@ class PandasTdf:
     @property
     def prm_frame_measurement_mode(self) -> pd.DataFrame:
         """
-        The 'PRM_FRAME_MEASUREMENT_MODE' table as a pandas DataFrame.
+        The 'PrmFrameMeasurementMode' table as a pandas DataFrame.
         :return: table as a pandas DataFrame
         """
         return convert_table_to_df(self.db_path, TableNames.PRM_FRAME_MEASUREMENT_MODE)
@@ -217,7 +220,7 @@ class PandasTdf:
     @property
     def prm_frame_msms_info(self) -> pd.DataFrame:
         """
-        The 'PRM_FRAME_MSMS_INFO' table as a pandas DataFrame.
+        The 'PrmFrameMsMsInfo' table as a pandas DataFrame.
         :return: table as a pandas DataFrame
         """
         return convert_table_to_df(self.db_path, TableNames.PRM_FRAME_MSMS_INFO)
@@ -225,7 +228,7 @@ class PandasTdf:
     @property
     def prm_targets(self) -> pd.DataFrame:
         """
-        The 'PRM_TARGETS' table as a pandas DataFrame.
+        The 'PrmTargets' table as a pandas DataFrame.
         :return: table as a pandas DataFrame
         """
         return convert_table_to_df(self.db_path, TableNames.PRM_TARGETS)
@@ -237,7 +240,9 @@ class PandasTdf:
         Returns:
             list[str]: A list of table names in the database.
         """
-        with sqlite3.connect(self.db_path) as conn:
+        # closing(), not the connection's own context manager, which only ends
+        # the transaction and would leave the handle open until GC.
+        with closing(sqlite3.connect(str(self.db_path))) as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
             table_names = [table[0] for table in cursor.fetchall()]
