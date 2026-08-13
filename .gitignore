@@ -225,3 +225,7 @@ benchmark/
 # JOSS paper: track the source (paper.md, paper.bib), ignore render artifacts
 papers/*.pdf
 papers/*.jats
+
+# Test-run artifacts and generated plots (scripts/noise_comparison.py writes plots/)
+junit.xml
+plots/
