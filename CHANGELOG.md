@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [3.0.0] - 2026-08-12
+## [3.0.0] - 2026-08-15
 
 Bruker's `libtimsdata` is gone. tdfpy now reads `analysis.tdf_bin` itself, which
 removes 16 MB of proprietary binaries from the wheel, drops the redistribution
