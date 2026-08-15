@@ -1,6 +1,7 @@
 import os
 import sqlite3
 import struct
+from contextlib import closing
 from pathlib import Path
 
 import pytest
@@ -31,7 +32,7 @@ def test_slice_basic(tmp_path):
     assert (dest / "analysis.tdf").exists()
     assert (dest / "analysis.tdf_bin").exists()
 
-    with sqlite3.connect(dest / "analysis.tdf") as conn:
+    with closing(sqlite3.connect(dest / "analysis.tdf")) as conn:
         frame_count = conn.execute("SELECT COUNT(*) FROM Frames").fetchone()[0]
         assert frame_count == 10
 
@@ -58,7 +59,7 @@ def test_slice_offsets_valid(tmp_path):
 
     bin_size = os.path.getsize(dest / "analysis.tdf_bin")
 
-    with sqlite3.connect(dest / "analysis.tdf") as conn:
+    with closing(sqlite3.connect(dest / "analysis.tdf")) as conn:
         rows = conn.execute(
             "SELECT Id, TimsId FROM Frames ORDER BY Id"
         ).fetchall()
@@ -79,7 +80,7 @@ def test_slice_precursors_filtered(tmp_path):
     dest = tmp_path / "sliced.d"
     slice_d_folder(TEST_DATA, dest, frame_start=1, frame_end=10)
 
-    with sqlite3.connect(dest / "analysis.tdf") as conn:
+    with closing(sqlite3.connect(dest / "analysis.tdf")) as conn:
         orphaned = conn.execute(
             "SELECT COUNT(*) FROM Precursors WHERE Parent < 1 OR Parent > 10"
         ).fetchone()[0]
@@ -92,7 +93,7 @@ def test_slice_pasef_filtered(tmp_path):
     dest = tmp_path / "sliced.d"
     slice_d_folder(TEST_DATA, dest, frame_start=1, frame_end=10)
 
-    with sqlite3.connect(dest / "analysis.tdf") as conn:
+    with closing(sqlite3.connect(dest / "analysis.tdf")) as conn:
         orphaned = conn.execute(
             "SELECT COUNT(*) FROM PasefFrameMsMsInfo "
             "WHERE Frame < 1 OR Frame > 10"
@@ -106,7 +107,7 @@ def test_slice_middle_range(tmp_path):
     dest = tmp_path / "sliced.d"
     slice_d_folder(TEST_DATA, dest, frame_start=100, frame_end=110)
 
-    with sqlite3.connect(dest / "analysis.tdf") as conn:
+    with closing(sqlite3.connect(dest / "analysis.tdf")) as conn:
         ids = conn.execute("SELECT Id FROM Frames ORDER BY Id").fetchall()
         assert [r[0] for r in ids] == list(range(100, 111))
 
@@ -117,12 +118,12 @@ def test_slice_calibration_preserved(tmp_path):
     dest = tmp_path / "sliced.d"
     slice_d_folder(TEST_DATA, dest, frame_start=1, frame_end=10)
 
-    with sqlite3.connect(TEST_DATA / "analysis.tdf") as orig_conn:
+    with closing(sqlite3.connect(TEST_DATA / "analysis.tdf")) as orig_conn:
         orig_meta = orig_conn.execute(
             "SELECT * FROM GlobalMetadata"
         ).fetchall()
 
-    with sqlite3.connect(dest / "analysis.tdf") as new_conn:
+    with closing(sqlite3.connect(dest / "analysis.tdf")) as new_conn:
         new_meta = new_conn.execute(
             "SELECT * FROM GlobalMetadata"
         ).fetchall()
@@ -205,8 +206,9 @@ def test_slice_null_tims_id_removes_partial_dest(tmp_path):
     src = tmp_path / "small.d"
     slice_d_folder(TEST_DATA, src, frame_start=1, frame_end=5)
 
-    with sqlite3.connect(src / "analysis.tdf") as conn:
+    with closing(sqlite3.connect(src / "analysis.tdf")) as conn:
         conn.execute("UPDATE Frames SET TimsId = NULL WHERE Id = 3")
+        conn.commit()
 
     dest = tmp_path / "broken.d"
     with pytest.raises(ValueError, match="NULL TimsId"):

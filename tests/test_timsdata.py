@@ -42,8 +42,9 @@ def _copy_fixture(tmp_path: Path) -> Path:
 
 
 def _set_global_metadata(d: Path, key: str, value: str) -> None:
-    with sqlite3.connect(d / "analysis.tdf") as conn:
+    with closing(sqlite3.connect(d / "analysis.tdf")) as conn:
         conn.execute("UPDATE GlobalMetadata SET Value = ? WHERE Key = ?", (value, key))
+        conn.commit()
 
 
 # --------------------------------------------------------------------------
@@ -85,10 +86,11 @@ def _patch_bin_header(
 
 def _set_num_scans(d: Path, frame_id: int, num_scans: int) -> None:
     """Keep Frames.NumScans in step with a patched binary header."""
-    with sqlite3.connect(d / "analysis.tdf") as conn:
+    with closing(sqlite3.connect(d / "analysis.tdf")) as conn:
         conn.execute(
             "UPDATE Frames SET NumScans = ? WHERE Id = ?", (num_scans, frame_id)
         )
+        conn.commit()
 
 
 def _decoded_word_count(d: Path, frame_id: int = 1) -> int:
@@ -123,16 +125,18 @@ def test_unknown_compression_type_is_rejected(tmp_path: Path) -> None:
 
 def test_unknown_mz_calibration_model_is_rejected(tmp_path: Path) -> None:
     d = _copy_fixture(tmp_path)
-    with sqlite3.connect(d / "analysis.tdf") as conn:
+    with closing(sqlite3.connect(d / "analysis.tdf")) as conn:
         conn.execute("UPDATE MzCalibration SET ModelType = 2")
+        conn.commit()
     with pytest.raises(UnsupportedCalibrationError, match="MzCalibration.ModelType 2"):
         TimsData(str(d))
 
 
 def test_unknown_tims_calibration_model_is_rejected(tmp_path: Path) -> None:
     d = _copy_fixture(tmp_path)
-    with sqlite3.connect(d / "analysis.tdf") as conn:
+    with closing(sqlite3.connect(d / "analysis.tdf")) as conn:
         conn.execute("UPDATE TimsCalibration SET ModelType = 5")
+        conn.commit()
     with pytest.raises(
         UnsupportedCalibrationError, match="TimsCalibration.ModelType 5"
     ):
