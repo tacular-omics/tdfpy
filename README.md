@@ -30,7 +30,10 @@ tdfpy provides a high-level Python API for reading Bruker timsTOF `.d` folders. 
 pip install tdfpy
 ```
 
-Requires Python 3.12+. The Bruker `libtimsdata` native library is bundled in the wheel (Linux).
+Requires Python 3.12+. Pure Python — `analysis.tdf_bin` is decoded directly, so there is no Bruker
+native library and no platform restriction (Linux, macOS and Windows, x86-64 and ARM). On Python
+3.12/3.13 the `zstandard` package is installed automatically; Python 3.14+ uses the standard
+library's zstd module.
 
 ## Quick Start
 
@@ -44,7 +47,7 @@ with DDA("sample.d") as dda:
 
     for precursor in dda.precursors:
         print(precursor.largest_peak_mz, precursor.charge)
-        peaks = precursor.peaks  # centroided MS2 via Bruker's algorithm
+        peaks = precursor.peaks  # MS2 centroided by tdfpy (mobility collapse + merge)
 
 # DIA acquisition
 with DIA("sample.d") as dia:

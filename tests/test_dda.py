@@ -1,8 +1,14 @@
+import pathlib
+
+import numpy as np
 import pytest
 
 from tdfpy import DDA, get_acquisition_type
 
 D_PATH = "tests/data/example_dda.d"
+SKIP_NO_DATA = pytest.mark.skipif(
+    not pathlib.Path(D_PATH).exists(), reason="Test data not available"
+)
 
 
 def test_get_acquisition_type():
@@ -111,6 +117,110 @@ def test_dda_lookup_features():
         with pytest.raises(KeyError, match=r"MS1 frame ID 2 not found"):
             # Frame 2 is not MS1
             _ = dda.ms1[2]
+
+
+@SKIP_NO_DATA
+def test_dda_precursor_peaks():
+    """Precursor.peaks returns a native-centroided (N, 2) m/z-sorted array."""
+    with DDA(D_PATH) as dda:
+        p1 = dda.precursors[1]
+        peaks = p1.peaks
+
+        assert isinstance(peaks, np.ndarray)
+        assert peaks.ndim == 2
+        assert peaks.shape[1] == 2
+        assert peaks.shape[0] > 0
+        assert np.issubdtype(peaks.dtype, np.floating)
+
+        mz, intensity = peaks[:, 0], peaks[:, 1]
+        assert np.all(mz > 0)
+        assert np.all(np.isfinite(mz))
+        assert np.all(intensity > 0)
+
+
+@SKIP_NO_DATA
+def test_dda_precursor_pasef_peaks():
+    """pasef_peaks yields one (N, 2) array per PASEF MS/MS window."""
+    with DDA(D_PATH) as dda:
+        p1 = dda.precursors[1]
+        pasef_peaks = p1.pasef_peaks
+
+        assert isinstance(pasef_peaks, list)
+        assert len(pasef_peaks) == len(p1.pasef_frame_msms_infos)
+        assert len(pasef_peaks) > 0
+
+        for arr in pasef_peaks:
+            assert isinstance(arr, np.ndarray)
+            assert arr.ndim == 2
+            assert arr.shape[1] == 2
+            if arr.shape[0] > 0:
+                assert np.all(arr[:, 0] > 0)
+                assert np.all(np.isfinite(arr[:, 0]))
+
+
+@SKIP_NO_DATA
+def test_dda_frame_raw_peaks():
+    """Frame.raw_peaks() returns (N, 3) [mz, intensity, 1/K0]."""
+    with DDA(D_PATH) as dda:
+        f1 = dda.ms1[1]
+        raw = f1.raw_peaks()
+
+        assert isinstance(raw, np.ndarray)
+        assert raw.ndim == 2
+        assert raw.shape[1] == 3
+        assert raw.shape[0] > 0
+        assert np.issubdtype(raw.dtype, np.floating)
+        assert np.all(raw[:, 0] > 0)  # m/z
+        assert np.all(raw[:, 1] > 0)  # intensity
+        assert np.all(raw[:, 2] > 0)  # 1/K0
+
+        # Raw peaks are a superset of the centroided ones.
+        assert raw.shape[0] >= f1.centroid().shape[0]
+
+
+@SKIP_NO_DATA
+def test_dda_precursor_mobility_properties():
+    """Precursor exposes 1/K0 and CCS derived from its mobility scan."""
+    with DDA(D_PATH) as dda:
+        p1 = dda.precursors[1]
+
+        ook0 = p1.ook0
+        assert isinstance(ook0, float)
+        assert 0.0 < ook0 < 3.0
+
+        ccs = p1.ccs
+        assert isinstance(ccs, float)
+        assert ccs > 0.0
+
+
+@SKIP_NO_DATA
+def test_dda_access_after_close():
+    """Spectral access after the `with` block must raise RuntimeError."""
+    with DDA(D_PATH) as dda:
+        frame = dda.ms1[1]
+        precursor = dda.precursors[1]
+        # Warm up: these all work while the reader is open.
+        assert len(frame.peaks) > 0
+        assert precursor.peaks.shape[1] == 2
+
+    with pytest.raises(RuntimeError, match="closed"):
+        _ = frame.peaks
+
+    with pytest.raises(RuntimeError, match="closed"):
+        frame.centroid()
+
+    with pytest.raises(RuntimeError, match="closed"):
+        _ = precursor.peaks
+
+    with pytest.raises(RuntimeError, match="closed"):
+        _ = dda.ms1
+
+    with pytest.raises(RuntimeError, match="closed"):
+        _ = dda.precursors
+
+    # Current behaviour: metadata is read from the SQLite file on demand and
+    # does not depend on the TimsData handle, so it stays available.
+    assert isinstance(dda.metadata.instrument_name, str)
 
 
 if __name__ == "__main__":

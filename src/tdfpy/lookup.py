@@ -211,7 +211,7 @@ class PrecursorLookup:
             rt: Target retention time (in seconds). If None, RT filtering is skipped.
             mz_tolerance: Tolerance for m/z matching.
             mz_tolerance_type: Unit for m/z tolerance ("ppm" or "da"). Default is "ppm".
-            rt_tolerance: Tolerance for retention time matching (in seconds). Default is 20s.
+            rt_tolerance: Tolerance for retention time matching (in seconds). Default is 30s.
 
         Yields:
             Precursor objects matching the criteria.

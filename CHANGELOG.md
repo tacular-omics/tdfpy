@@ -7,6 +7,156 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-08-15
+
+Bruker's `libtimsdata` is gone. tdfpy now reads `analysis.tdf_bin` itself, which
+removes 16 MB of proprietary binaries from the wheel, drops the redistribution
+question, and lifts the Linux/Windows-x86-64 restriction — macOS and ARM work.
+
+### Removed
+
+- **`libtimsdata.so` / `timsdata.dll` are no longer bundled or required.** All
+  ctypes is gone. CI now fails if a wheel contains any native binary.
+- **Native entry points with no callers**: `extractProfileForFrame`,
+  `extractChromatograms`, `readPasefProfileMsMs`,
+  `readPasefProfileMsMsForFrame`, `readPasefMsMsForFrame`, and
+  `readScansDllBuffer`. `readPasefMsMs` and
+  `extractCentroidedSpectrumForFrame` are also gone; see *Changed*.
+- **`TimsData.dll` and `TimsData.initial_frame_buffer_size`** attributes.
+
+### Changed
+
+- **BREAKING — `Precursor.peaks` and `PasefFrameMsmsInfo.peaks` no longer call
+  Bruker's peak picker.** They sum intensities per TOF index over the relevant
+  scan ranges (collapsing ion mobility) and centroid with `merge_peaks` at
+  30 ppm. Bruker's algorithm is proprietary and appears to smooth before
+  picking, so peak lists differ slightly. Measured per item over 10 precursors
+  and 12 DIA windows: strong peaks agree to 0.0–1.9 ppm, total ion current to
+  within 4%, 92.8–100% of Bruker's intensity falls within 10 ppm of one of our
+  centroids, and peak counts run 0.95–1.09×. `tests/test_peaks_divergence.py`
+  enforces those bounds.
+- **`TimsData.handle`** is now the open `analysis.tdf_bin` file object rather
+  than a native handle. It is still `None` after `close()`, which is all any
+  caller checked.
+- Wheel gains a `zstandard` dependency on Python < 3.14; 3.14+ uses the
+  standard library's `compression.zstd`.
+
+### Added
+
+- **`tdfpy.calibration`** — the TOF-index↔m/z and scan↔1/K0 models, as pure
+  functions over the `MzCalibration` / `TimsCalibration` tables. Reproduces
+  Bruker to ~1e-10 relative for m/z and ~1e-15 for mobility. Note that no other
+  open-source reader uses these tables; they approximate from `GlobalMetadata`
+  instead, which is off by 6.35 Th (5.4%) on the bundled DDA fixture.
+- **`get_mobility_collapsed_spectrum`** — the mobility-collapse + greedy-merge
+  helper backing the two `.peaks` properties.
+- **`TimsData.read_frame_arrays`** — reads a scan range as three flat parallel
+  arrays (`scan_indices`, `tof_indices`, `intensities`) instead of one array
+  pair per scan. Peaks for a contiguous scan range are already contiguous in the
+  decoded frame, so this slices where `readScans` has to split. Prefer it
+  wherever you would have concatenated `readScans` output back together.
+- **`UnsupportedTdfError` / `UnsupportedCalibrationError`.** Formats that have
+  not been validated against Bruker's library now raise instead of returning
+  plausible-looking numbers: legacy `TimsCompressionType` 1 (per-scan LZF),
+  unknown calibration `ModelType`s, `use_recalibrated_state=True`, and any
+  pressure-compensation strategy other than `NoPressureCompensation`.
+- **Golden regression tests.** `tests/data/calibration_golden.json` pins the
+  conversions at 0.01 ppm across 21 frames spanning both PRM calibration rows,
+  the temperature extremes driving `dC1`/`dC2`, and every `MsMsType`. Frame
+  decoding is separately verified bit-exact against `tims_read_scans_v2` over
+  all 1710 frames and 29,399,513 peaks of the three fixtures. Previously a
+  deliberately injected 1e-3 relative m/z error passed the entire suite.
+
+### Fixed
+
+- **`slice_d_folder` can no longer destroy data.** It used to delete any
+  existing destination with `rmtree`; passing the source (or a typo'd path) as
+  the destination erased the raw acquisition. It now raises `FileExistsError`
+  for an existing destination and `ValueError` when the destination is the
+  source or inside it, pre-flights NULL `Frames.TimsId` values, and removes
+  the partial destination on any mid-write failure.
+- **DDA files with NULL metadata open again.** A NULL `Frames.PropertyGroup`
+  crashed `DDA(...)` (DIA/PRM already guarded), and a NULL
+  `PasefFrameMsMsInfo.Precursor` failed the whole file; both are now tolerated
+  the way the dataclasses were designed to.
+- **Corrupt `analysis.tdf_bin` input now raises `UnsupportedTdfError`**
+  instead of crashing arbitrarily or reading garbage: undersized frame
+  headers (previously a negative `read()` that swallowed the rest of the
+  file — which zstd then *accepted*), truncated payloads, zero or mismatched
+  scan counts, and payload word counts inconsistent with the documented
+  layout. The header scan count is cross-checked against `Frames.NumScans`
+  and the payload's own count word (verified to hold on all 1710 fixture
+  frames before enforcement).
+- **Concurrent frame reads are now actually safe.** The decoder claimed
+  thread safety but seeked a shared file handle; two threads produced 311
+  corrupted reads out of 1200 under a tight switch interval. Reads now use
+  `os.pread` (lock-guarded fallback where unavailable).
+- **`VerticalNoiseFilter` Numba and Python paths are bit-identical on
+  fractional intensities** (reachable via `Smooth(mode="mean")`); the
+  incremental float profile accrued ±1e-13 residues that flipped occupancy
+  tests on ~1 in 5 peaks in adversarial cases.
+- **`WatershedCentroider` no longer emits phantom `[0, 0, 0]` centroids** for
+  zero-total-intensity groups (it falls back to the seed's coordinates, like
+  `merge_peaks`), and its reported intensities are now sums of *raw* — not
+  smoothed — intensities, so TIC is conserved. Smoothing along a single axis
+  now works (previously any zero half-width silently disabled smoothing
+  entirely), and an invalid `Smooth`/`box_smooth` mode raises `ValueError`.
+- **`get_mobility_collapsed_spectrum` output no longer depends on peak
+  density**: the `bincount` and `unique` rollup strategies disagreed on
+  zero-total TOF bins; both now drop them.
+- **`index_to_mz` rejects TOF indices below the calibration model's domain**
+  instead of returning a plausible-looking wrong m/z.
+- **`PandasTdf` closes its SQLite connections deterministically** (`with
+  sqlite3.connect(...)` only manages the transaction, not the connection).
+- `RawSpectrum` instances no longer raise on `==`/`hash()`.
+
+### Deprecated
+
+- **`ccsToOneOverK0ToCCSforMz` → `ccsToOneOverK0forMz`.** The old name is a
+  typo'd copy-paste artifact; it remains as an alias that emits
+  `DeprecationWarning`.
+
+### Build, docs, and CI
+
+- The sdist shrank from 82 MB to under 0.5 MB — test fixtures, plots, and
+  internal apps are excluded; `junit.xml` and `plots/` are no longer tracked.
+- **`numba` is now a required dependency** (it was an undocumented optional
+  extra, so default installs silently ran the slow pure-Python fallbacks).
+- The JOSS paper, `CITATION.cff`, README, and docs no longer describe the
+  removed `libtimsdata`/ctypes architecture or credit "Bruker's algorithm"
+  for MS2 peaks; packaging metadata migrated to PEP 639 and `setup.py` was
+  removed.
+- CI now tests the interpreter each matrix leg asks for (the 3.14 leg was
+  silently testing 3.12), adds Python 3.13, and the publish workflow verifies
+  the tag matches `__version__` and that the published wheel contains no
+  native binaries.
+
+### Performance
+
+- **`read_spectrum` is up to 2x faster** — it no longer splits a frame into
+  per-scan arrays only to immediately concatenate them back. The gain is largest
+  on sparse frames, where the per-scan overhead dominated: 200 mixed DDA frames
+  went from 340 ms to 168 ms, while 5 dense MS1 frames improved ~10%.
+- **`get_mobility_collapsed_spectrum` is 3.6x faster on a whole frame**
+  (74 ms → 21 ms for an MS1 frame) and ~1.3x on small PASEF ranges. The per-peak
+  Python dict rollup is now a vectorised aggregation that picks between
+  `bincount` and `unique` based on how the peak count compares to the TOF grid
+  width — the two run opposite ways, and picking wrongly costs ~10x either way.
+- **Frame decoding avoids one full copy** of every payload by viewing the
+  de-interleaved bytes as `uint32` rather than round-tripping through
+  `ascontiguousarray().tobytes()`.
+- **`merge_peaks` is ~1.45x faster** on an uncapped centroiding run (60 ms →
+  41 ms for a 337k-peak MS1 frame), which makes `get_centroided_spectrum` ~1.3x
+  faster end to end. The greedy kernel ran two binary searches per seed to find
+  each peak's m/z window — half its total time. Because `mz_sorted` is sorted
+  and the window edges are monotone in m/z, one linear two-pointer sweep yields
+  identical bounds. The sweep is skipped when `max_peaks` caps the seed loop,
+  since a cap leaves its fixed cost unamortised. Output is bit-identical across
+  both kernels and every tolerance mode.
+
+Frame decoding remains bit-exact against Bruker over all 1710 fixture frames and
+29,399,513 peaks.
+
 ## [2.2.0] - 2026-07-07
 
 ### Added

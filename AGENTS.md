@@ -35,7 +35,7 @@ just ty            # ty type check src/
 just format        # ruff format + import sort
 just check         # lint + test + ty (full QC)
 just build         # uv build → dist/
-just clean         # remove build artifacts (preserves libtimsdata.so)
+just clean         # remove build artifacts
 just docs          # serve docs at localhost:8002
 ```
 
@@ -59,10 +59,9 @@ src/tdfpy/
 ├── slicer.py          slice_d_folder — extract a frame-range subset of a .d
 ├── viz.py             plot_centroiding — 2x2 diagnostic panel
 ├── tdf.py             PandasTdf — pandas wrapper around analysis.tdf SQLite
-├── timsdata.py        ctypes wrapper around libtimsdata.so
-├── constants.py       Physical constants (proton mass, table names)
-├── libtimsdata.so     Bruker native library (Linux)
-└── timsdata.dll       Bruker native library (Windows)
+├── timsdata.py        TimsData — pure-Python .tdf_bin frame reader
+├── calibration.py     TOF index <-> m/z and scan <-> 1/K0 models (no I/O)
+└── constants.py       Physical constants (proton mass, table names)
 ```
 
 ## Key Design Decisions
@@ -70,9 +69,16 @@ src/tdfpy/
 - **No Rust toolchain.** The previous Rust extension (`_tdfpy_rust`, v0.3.x)
   was replaced by a Numba `@njit(cache=True)` kernel in v1.0.0. Do not
   reintroduce maturin or PyO3.
-- **Pure-Python wheel.** Build backend is hatchling; wheels are
-  `py3-none-any`. The Bruker native library is bundled in the wheel
-  (`libtimsdata.so` on Linux, `timsdata.dll` on Windows).
+- **No native library.** `analysis.tdf_bin` is decoded directly in
+  Python/NumPy (v3.0.0); Bruker's `libtimsdata` is gone. Do not reintroduce
+  it or any ctypes binding. Build backend is hatchling; wheels are
+  `py3-none-any` and CI fails if one contains a `.so`/`.dll`.
+- **Unvalidated formats must raise, never approximate.** A wrong calibration
+  produces plausible numbers that nothing downstream can detect. Legacy
+  `TimsCompressionType` 1, unknown calibration `ModelType`s, recalibrated
+  state and pressure compensation all raise. If you add support for one,
+  validate it against Bruker's library first and extend
+  `tests/test_calibration_golden.py`.
 - **Numba is a hard dependency.** Every JIT-compiled kernel has a
   pure-Python NumPy fallback gated on `_HAS_NUMBA`. When adding a new
   kernel, write both paths and add a Numba/Python equivalence test.
@@ -118,6 +124,7 @@ Use `pytest.approx` for floating-point comparisons.
 |---|---|
 | `numpy>=2.0` | Array operations throughout |
 | `pandas>=2.0` | SQLite metadata access via `PandasTdf` |
+| `zstandard>=0.22` | Frame decompression; only on Python < 3.14 (3.14+ uses stdlib `compression.zstd`) |
 | `numba>=0.59` | JIT-compiled centroiding and watershed kernels |
 
 Dev / docs: `ruff`, `ty`, `pytest`, `pytest-cov`, `pyupgrade`, `mkdocs`,
@@ -153,8 +160,11 @@ Dev / docs: `ruff`, `ty`, `pytest`, `pytest-cov`, `pyupgrade`, `mkdocs`,
   install tdfpy`.
 - Docs are MkDocs + mkdocstrings, auto-deployed to GitHub Pages on push to
   `main`.
-- `libtimsdata.so` and `timsdata.dll` are committed to git (and explicitly
-  un-ignored in `.gitignore`) so they ship in every PyPI wheel.
+- `tests/data/calibration_golden.json` and `tests/data/peaks_golden.json`
+  hold reference values captured from Bruker's library while it was still
+  vendored. Regenerate with `scripts/generate_calibration_golden.py` /
+  `scripts/generate_peaks_golden.py`, which need a copy of the Bruker SDK
+  that is no longer in this repo.
 
 ## Public API Cheat Sheet
 
@@ -165,7 +175,7 @@ from tdfpy import DDA, DIA, PRM, get_acquisition_type, slice_d_folder
 # Frame elements (dataclasses, do not construct directly)
 from tdfpy import (
     Frame, DDAMs1Frame, DIAMs1Frame, PRMMs1Frame,
-    DiaWindow, DiaWindowGroup, Precursor,
+    DiaWindow, DiaWindowGroup, Precursor, PasefFrameMsmsInfo,
     PrmTarget, PrmTransition,
     MetaData, Calibration,
 )
@@ -177,12 +187,16 @@ from tdfpy import (
 )
 
 # Peak extraction — convenience
-from tdfpy import get_raw_peaks, get_centroided_spectrum, merge_peaks
+from tdfpy import (
+    get_raw_peaks, get_centroided_spectrum, merge_peaks,
+    get_mobility_collapsed_spectrum,   # mobility summed away, 1-D m/z spectrum
+)
 
 # Peak extraction — composable pipeline ops
 from tdfpy import (
     RawSpectrum, read_spectrum, subset_scans,
     exclude_region, apply_noise, convert, centroid_peaks,
+    smooth, box_smooth, Smooth,
 )
 
 # Centroiders
@@ -191,19 +205,23 @@ from tdfpy import Centroider, MergePeaksCentroider, WatershedCentroider
 # Region exclusion
 from tdfpy import ChargeStateRegion
 
-# Noise filters
+# Noise filters and precursor-space gates
 from tdfpy import (
     NoiseFilter, NoiseSpec, coerce_filters,
     IntensityThreshold, AbsoluteThreshold, MadThreshold,
     PercentileThreshold, HistogramThreshold, BaselineThreshold,
-    IterativeMedianThreshold, VerticalNoiseFilter,
+    IterativeMedianThreshold, VerticalNoiseFilter, HorizontalHaloFilter,
+    SelectionPolygonGate, DiaMs1WindowGate,
 )
 
 # Visualization
 from tdfpy import plot_centroiding
 
-# Low-level
-from tdfpy import PandasTdf, TimsData, timsdata_connect
+# Low-level and errors
+from tdfpy import (
+    PandasTdf, TimsData, timsdata_connect,
+    UnsupportedTdfError, UnsupportedCalibrationError,
+)
 ```
 
 ## What Not To Do
@@ -211,12 +229,21 @@ from tdfpy import PandasTdf, TimsData, timsdata_connect
 - Don't add a new build backend or compilation step. The wheel is
   pure-Python by design.
 - Don't reintroduce a Rust extension. Numba covers the perf needs.
+- Don't reintroduce Bruker's `libtimsdata` or any ctypes binding to it. The
+  binary format and calibration models are implemented in `timsdata.py` and
+  `calibration.py`.
+- Don't loosen a format guard to make a file "work". Widening
+  `SUPPORTED_COMPRESSION_TYPE` or a calibration `ModelType` check without
+  validating against Bruker's library silently corrupts every m/z it touches.
 - Don't `import numba` at module top level outside the existing
   `_HAS_NUMBA` try/except — Numba imports are slow.
 - Don't break the `with` context-manager contract. Spectral access after
   the reader closes must raise `RuntimeError`, not return stale data.
 - Don't write tests that mock `TimsData` internals. Use the example `.d`
   fixtures under `tests/data/` instead.
+- Don't regenerate the golden JSON files to make a failing test pass. They are
+  the only remaining record of Bruker's behaviour; a diff against them means
+  the reader changed, not the reference.
 - Don't add post-centroid noise filters. Noise filtering belongs
   *pre-centroid* in the pipeline — that's where filters can usefully
   suppress satellites before the centroider sees them.

@@ -5,9 +5,7 @@ __pycache__/
 
 # C extensions
 *.so
-!src/tdfpy/libtimsdata.so
 *.dll
-!src/tdfpy/timsdata.dll
 
 try.py
 try_slice.py
@@ -227,3 +225,8 @@ benchmark/
 # JOSS paper: track the source (paper.md, paper.bib), ignore render artifacts
 papers/*.pdf
 papers/*.jats
+
+# Test-run artifacts and generated plots (scripts/noise_comparison.py writes plots/)
+junit.xml
+plots/
+.claude/

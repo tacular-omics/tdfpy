@@ -2,147 +2,35 @@
 applyTo: "**"
 ---
 
-# TDFpy - Bruker timsTOF Data Parser
+# tdfpy — Copilot instructions
 
-TDFpy provides low-level and high-level APIs for reading Bruker `.tdf` and `.tdf_bin` files from timsTOF mass spectrometry instruments. The package bridges native C/C++ DLLs with Python for efficient data access. 
+See [AGENTS.md](../AGENTS.md) — the single source of truth for agent
+instructions in this repo. It covers the repository layout, commands, testing,
+code style, and the full list of design decisions. Read it before changing
+anything; the rules below are the ones most often violated, copied verbatim.
 
+- **No native library.** `analysis.tdf_bin` is decoded directly in
+  Python/NumPy (v3.0.0); Bruker's `libtimsdata` is gone. Do not reintroduce
+  it or any ctypes binding. Build backend is hatchling; wheels are
+  `py3-none-any` and CI fails if one contains a `.so`/`.dll`.
+- **Unvalidated formats must raise, never approximate.** A wrong calibration
+  produces plausible numbers that nothing downstream can detect. Legacy
+  `TimsCompressionType` 1, unknown calibration `ModelType`s, recalibrated
+  state and pressure compensation all raise. If you add support for one,
+  validate it against Bruker's library first and extend
+  `tests/test_calibration_golden.py`.
+- **Numba is a hard dependency.** Every JIT-compiled kernel has a
+  pure-Python NumPy fallback gated on `_HAS_NUMBA`. When adding a new
+  kernel, write both paths and add a Numba/Python equivalence test.
+- **Composable pipeline.** Every centroiding entry point orchestrates the
+  same ordered ops: `read_spectrum → subset_scans → exclude_region →
+  apply_noise → centroider`. Each op consumes and produces a `RawSpectrum`
+  in integer-index space; conversion to float (m/z, 1/K0) happens once at
+  the end via `convert`. Power users compose the ops directly.
 
 ## Updating README / Documentation / Changelog
 
-When updating these files use neutral language. Avoid over the top adjectives, since most of the time the code is very mundane and not 'extraordinary'. Be straight to the point and factual. Documentation should be clear and concise, not flowery or embellished. Only explain further if necessary for clarity.
-
-## Architecture Overview
-
-### Three-Layer API Design
-1. **Native DLL Layer** (`timsdata.dll` / `libtimsdata.so`): Bruker's proprietary binary reader
-2. **Low-Level Python Wrapper** (`timsdata.py`): Direct ctypes bindings to DLL functions
-3. **High-Level Pythonic API** (`spectra.py`): NamedTuple-based interface for MS1 spectra with peak merging
-
-Key files:
-- `src/tdfpy/timsdata.py`: ctypes wrapper around Bruker's native library
-- `src/tdfpy/pandas_tdf.py`: DataFrame interface to SQLite metadata tables
-- `src/tdfpy/spectra.py`: High-level MS1 spectrum extraction with centroiding
-- `src/tdfpy/constants.py`: Database table names and physical constants
-
-## Development Workflow
-
-**Package Manager**: This project uses `uv` (not pip/poetry). See `Makefile` for all commands.
-
-### Common Commands
-```bash
-make install-dev    # Install with dev dependencies
-make test          # Run pytest tests
-make lint          # Run mypy + pylint
-make build         # Build package
-make clean         # Remove build artifacts
-```
-
-### Testing
-- Test data: `tests/data/200ngHeLaPASEF_1min.d/` (committed to repo)
-- Run tests: `python -m unittest tests.test_<module> -v`
-- **Important**: Never iterate over ALL MS1 spectra in tests - always LIMIT to 3-5 frames for performance
-- `get_centroided_ms1_spectra()` returns a **generator**, not a list - convert with `list()` in tests
-
-### Type Checking
-- Project uses type hints throughout (Python 3.8+)
-- `mypy` configured in `pyproject.toml` with relaxed settings for rapid development
-- `timsdata.py` is ignored by pylint (auto-generated bindings)
-
-## Critical Conventions
-
-### Generator Pattern for Large Datasets
-Functions that process multiple spectra/frames MUST return generators to avoid memory issues:
-```python
-def get_centroided_ms1_spectra(...) -> Generator[Ms1Spectrum, None, None]:
-    for frame_id in frame_ids:
-        yield get_centroided_ms1_spectrum(...)  # Yield, don't append
-```
-
-### NamedTuples for Data Structures
-Prefer immutable NamedTuples over dataclasses for spectrum data:
-```python
-class Peak(NamedTuple):
-    mz: float
-    intensity: float
-    ion_mobility: float  # 1/K0 in units
-
-class Ms1Spectrum(NamedTuple):
-    spectrum_index: int
-    frame_id: int
-    retention_time: float  # minutes
-    peaks: List[Peak]
-```
-
-### Context Manager for Database Connections
-Always use `timsdata_connect()` context manager to ensure proper cleanup:
-```python
-with timsdata_connect('path/to/data.d') as td:
-    spectrum = get_centroided_ms1_spectrum(td, frame_id=1)
-    # td.conn and td.handle auto-closed on exit
-```
-
-### Platform-Specific DLL Loading
-The package dynamically loads platform-specific libraries (Windows DLL vs Linux SO). See `timsdata.py` lines 18-56 for the platform detection logic.
-
-## Data Flow
-
-1. **Bruker .d folder structure**:
-   - `analysis.tdf`: SQLite database with metadata (frames, precursors, calibration)
-   - `analysis.tdf_bin`: Binary blob with raw intensity/index arrays
-   - DLL reads binary data via memory-mapped file handles
-
-2. **Low-level access** (`TimsData`):
-   - `readScans()`: Returns raw (index, intensity) arrays per scan
-   - `indexToMz()`: Converts detector indices → m/z values using calibration
-   - `scanNumToOneOverK0()`: Converts scan numbers → ion mobility (1/K0)
-
-3. **High-level access** (`get_centroided_ms1_spectrum`):
-   - Reads all scans in a frame
-   - Converts indices to m/z
-   - Applies peak merging with m/z and ion mobility tolerances
-   - Returns clean `Ms1Spectrum` with `Peak` list
-
-## Key Implementation Details
-
-### Peak Merging Algorithm (spectra.py)
-Greedy clustering that merges peaks within m/z AND ion mobility windows:
-- Sort peaks by m/z for binary search
-- Process in descending intensity order
-- Use binary search to find m/z window, then filter by ion mobility
-- Merge using intensity-weighted averages
-- `min_peaks` parameter filters noise (default: 3 nearby peaks required)
-
-### MS1 vs MS2 Frames
-Query SQLite to distinguish frame types:
-```sql
-SELECT Id FROM Frames WHERE MsMsType = 0  -- MS1 frames
-SELECT Id FROM Frames WHERE MsMsType != 0 -- MS2/PASEF frames
-```
-
-### Performance Patterns
-- Pre-allocate NumPy arrays when total size known
-- Batch operations: `td.indexToMz(frame_id, index_array)` not `[td.indexToMz(frame_id, i) for i in ...]`
-- Use boolean masks for filtering, not list comprehensions
-- Convert generator to list only when necessary
-
-## Common Pitfalls
-
-1. **Don't use `len()` on generators**: `get_centroided_ms1_spectra()` returns Generator, not List
-2. **Always limit frame iteration in tests**: Full datasets can have 10K+ frames
-3. **Check frame types**: Many queries require filtering `MsMsType = 0` for MS1-only
-4. **Remember RT units**: Frames table stores seconds, API exposes minutes
-5. **Ion mobility is 1/K0**: Not mobility itself - reciprocal of reduced mobility constant
-
-## External Dependencies
-
-- **NumPy**: All array operations, required for performance
-- **Pandas**: DataFrame interface to SQLite tables (`PandasTdf` class)
-- **SQLite3**: Standard library, reads `analysis.tdf` metadata
-- **Bruker DLL**: Proprietary binary (`timsdata.dll` / `libtimsdata.so`) - included in package
-
-## Version & Release
-
-- Version in `src/tdfpy/__init__.py` (`__version__` attribute)
-- Hatchling build system extracts version dynamically
-- GitHub Actions: `python-package.yml` tests on Ubuntu/Windows × Python 3.8-3.11
-- Publish: `make publish` (requires PyPI credentials)
+When updating these files use neutral language. Avoid over the top adjectives,
+since most of the time the code is very mundane and not 'extraordinary'. Be
+straight to the point and factual. Documentation should be clear and concise,
+not flowery or embellished. Only explain further if necessary for clarity.

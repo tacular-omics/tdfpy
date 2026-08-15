@@ -3,8 +3,8 @@
 Thank you for your interest in contributing to **tdfpy**, a Python package for
 parsing and centroiding Bruker timsTOF mass spectrometry data. Whether you are
 fixing a bug, adding a feature, or improving documentation, your help is
-welcome. This project is currently under JOSS review, so clear and well-tested
-contributions are especially valuable.
+welcome. A JOSS submission is in preparation (the manuscript lives in
+`papers/`), so clear and well-tested contributions are especially valuable.
 
 All participants are expected to follow our
 [Code of Conduct](CODE_OF_CONDUCT.md) (Contributor Covenant 2.0).
@@ -17,9 +17,8 @@ bug reports and feature requests.
 **Bug reports** should include:
 
 - Python version and tdfpy version (`python --version`, `pip show tdfpy`).
-- Operating system and architecture (Linux x86_64 / Windows x86_64). The
-  bundled Bruker native library (`libtimsdata.so` / `timsdata.dll`) is
-  platform-specific.
+- Operating system and architecture. tdfpy is pure Python and runs anywhere
+  Python 3.12+ does, but decoding behaviour can still be platform-sensitive.
 - A minimal reproducing example. If the bug is data-dependent, please indicate
   the acquisition mode (DDA / DIA / PRM) and, if you can share, attach a small
   `.d` directory or use `tdfpy.slice_d_folder` to extract a frame range.

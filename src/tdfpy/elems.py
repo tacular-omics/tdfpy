@@ -9,7 +9,11 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 
-from .centroiding import get_centroided_spectrum, get_raw_peaks
+from .centroiding import (
+    get_centroided_spectrum,
+    get_mobility_collapsed_spectrum,
+    get_raw_peaks,
+)
 from .noise import NoiseSpec
 from .pipeline import Centroider, MergePeaksCentroider, Smooth
 from .regions import ChargeStateRegion
@@ -204,25 +208,22 @@ class PasefFrameMsmsInfo(_TdfData):
         return (self.frame_id, self.precursor)
 
     @property
-    def peaks(self) -> np.ndarray:
-        """Native-**centroided** MS/MS peaks summed over this window's scan range.
+    def peaks(self) -> npt.NDArray[np.float64]:
+        """**Centroided** MS/MS peaks summed over this window's scan range.
+
+        The mobility dimension is summed away and the resulting profile is
+        centroided by greedy m/z merging — see
+        :func:`~tdfpy.centroiding.get_mobility_collapsed_spectrum`.
 
         Returns a single ``(N, 2)`` array of ``[m/z, intensity]`` — note this is
         already centroided and 2-D, unlike ``Frame.peaks`` /
         ``DiaWindow.raw_peaks`` which return *raw* peaks as a ``list`` of per-scan
         arrays. Do not iterate this expecting one entry per scan.
         """
-        scan = self.timsdata.extractCentroidedSpectrumForFrame(
-            self.frame_id, self.scan_num_begin, self.scan_num_end
+        return get_mobility_collapsed_spectrum(
+            self.timsdata,
+            [(self.frame_id, self.scan_num_begin, self.scan_num_end)],
         )
-        if scan is None:
-            raise ValueError(
-                f"Could not extract spectrum for frame {self.frame_id} with scan range {self.scan_num_begin}-{self.scan_num_end}."
-            )
-        mz_array = np.array(scan[0])
-        intensity_array = np.array(scan[1])
-        peaks = np.stack((mz_array, intensity_array), axis=-1)
-        return peaks
 
     @property
     def scan_num_range(self) -> tuple[int, int]:
@@ -328,21 +329,24 @@ class Precursor(_TdfData):
 
     @property
     def peaks(self) -> npt.NDArray[np.float64]:
-        """Native-**centroided** PASEF MS/MS peaks for this precursor.
+        """**Centroided** PASEF MS/MS peaks for this precursor.
+
+        Sums every PASEF subscan of this precursor — which may span several
+        frames — collapses the mobility dimension, then centroids by greedy m/z
+        merging. See :func:`~tdfpy.centroiding.get_mobility_collapsed_spectrum`.
 
         Returns a single ``(N, 2)`` array of ``[m/z, intensity]`` (already
         centroided and 2-D), unlike ``Frame.peaks`` / ``DiaWindow.raw_peaks``
         which return *raw* peaks as a ``list`` of per-scan arrays. Do not iterate
         this expecting one entry per scan.
         """
-        prec_map: dict[int, Any] = self.timsdata.readPasefMsMs([self.precursor_id])
-        if self.precursor_id not in prec_map:
-            raise ValueError(f"Precursor ID {self.precursor_id} not found in TimsData.")
-        scan = prec_map[self.precursor_id]
-        mz_array = np.array(scan[0])
-        intensity_array = np.array(scan[1])
-        peaks = np.stack((mz_array, intensity_array), axis=-1)
-        return peaks
+        return get_mobility_collapsed_spectrum(
+            self.timsdata,
+            [
+                (info.frame_id, info.scan_num_begin, info.scan_num_end)
+                for info in self.pasef_frame_msms_infos
+            ],
+        )
 
     @property
     def pasef_peaks(self) -> list[np.ndarray]:
@@ -420,7 +424,7 @@ class DiaWindowGroup:
 
     | Field | Type | Description |
     |---|---|---|
-    | `window_index` | `int` | Index of this window within its group |
+    | `window_index` | `int` | Global 0-based row index of this window in the `DiaFrameMsMsWindows` table (not an index within the group) |
     | `window_group` | `int` | Window group ID |
     | `scan_num_begin` | `int` | First mobility scan (inclusive) |
     | `scan_num_end` | `int` | Mobility scan range end (exclusive) — the range is `[scan_num_begin, scan_num_end)` |

@@ -1,8 +1,14 @@
+import pathlib
+
+import numpy as np
 import pytest
 
 from tdfpy import PRM, PrmTarget, PrmTransition, get_acquisition_type
 
 D_PATH = "tests/data/example_prm.d"
+SKIP_NO_DATA = pytest.mark.skipif(
+    not pathlib.Path(D_PATH).exists(), reason="Test data not available"
+)
 
 
 def test_get_acquisition_type_prm():
@@ -188,6 +194,99 @@ def test_prm_metadata():
     with PRM(D_PATH) as prm:
         assert isinstance(prm.metadata.schema_type, str)
         assert isinstance(prm.metadata.instrument_name, str)
+
+
+@SKIP_NO_DATA
+def test_prm_transition_peaks():
+    """PrmTransition.peaks returns one (N, 2) array per mobility scan."""
+    with PRM(D_PATH) as prm:
+        tr = next(t for t in prm.transitions[1] if t.frame_id == 275)
+        per_scan = tr.peaks
+
+        assert isinstance(per_scan, list)
+        # One entry per scan in [scan_num_begin, scan_num_end).
+        assert len(per_scan) == tr.scan_num_end - tr.scan_num_begin
+
+        for arr in per_scan:
+            assert isinstance(arr, np.ndarray)
+            assert arr.ndim == 2
+            assert arr.shape[1] == 2
+            assert np.issubdtype(arr.dtype, np.floating)
+            if arr.shape[0] > 0:
+                # m/z ascends within a scan; intensities are positive counts.
+                assert np.all(np.diff(arr[:, 0]) >= 0)
+                assert np.all(arr[:, 1] > 0)
+
+        assert sum(arr.shape[0] for arr in per_scan) > 0
+
+
+@SKIP_NO_DATA
+def test_prm_transition_raw_peaks_and_centroid():
+    """raw_peaks()/centroid() return (N, 3) arrays for a transition."""
+    with PRM(D_PATH) as prm:
+        tr = next(t for t in prm.transitions[1] if t.frame_id == 275)
+
+        raw = tr.raw_peaks()
+        assert raw.ndim == 2
+        assert raw.shape[1] == 3
+        assert raw.shape[0] > 0
+        assert np.all(raw[:, 0] > 0)
+        assert np.all(raw[:, 1] > 0)
+        assert np.all(raw[:, 2] > 0)
+
+        centroided = tr.centroid()
+        assert centroided.ndim == 2
+        assert centroided.shape[1] == 3
+        # Centroiding merges peaks, so it can never grow the peak count.
+        assert centroided.shape[0] <= raw.shape[0]
+
+
+@SKIP_NO_DATA
+def test_prm_transition_mobility_range():
+    """A transition's 1/K0 and CCS ranges follow its mobility scan range."""
+    with PRM(D_PATH) as prm:
+        tr = next(t for t in prm.transitions[1] if t.frame_id == 275)
+
+        ook0_begin, ook0_end = tr.ook0_range
+        # Scan number and 1/K0 run in opposite directions.
+        assert ook0_begin > ook0_end > 0.0
+        assert tr.ook0_range == (tr.ook0_begin, tr.ook0_end)
+
+        ccs_begin, ccs_end = tr.ccs_range
+        assert ccs_begin > ccs_end > 0.0
+
+
+@SKIP_NO_DATA
+def test_prm_access_after_close():
+    """Spectral access after the `with` block must raise RuntimeError."""
+    with PRM(D_PATH) as prm:
+        frame = prm.ms1[1]
+        transition = prm.transitions[1][0]
+        # Warm up: these all work while the reader is open.
+        assert len(frame.peaks) > 0
+        assert transition.raw_peaks().shape[1] == 3
+
+    with pytest.raises(RuntimeError, match="closed"):
+        _ = frame.peaks
+
+    with pytest.raises(RuntimeError, match="closed"):
+        frame.centroid()
+
+    with pytest.raises(RuntimeError, match="closed"):
+        _ = transition.peaks
+
+    with pytest.raises(RuntimeError, match="closed"):
+        transition.centroid()
+
+    with pytest.raises(RuntimeError, match="closed"):
+        _ = prm.ms1
+
+    with pytest.raises(RuntimeError, match="closed"):
+        _ = prm.transitions
+
+    # Current behaviour: metadata is read from the SQLite file on demand and
+    # does not depend on the TimsData handle, so it stays available.
+    assert isinstance(prm.metadata.instrument_name, str)
 
 
 if __name__ == "__main__":

@@ -36,8 +36,8 @@ logger = logging.getLogger(__name__)
 
 def get_acquisition_type(analysis_dir: str | Path) -> Literal["DDA", "DIA", "PRM", "Unknown"]:
     """
-    Determine the acquisition type (DDA or DIA) of a .d folder by examining
-    the MsMsType values in the Frames table.
+    Determine the acquisition type (DDA, DIA, or PRM) of a .d folder by
+    examining the MsMsType values in the Frames table.
 
     Args:
         analysis_dir: Path to the .d folder
@@ -69,7 +69,7 @@ def get_acquisition_type(analysis_dir: str | Path) -> Literal["DDA", "DIA", "PRM
     if MsMsType.DIA_MS2.value in msms_types:
         return "DIA"
 
-    # PRM detection via table presence (MsMsType 10)
+    # Check for PRM (MS2 type 10)
     if MsMsType.PRM_MS2.value in msms_types:
         return "PRM"
 
@@ -159,8 +159,9 @@ class _DFolder:
     def close(self) -> None:
         """Close the TimsData connection."""
         if not getattr(self, "_closed", True):
-            if getattr(self, "_timsdata", None) is not None:
-                self._timsdata.close()
+            td = getattr(self, "_timsdata", None)
+            if td is not None:
+                td.close()
             self._closed = True
 
     def __enter__(self) -> Self:
@@ -187,6 +188,12 @@ class DDA(_DFolder):
 
     Raises:
         FileNotFoundError: If the `.d` folder or required files are missing.
+
+    Note:
+        `PasefFrameMsMsInfo` rows with a NULL `Precursor` are tolerated: the
+        `PasefFrameMsmsInfo` element is built with `precursor=None` (matching
+        the dataclass's `int | None` field) and logged, rather than failing the
+        whole file. Such rows are not reachable from any `Precursor`.
 
     Example:
         ```python
@@ -218,6 +225,9 @@ class DDA(_DFolder):
             frame_to_polarity[frame_id] = polarity
 
         self._pasef_msms_infos: dict[int, list[PasefFrameMsmsInfo]] = {}
+        # PasefFrameMsMsInfo rows whose Precursor is NULL cannot be attached to
+        # any Precursor, so they are kept here rather than dropped or raised on.
+        self._unassigned_pasef_msms_infos: list[PasefFrameMsmsInfo] = []
         for _, row in self._pasef_frame_msms_info_df.iterrows():
             frame_id = int(row["Frame"])
             polarity = frame_to_polarity[frame_id]
@@ -237,13 +247,22 @@ class DDA(_DFolder):
             )
 
             if pasef_info.precursor is None:
-                raise ValueError(
-                    f"PASEF MS/MS info with null precursor found for frame {pasef_info.frame_id}. All PASEF MS/MS info must have a valid precursor ID."
-                )
+                self._unassigned_pasef_msms_infos.append(pasef_info)
+                continue
 
             if pasef_info.precursor not in self._pasef_msms_infos:
                 self._pasef_msms_infos[pasef_info.precursor] = []
             self._pasef_msms_infos[pasef_info.precursor].append(pasef_info)
+
+        if self._unassigned_pasef_msms_infos:
+            logger.warning(
+                "%s: %d PasefFrameMsMsInfo row(s) have a NULL Precursor and are "
+                "not reachable from any Precursor (e.g. frames %s). They are "
+                "kept with precursor=None.",
+                self._analysis_dir,
+                len(self._unassigned_pasef_msms_infos),
+                sorted({i.frame_id for i in self._unassigned_pasef_msms_infos})[:10],
+            )
 
         self._precursors: dict[int, Precursor] = {}
         self._frame_to_precursors: dict[int, list[Precursor]] = {}
@@ -300,7 +319,9 @@ class DDA(_DFolder):
                     t1=float(row["T1"]),
                     t2=float(row["T2"]),
                     tims_calibration=int(row["TimsCalibration"]),
-                    property_group=int(row["PropertyGroup"]),
+                    property_group=int(row["PropertyGroup"])
+                    if not pd.isna(row["PropertyGroup"])
+                    else None,
                     accumulation_time=float(row["AccumulationTime"]),
                     ramp_time=float(row["RampTime"]),
                     precursors=tuple(precursors_for_frame),
@@ -335,7 +356,7 @@ class DDA(_DFolder):
 
     @property
     def ms1(self) -> Ms1FrameLookup[DDAMs1Frame]:
-        """Lookup for MS1 frames. Supports indexing by frame ID and `.query()`."""
+        """Lookup for MS1 frames. Supports indexing by frame ID."""
         self._check_open()
         return self._ms1_frames_lookup
 
@@ -501,7 +522,7 @@ class DIA(_DFolder):
 
     @property
     def ms1(self) -> Ms1FrameLookup[DIAMs1Frame]:
-        """Lookup for MS1 frames. Supports indexing by frame ID and `.query()`."""
+        """Lookup for MS1 frames. Supports indexing by frame ID."""
         self._check_open()
         return self._ms1_frames_lookup
 

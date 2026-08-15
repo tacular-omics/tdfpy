@@ -13,6 +13,7 @@ tooling under ``apps/`` only.
 
 from __future__ import annotations
 
+import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -48,6 +49,7 @@ from tdfpy import (
     smooth,
     subset_scans,
 )
+from tdfpy.centroiding import get_mobility_collapsed_spectrum
 from tdfpy.pipeline import Centroider
 from tdfpy.tdf import PandasTdf
 
@@ -855,18 +857,23 @@ def list_precursors(analysis_dir: str) -> pd.DataFrame:
 def accumulated_precursor_spectrum(analysis_dir: str, precursor_id: int) -> np.ndarray:
     """The accumulated (summed-over-subscans) MS2 spectrum for one precursor.
 
-    Uses ``readPasefMsMs``, which Bruker returns already accumulated across
-    the precursor's PASEF subscans — a 1-D ``(m/z, intensity)`` profile,
-    distinct from the per-frame multi-subscan view on the PASEF page.
+    Sums every PASEF subscan of the precursor and collapses the mobility
+    dimension, giving a 1-D ``(m/z, intensity)`` profile — distinct from the
+    per-frame multi-subscan view on the PASEF page.
     """
+    with sqlite3.connect(str(Path(analysis_dir) / "analysis.tdf")) as conn:
+        ranges = [
+            (int(frame), int(begin), int(end))
+            for frame, begin, end in conn.execute(
+                "SELECT Frame, ScanNumBegin, ScanNumEnd FROM PasefFrameMsMsInfo "
+                "WHERE Precursor = ? ORDER BY Frame",
+                (precursor_id,),
+            )
+        ]
+    if not ranges:
+        return np.empty((0, 2), dtype=np.float64)
     with tdfpy.timsdata_connect(analysis_dir) as td:
-        prec_map = td.readPasefMsMs([precursor_id])
-        if precursor_id not in prec_map:
-            return np.empty((0, 2), dtype=np.float64)
-        scan = prec_map[precursor_id]
-        mz = np.asarray(scan[0], dtype=np.float64)
-        intensity = np.asarray(scan[1], dtype=np.float64)
-    return np.column_stack((mz, intensity))
+        return get_mobility_collapsed_spectrum(td, ranges)
 
 
 @st.cache_data(show_spinner=False)

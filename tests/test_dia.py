@@ -1,8 +1,13 @@
+import pathlib
+
 import pytest
 
 from tdfpy import DIA, DiaWindow, DiaWindowGroup, DIAMs1Frame, get_acquisition_type
 
 D_PATH = "tests/data/example_dia.d"
+SKIP_NO_DATA = pytest.mark.skipif(
+    not pathlib.Path(D_PATH).exists(), reason="Test data not available"
+)
 
 
 def test_get_acquisition_type_dia():
@@ -183,6 +188,39 @@ def test_dia_metadata():
     with DIA(D_PATH) as dia:
         assert isinstance(dia.metadata.schema_type, str)
         assert isinstance(dia.metadata.instrument_name, str)
+
+
+@SKIP_NO_DATA
+def test_dia_access_after_close():
+    """Spectral access after the `with` block must raise RuntimeError."""
+    with DIA(D_PATH) as dia:
+        frame = dia.ms1[1]
+        window = next(iter(dia.windows))
+        # Warm up: these all work while the reader is open.
+        assert len(frame.peaks) > 0
+        assert window.centroid().shape[1] == 3
+
+    with pytest.raises(RuntimeError, match="closed"):
+        _ = frame.peaks
+
+    with pytest.raises(RuntimeError, match="closed"):
+        frame.centroid()
+
+    with pytest.raises(RuntimeError, match="closed"):
+        _ = window.peaks
+
+    with pytest.raises(RuntimeError, match="closed"):
+        window.centroid()
+
+    with pytest.raises(RuntimeError, match="closed"):
+        _ = dia.ms1
+
+    with pytest.raises(RuntimeError, match="closed"):
+        _ = dia.windows
+
+    # Current behaviour: metadata is read from the SQLite file on demand and
+    # does not depend on the TimsData handle, so it stays available.
+    assert isinstance(dia.metadata.instrument_name, str)
 
 
 if __name__ == "__main__":

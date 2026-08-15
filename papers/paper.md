@@ -33,14 +33,17 @@ reciprocal reduced mobility 1/K0 (V·s/cm²) or collision cross section
 Spectrometry (TIMS), which separates ions by size and charge before mass
 analysis. Bruker stores each acquisition as a `.d` folder pairing a SQLite
 metadata database (`analysis.tdf`) with a compressed binary of raw scans
-(`analysis.tdf_bin`); reading the binary requires Bruker's closed-source
-`libtimsdata` C library.
+(`analysis.tdf_bin`); that binary is undocumented, and reading it has
+conventionally required Bruker's closed-source `libtimsdata` C library.
 
-**tdfpy** wraps `libtimsdata` via `ctypes` and exposes an object-oriented API
-for the three principal acquisition modes — Data-Dependent Acquisition (DDA),
-Data-Independent Acquisition (DIA), and Parallel Reaction Monitoring (PRM) —
-covering the PASEF [@Meier2015PASEF] and diaPASEF [@Meier2018diaPASEF] scan
-strategies. It provides a composable peak-processing pipeline — region
+**tdfpy** decodes `analysis.tdf_bin` itself, in Python and NumPy, with no
+native library and therefore no platform restriction. It exposes an
+object-oriented API for the three principal acquisition modes —
+Data-Dependent Acquisition (DDA), Data-Independent Acquisition (DIA), and
+Parallel Reaction Monitoring (PRM) — covering the PASEF [@Meier2015PASEF] and
+diaPASEF [@Meier2018diaPASEF] scan strategies, and reimplements Bruker's
+calibration models so that raw indices become m/z and ion mobility without a
+vendor call. It provides a composable peak-processing pipeline — region
 exclusion, intensity smoothing, noise filtering, and centroiding — with two
 interchangeable centroiders, treating ion mobility as a first-class clustering
 dimension alongside m/z. Performance-critical kernels are JIT-compiled with
@@ -61,11 +64,13 @@ three-dimensional ion clouds in a form that Python scientific libraries can
 consume.
 
 Bruker ships a reference Python SDK, but it exposes only a low-level procedural
-interface and is not an installable package. tdfpy bridges the raw C binding
-and a full proteomics pipeline: a pip-installable package (`pip install tdfpy`)
-with no Rust or C toolchain requirement, acquisition-mode-aware readers that
-expose frames, precursors, and isolation windows as typed dataclasses, and a
-peak-processing pipeline that clusters in joint (m/z, ion mobility) space.
+interface over the closed-source library and is not an installable package.
+tdfpy replaces that dependency with its own decoder and layers a full
+proteomics pipeline on top: a pip-installable package (`pip install tdfpy`)
+with no Rust or C toolchain requirement and no vendor binary to obtain,
+acquisition-mode-aware readers that expose frames, precursors, and isolation
+windows as typed dataclasses, and a peak-processing pipeline that clusters in
+joint (m/z, ion mobility) space.
 
 # State of the Field
 
@@ -84,14 +89,34 @@ treatment of ion mobility as a clustering dimension.
 
 # Implementation
 
-tdfpy is organised in three layers: `ctypes` bindings to `libtimsdata` (handle
-management and TOF↔m/z, scan↔1/K0, and 1/K0↔CCS conversions); a SQLite metadata
-layer that wraps `analysis.tdf` as pandas DataFrames [@McKinney2010Pandas]; and
-a reader layer that materialises the metadata as typed dataclasses
-(`DDAMs1Frame`, `Precursor`, `DiaWindow`, `PrmTransition`). Metadata is loaded
-eagerly while spectral binary data is read lazily — only when `.peaks`,
-`.raw_peaks()`, or `.centroid()` is called — and context managers guarantee the
-native handle is released.
+tdfpy is organised in three layers: a decoding layer that reads
+`analysis.tdf_bin` in pure Python and NumPy (frame decompression and
+de-interleaving, plus the TOF↔m/z, scan↔1/K0, and 1/K0↔CCS conversions); a
+SQLite metadata layer that wraps `analysis.tdf` as pandas DataFrames
+[@McKinney2010Pandas]; and a reader layer that materialises the metadata as
+typed dataclasses (`DDAMs1Frame`, `Precursor`, `DiaWindow`, `PrmTransition`).
+Metadata is loaded eagerly while spectral binary data is read lazily — only
+when `.peaks`, `.raw_peaks()`, or `.centroid()` is called — and context
+managers guarantee the open binary file is closed.
+
+The conversion models are reimplemented from the run's own `MzCalibration` and
+`TimsCalibration` tables rather than approximated from summary metadata, and
+both decoder and models are pinned by regression tests against golden values
+captured from Bruker's library while it was still vendored: frame decoding is
+bit-exact over all 1,710 frames and 29,399,513 peaks of the three bundled
+example acquisitions, and the calibration reproduces the vendor conversions to
+~1e-10 relative in m/z and ~1e-15 in mobility. Variants that were never
+validated this way — legacy per-scan compression, unknown calibration model
+types, recalibrated state — raise rather than return plausible-looking numbers,
+since a silently wrong calibration is undetectable downstream.
+
+MS2 peak lists for DDA precursors and DIA windows are likewise produced
+in-house, replacing the proprietary peak picker: intensities are summed per TOF
+index over the relevant scan ranges (collapsing ion mobility) and merged at
+30 ppm. Measured against the vendor output over 10 precursors and 12 DIA
+windows, strong peaks agree to 0.0–1.9 ppm, total ion current to within 4%, and
+peak counts run 0.95–1.09× — a divergence consistent with smoothing inside the
+closed picker, and enforced as bounds by the test suite.
 
 Peak processing is a chain of composable ops that work on raw integer
 `(scan, TOF index)` data and defer unit conversion to a final step:
@@ -119,10 +144,13 @@ intensity-weighted centroids; bottom-left: the centroided m/z spectrum (stem
 lines) over the retained raw signal; bottom-right: the peaks rejected as
 noise.\label{fig:pipeline}](pipeline.png)
 
-tdfpy is a pure-Python wheel with no compile step at install; the Numba JIT
-replaced an earlier Rust extension that produced platform-specific wheels. The
-Bruker library is bundled (`.so` / `.dll`), and a PEP 561 `py.typed` marker
-ships the package's type annotations. tdfpy has been on PyPI since 2022 and is
+tdfpy is a pure-Python wheel (`py3-none-any`) with no compile step at install
+and no bundled vendor binary; the Numba JIT replaced an earlier Rust extension
+that produced platform-specific wheels, and dropping the native library lifted
+the last platform restriction, so the package now installs on macOS and ARM as
+well as Linux and Windows x86-64. Continuous integration fails the build if a
+wheel contains a native binary. A PEP 561 `py.typed` marker ships the
+package's type annotations. tdfpy has been on PyPI since 2022 and is
 used at The Scripps Research Institute for in-house timsTOF DDA/DIA/PRM feature
 detection and retention-time calibration [@tdfpy_zenodo].
 
@@ -164,6 +192,8 @@ MIT license.
 # Acknowledgements
 
 The authors thank Bruker Daltonics for making the `libtimsdata` shared
-library available for use in open-source software development.
+library available for use in open-source software development; it served as
+the reference implementation against which tdfpy's decoder and calibration
+models were validated.
 
 # References

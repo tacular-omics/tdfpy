@@ -2,11 +2,15 @@
 default:
   @just --list
 
-# Install dependencies
+# Install dependencies (dev included)
 install:
-  uv sync 
+  uv sync
 
-# Install with dev dependencies
+# Alias for install — the name CONTRIBUTING.md and AGENTS.md point contributors at
+install-dev:
+  uv sync
+
+# Install runtime dependencies only, no dev group
 install-prod:
   uv sync --no-dev
 
@@ -55,7 +59,7 @@ clean:
   rm -rf .ruff_cache
   find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
   find . -type f -name "*.pyc" -delete
-  find . -type f -name "*.so" ! -name "libtimsdata.so" -delete
+  find . -type f -name "*.so" -delete
 
 # Build and serve docs
 docs:

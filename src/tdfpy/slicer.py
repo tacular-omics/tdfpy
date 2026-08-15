@@ -54,6 +54,25 @@ def slice_d_folder(
     -------
     Path
         The path to the created .d folder.
+
+    Raises
+    ------
+    FileNotFoundError
+        If the source .d folder is missing ``analysis.tdf`` or
+        ``analysis.tdf_bin``.
+    FileExistsError
+        If ``dest_dir`` already exists. This function never overwrites or
+        deletes pre-existing data.
+    ValueError
+        If ``frame_start > frame_end``, if ``dest_dir`` resolves to the source
+        folder or to a location inside it, if no frames fall in the requested
+        range, or if a kept frame has a NULL ``TimsId``.
+
+    Notes
+    -----
+    If writing fails part-way through, the partially written destination
+    folder is removed before the error propagates, so a failed slice never
+    leaves a corrupt .d folder behind.
     """
     source_dir = Path(source_dir)
     dest_dir = Path(dest_dir)
@@ -68,15 +87,34 @@ def slice_d_folder(
         frame_end,
     )
 
-    if dest_dir.exists():
+    dest_dir.mkdir(parents=True)
+    try:
+        frame_ids = _write_slice(source_dir, dest_dir, frame_start, frame_end)
+    except BaseException:
+        # Never leave a half-written .d folder behind — it would look valid to
+        # a reader but contain truncated binary data.
         logger.warning(
-            "slice_d_folder: destination %s already exists and will be "
-            "overwritten (rmtree).",
+            "slice_d_folder: writing %s failed; removing the partial destination.",
             dest_dir,
         )
-        shutil.rmtree(dest_dir)
-    dest_dir.mkdir(parents=True)
+        shutil.rmtree(dest_dir, ignore_errors=True)
+        raise
 
+    logger.info(
+        "slice_d_folder: wrote %s (%d frames, binary rebuilt).",
+        dest_dir,
+        len(frame_ids),
+    )
+    return dest_dir
+
+
+def _write_slice(
+    source_dir: Path, dest_dir: Path, frame_start: int, frame_end: int
+) -> list[int]:
+    """Populate an existing, empty ``dest_dir`` with the sliced .d contents.
+
+    Returns the list of kept frame IDs.
+    """
     # Step 1: Copy SQLite database and read original offsets before filtering.
     src_tdf = source_dir / TDF_FILE
     dst_tdf = dest_dir / TDF_FILE
@@ -96,6 +134,18 @@ def slice_d_folder(
                 f"No frames in the requested range [{frame_start}, {frame_end}] "
                 f"(inclusive). Source .d folder has frame IDs {available}; frame "
                 "IDs are 1-based."
+            )
+
+        null_offset_ids = [r[0] for r in rows if r[1] is None]
+        if null_offset_ids:
+            preview = ", ".join(str(i) for i in null_offset_ids[:10])
+            if len(null_offset_ids) > 10:
+                preview += ", …"
+            raise ValueError(
+                f"{len(null_offset_ids)} frame(s) in the requested range "
+                f"[{frame_start}, {frame_end}] have a NULL TimsId and therefore "
+                f"no binary blob to copy (frame IDs: {preview}). Slice a range "
+                "that excludes them, or repair the source .d folder."
             )
 
         frame_ids = [r[0] for r in rows]
@@ -126,12 +176,7 @@ def slice_d_folder(
     with closing(sqlite3.connect(dst_tdf)) as conn:
         conn.execute("VACUUM")
 
-    logger.info(
-        "slice_d_folder: wrote %s (%d frames, binary rebuilt).",
-        dest_dir,
-        len(frame_ids),
-    )
-    return dest_dir
+    return frame_ids
 
 
 def _validate_inputs(
@@ -144,6 +189,26 @@ def _validate_inputs(
     if frame_start > frame_end:
         raise ValueError(
             f"frame_start ({frame_start}) must be <= frame_end ({frame_end})"
+        )
+
+    resolved_source = source_dir.resolve()
+    resolved_dest = dest_dir.resolve()
+    if resolved_dest == resolved_source:
+        raise ValueError(
+            f"dest_dir ({dest_dir}) resolves to the source .d folder "
+            f"({source_dir}). Slicing in place is not supported; choose a "
+            "different destination."
+        )
+    if resolved_source in resolved_dest.parents:
+        raise ValueError(
+            f"dest_dir ({dest_dir}) resolves to a location inside the source .d "
+            f"folder ({source_dir}). Choose a destination outside the source."
+        )
+    if dest_dir.exists():
+        raise FileExistsError(
+            f"dest_dir ({dest_dir}) already exists. slice_d_folder never "
+            "overwrites an existing path; remove it first or choose another "
+            "destination."
         )
 
 
