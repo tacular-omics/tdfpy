@@ -74,7 +74,8 @@ _EMPTY_U32 = np.zeros(0, dtype=np.uint32)
 
 #: ``os.pread`` is POSIX-only. Where it is missing (Windows) frame reads fall
 #: back to a lock-guarded seek + read on the shared handle.
-_HAS_PREAD = hasattr(os, "pread")
+_PREAD: Callable[[int, int, int], bytes] | None = getattr(os, "pread", None)
+_HAS_PREAD = _PREAD is not None
 
 
 class UnsupportedTdfError(NotImplementedError):
@@ -105,7 +106,7 @@ def _resolve_zstd() -> Callable[[bytes], bytes]:
         except ImportError:  # pragma: no cover - build without libzstd
             pass
     try:
-        from zstandard import decompress
+        from zstandard import decompress  # ty: ignore[unresolved-import]
 
         return decompress
     except ImportError:
@@ -410,14 +411,16 @@ class TimsData:
                 handle.seek(offset)
                 return handle.read(count)
 
-        chunk = os.pread(self._fd, count, offset)
+        pread = _PREAD
+        assert pread is not None
+        chunk = pread(self._fd, count, offset)
         if len(chunk) == count:
             return chunk
         # Short reads on a regular file mean EOF, but loop rather than assume it.
         chunks = [chunk]
         got = len(chunk)
         while got < count and chunk:
-            chunk = os.pread(self._fd, count - got, offset + got)
+            chunk = pread(self._fd, count - got, offset + got)
             chunks.append(chunk)
             got += len(chunk)
         return b"".join(chunks)
