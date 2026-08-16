@@ -7,7 +7,11 @@ name = "tdfpy"
 dynamic = ["version"]
 description = "Python package for parsing Bruker timsTOF data with centroiding and noise filtering"
 authors = [
-    {name = "Patrick Garrett", email = "pgarrett@scripps.edu"},
+    {name = "Patrick T. Garrett", email = "pgarrett@scripps.edu"},
+    {name = "John R. Yates III", email = "jyates@scripps.edu"},
+]
+maintainers = [
+    {name = "Patrick T. Garrett", email = "pgarrett@scripps.edu"},
 ]
 dependencies = [
     "numpy>=2.0",
@@ -40,10 +44,12 @@ license-files = ["LICENSE"]
 keywords = ["bruker", "timstof", "mass-spectrometry", "proteomics", "tdf", "dia", "dda", "pasef", "ion-mobility"]
 
 [project.urls]
-Homepage = "https://tacular-omics.github.io/tdfpy/"
+Homepage = "https://github.com/tacular-omics/tdfpy"
+Documentation = "https://tacular-omics.github.io/tdfpy/"
 Repository = "https://github.com/tacular-omics/tdfpy"
-"Bug Tracker" = "https://github.com/tacular-omics/tdfpy/issues"
+Issues = "https://github.com/tacular-omics/tdfpy/issues"
 Changelog = "https://github.com/tacular-omics/tdfpy/blob/main/CHANGELOG.md"
+DOI = "https://doi.org/10.5281/zenodo.19100532"
 
 [project.optional-dependencies]
 viz = ["matplotlib>=3.7"]
