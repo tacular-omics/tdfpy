@@ -34,6 +34,7 @@ accumulation window, and this reader reproduces that.
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 import os
 import sqlite3
 import sys
@@ -41,6 +42,7 @@ import threading
 import warnings
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
+from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
@@ -80,6 +82,23 @@ _HAS_PREAD = _PREAD is not None
 
 class UnsupportedTdfError(NotImplementedError):
     """Raised for a ``.d`` folder this reader has not been validated against."""
+
+
+@dataclass(frozen=True)
+class FrameMetadata:
+    """Immutable frame metadata loaded when the reader opens. Time is in seconds."""
+
+    frame_id: int
+    time: float
+    msms_type: int
+    polarity: str
+    num_scans: int
+    num_peaks: int
+    property_group: int | None
+    mz_calibration: int
+    tims_calibration: int
+    t1: float
+    t2: float
 
 
 # ---------------------------------------------------------------------------
@@ -163,7 +182,15 @@ def _decode_frame(
     NumPy broadcast ``ValueError`` from deep inside the kernel — or, worse, is
     silently absorbed by the ``// 2`` and decodes into plausible nonsense.
     """
-    raw = np.frombuffer(_zstd_decompress(payload), dtype=np.uint8)
+    try:
+        decompressed = _zstd_decompress(payload)
+    except MemoryError:
+        raise
+    except Exception as exc:
+        raise UnsupportedTdfError(
+            f"Frame {frame_id}: invalid zstd payload ({exc})."
+        ) from exc
+    raw = np.frombuffer(decompressed, dtype=np.uint8)
     if raw.size % 4:
         raise UnsupportedTdfError(
             f"Frame {frame_id}: decompressed payload is {raw.size} bytes, not a "
@@ -206,6 +233,10 @@ def _decode_frame(
         )
 
     total_peaks = peak_words // 2
+    if np.any(words[1:scan_count] & 1):
+        raise UnsupportedTdfError(
+            f"Frame {frame_id}: scan peak-count words must be even."
+        )
     counts = np.empty(scan_count, dtype=np.int64)
     counts[: scan_count - 1] = words[1:scan_count] >> 1  # stored as 2 * peak count
     counts[scan_count - 1] = total_peaks - int(counts[: scan_count - 1].sum())
@@ -218,6 +249,8 @@ def _decode_frame(
     payload_words = words[scan_count:]
     tof_deltas = payload_words[0::2]
     intensities = payload_words[1::2]
+    if np.any(tof_deltas == 0):
+        raise UnsupportedTdfError(f"Frame {frame_id}: TOF deltas must be positive.")
 
     starts = np.zeros(scan_count, dtype=np.int64)
     np.cumsum(counts[:-1], out=starts[1:])
@@ -225,16 +258,18 @@ def _decode_frame(
     # TOF indices are a cumulative sum of deltas that resets at every scan
     # boundary. Done as one global cumsum minus the running total carried in at
     # each boundary, which avoids a Python loop over scans (5-9x faster).
-    running = np.cumsum(tof_deltas, dtype=np.uint32)
-    carry = np.zeros(scan_count, dtype=np.uint32)
+    running = np.cumsum(tof_deltas, dtype=np.uint64)
+    carry = np.zeros(scan_count, dtype=np.uint64)
     non_empty = counts > 0
     prev_index = starts[non_empty] - 1
     carry[non_empty] = np.where(
-        prev_index >= 0, running[np.maximum(prev_index, 0)], np.uint32(0)
+        prev_index >= 0, running[np.maximum(prev_index, 0)], np.uint64(0)
     )
-    tof = running - np.repeat(carry, counts) - np.uint32(1)  # deltas are 1-based
+    tof = running - np.repeat(carry, counts) - np.uint64(1)
+    if np.any(tof > np.iinfo(np.uint32).max):
+        raise UnsupportedTdfError(f"Frame {frame_id}: TOF indices overflow uint32.")
 
-    return starts, counts, tof, intensities
+    return starts, counts, tof.astype(np.uint32), intensities
 
 
 # ---------------------------------------------------------------------------
@@ -292,7 +327,9 @@ class TimsData:
                 )
 
         self.analysis_directory = analysis_directory
-        self.conn: sqlite3.Connection | None = sqlite3.connect(tdf_path)
+        self.conn: sqlite3.Connection | None = sqlite3.connect(
+            Path(tdf_path).resolve().as_uri() + "?mode=ro", uri=True
+        )
         self.conn.row_factory = sqlite3.Row
 
         try:
@@ -315,6 +352,43 @@ class TimsData:
     def _load_metadata(self) -> None:
         assert self.conn is not None
         meta = dict(self.conn.execute("SELECT Key, Value FROM GlobalMetadata"))
+        self._digitizer_num_samples = int(meta["DigitizerNumSamples"])
+        self._peak_counts = dict(self.conn.execute("SELECT Id, NumPeaks FROM Frames"))
+        self._frame_metadata = {
+            int(r["Id"]): FrameMetadata(
+                int(r["Id"]),
+                float(r["Time"]),
+                int(r["MsMsType"]),
+                str(r["Polarity"]),
+                int(r["NumScans"]),
+                int(r["NumPeaks"]),
+                r["PropertyGroup"],
+                int(r["MzCalibration"]),
+                int(r["TimsCalibration"]),
+                float(r["T1"]),
+                float(r["T2"]),
+            )
+            for r in self.conn.execute("SELECT * FROM Frames ORDER BY Id")
+        }
+        table_names = {
+            r[0]
+            for r in self.conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            )
+        }
+        # sqlite3.Row values are immutable and can be read by worker threads.
+        self._metadata_tables = {
+            name: tuple(self.conn.execute(f"SELECT * FROM {name}"))
+            if name in table_names
+            else ()
+            for name in (
+                "PropertyDefinitions",
+                "GroupProperties",
+                "DiaFrameMsMsWindows",
+            )
+        }
+        self._gate_cache: dict[tuple, Any] = {}
+        self._gate_lock = threading.RLock()
 
         compression = int(meta.get("TimsCompressionType", -1))
         if compression != SUPPORTED_COMPRESSION_TYPE:
@@ -370,6 +444,43 @@ class TimsData:
 
     def _tims_cal(self, frame_id: int) -> TimsCalibration:
         return self._tims_calibrations[self._frame(frame_id)[6]]
+
+    @property
+    def frame_ids(self) -> tuple[int, ...]:
+        """Frame IDs in acquisition ID order. Requires an open reader."""
+        self._require_open()
+        return tuple(self._frame_metadata)
+
+    def frame_metadata(self, frame_id: int) -> FrameMetadata:
+        """Read eagerly loaded metadata without accessing SQLite."""
+        self._require_open()
+        self._frame(frame_id)
+        return self._frame_metadata[frame_id]
+
+    def metadata_table(self, name: str) -> tuple[sqlite3.Row, ...]:
+        """Read an immutable snapshot of a gate metadata table.
+
+        Supported names are PropertyDefinitions, GroupProperties, and
+        DiaFrameMsMsWindows. An absent table produces an empty tuple.
+        """
+        self._require_open()
+        return self._metadata_tables[name]
+
+    def mz_calibration_key(self, frame_id: int) -> tuple[float, ...]:
+        """Identify the effective m/z conversion, including temperature drift."""
+        self._require_open()
+        cal, t1, t2 = self._mz_cal(frame_id)
+        return (
+            cal.digitizer_timebase,
+            cal.digitizer_delay,
+            cal.c0,
+            cal._c1_at(t1, t2),
+            cal.c2,
+        )
+
+    def calibration_key(self, frame_id: int) -> tuple:
+        """Identify the effective m/z and mobility conversions for caching."""
+        return (self.mz_calibration_key(frame_id), self._tims_cal(frame_id))
 
     # -- lifecycle --------------------------------------------------------
 
@@ -518,11 +629,25 @@ class TimsData:
                 "is shorter than the Frames table says it should be."
             )
         if not payload:
+            if self._peak_counts[frame_id] != 0:
+                raise UnsupportedTdfError(
+                    f"Frame {frame_id}: empty packet disagrees with Frames.NumPeaks "
+                    f"({self._peak_counts[frame_id]})."
+                )
             return None
 
         starts, counts, tof, raw_intensity = _decode_frame(
             payload, scan_count, frame_id
         )
+        if tof.size != self._peak_counts[frame_id]:
+            raise UnsupportedTdfError(
+                f"Frame {frame_id}: decoded {tof.size} peaks but Frames.NumPeaks "
+                f"is {self._peak_counts[frame_id]}."
+            )
+        if np.any(tof >= self._digitizer_num_samples):
+            raise UnsupportedTdfError(
+                f"Frame {frame_id}: TOF index exceeds DigitizerNumSamples."
+            )
 
         # Bruker normalises raw digitiser sums to a 100 ms accumulation window.
         if accum_time > 0:

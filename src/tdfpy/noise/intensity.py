@@ -10,11 +10,12 @@ from __future__ import annotations
 
 import logging
 from abc import abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from typing import TYPE_CHECKING
 
 import numpy as np
 
+from .._validation import integer, nonnegative
 from . import NoiseFilter
 
 if TYPE_CHECKING:
@@ -31,6 +32,16 @@ class IntensityThreshold(NoiseFilter):
     from the intensity distribution. The keep-mask is then the simple
     ``intensities >= threshold`` comparison.
     """
+
+    def __post_init__(self) -> None:
+        for field in fields(self):
+            value = getattr(self, field.name)
+            if field.name in ("bins", "passes", "min_remaining"):
+                integer(field.name, value, minimum=1)
+            elif field.name in ("value", "k", "scale", "inner_k", "final_k", "q"):
+                nonnegative(field.name, value)
+                if field.name == "q" and value > 100:
+                    raise ValueError("q must not exceed 100.")
 
     @abstractmethod
     def compute_threshold(self, intensities: np.ndarray) -> float:

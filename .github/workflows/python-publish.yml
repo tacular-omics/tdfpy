@@ -44,30 +44,24 @@ jobs:
         fi
         echo "OK: publishing $RELEASE_TAG (tdfpy $VERSION)"
 
-    - name: Build wheel and sdist
-      run: |
-        pip install build
-        python -m build --outdir dist
+    - uses: astral-sh/setup-uv@v7
 
-    - name: Verify the wheel ships no native libraries
+    - name: Install verification dependencies
+      run: uv sync --locked --group docs --extra mcp
+
+    - name: Verify the release revision
       run: |
-        python -c "
-        import zipfile, sys, pathlib
-        wheels = list(pathlib.Path('dist').glob('*.whl'))
-        assert wheels, 'No wheel found'
-        with zipfile.ZipFile(wheels[0]) as zf:
-            names = zf.namelist()
-        # tdfpy reads .tdf_bin directly; shipping a Bruker blob again would
-        # reintroduce the redistribution question and the platform lock-in.
-        bad = [n for n in names if n.endswith(('.so', '.dll', '.dylib', '.pyd'))]
-        if bad:
-            print('FAIL: wheel contains native binaries:', bad)
-            sys.exit(1)
-        if not wheels[0].name.endswith('-py3-none-any.whl'):
-            print('FAIL: expected a pure-Python wheel, got', wheels[0].name)
-            sys.exit(1)
-        print('OK: pure-Python wheel, no native binaries')
-        "
+        uv run ruff check src/ tests/ scripts/
+        uv run ruff format --check src/ tests/ scripts/
+        uv run ty check src/
+        uv run pytest tests/
+        uv run --group docs mkdocs build --strict
+
+    - name: Build wheel from source distribution
+      run: uv build --out-dir dist
+
+    - name: Verify distribution contents and installed wheel
+      run: uv run python scripts/verify_distribution.py dist --with-mcp
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v7
@@ -78,6 +72,9 @@ jobs:
   publish:
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
 
     steps:
     - name: Download artifacts
@@ -86,9 +83,13 @@ jobs:
         name: dist
         path: dist
 
-    # TODO: migrate to PyPI trusted publishing (needs a publisher configured on
-    # the PyPI project side; then drop PYPI_API_TOKEN and add id-token: write).
-    - name: Publish package
+    # Enable the repository variable only after configuring the matching PyPI publisher.
+    - name: Publish with Trusted Publishing
+      if: vars.PYPI_TRUSTED_PUBLISHING == 'true'
+      uses: pypa/gh-action-pypi-publish@release/v1
+
+    - name: Publish with existing token
+      if: vars.PYPI_TRUSTED_PUBLISHING != 'true'
       uses: pypa/gh-action-pypi-publish@release/v1
       with:
         user: __token__

@@ -150,9 +150,7 @@ def test_convert_voltage_matches_scannum_mapping(
     # values in (the old bug) produced entirely different numbers.
     out = convert(ms1_spectrum, td, ms1_frame_id, ion_mobility_type="voltage")
     assert out.shape == (ms1_spectrum.num_peaks, 3)
-    expected = np.asarray(
-        td.scanNumToVoltage(ms1_frame_id, ms1_spectrum.scan_indices)
-    )
+    expected = np.asarray(td.scanNumToVoltage(ms1_frame_id, ms1_spectrum.scan_indices))
     np.testing.assert_allclose(out[:, 2], expected, rtol=1e-9)
 
 

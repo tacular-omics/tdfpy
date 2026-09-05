@@ -19,10 +19,12 @@ from typing import TYPE_CHECKING, Literal, overload
 
 import numpy as np
 
+from .._validation import index_arrays, integer, nonnegative
 from . import NoiseFilter
 
 try:
     from numba import njit as _njit  # ty: ignore[unresolved-import]
+
     _HAS_NUMBA = True
 except ImportError:  # pragma: no cover
     _HAS_NUMBA = False
@@ -53,6 +55,7 @@ class VerticalNoiseDiagnostics:
 
 
 if _HAS_NUMBA:
+
     @_njit(cache=True)
     def _vertical_single_pass_njit(
         mz_sorted: np.ndarray,
@@ -122,8 +125,9 @@ if _HAS_NUMBA:
                         run_last = s
                         run_sum = p
                     elif (s - run_last - 1) > max_gap_scans:
-                        if (run_last - run_first + 1) >= min_streak_scans and \
-                                run_sum >= min_streak_intensity:
+                        if (
+                            run_last - run_first + 1
+                        ) >= min_streak_scans and run_sum >= min_streak_intensity:
                             run_lo[nkr] = run_first
                             run_hi[nkr] = run_last
                             nkr += 1
@@ -133,8 +137,11 @@ if _HAS_NUMBA:
                     else:
                         run_last = s
                         run_sum += p
-            if run_first != -1 and (run_last - run_first + 1) >= min_streak_scans and \
-                    run_sum >= min_streak_intensity:
+            if (
+                run_first != -1
+                and (run_last - run_first + 1) >= min_streak_scans
+                and run_sum >= min_streak_intensity
+            ):
                 run_lo[nkr] = run_first
                 run_hi[nkr] = run_last
                 nkr += 1
@@ -196,7 +203,9 @@ def _single_pass_filter_python(
     for k in range(unique_mz.size):
         center = int(unique_mz[k])
         left = int(np.searchsorted(mz_sorted, center - mz_idx_half_width, side="left"))
-        right = int(np.searchsorted(mz_sorted, center + mz_idx_half_width, side="right"))
+        right = int(
+            np.searchsorted(mz_sorted, center + mz_idx_half_width, side="right")
+        )
 
         window_scans = scan_sorted[left:right]
         window_int = int_sorted[left:right]
@@ -273,7 +282,10 @@ def _single_pass_filter(
     """
     if not _HAS_NUMBA or collect_span_intensities:
         return _single_pass_filter_python(
-            scan_indices, mz_indices, intensities, num_scans,
+            scan_indices,
+            mz_indices,
+            intensities,
+            num_scans,
             mz_idx_half_width=mz_idx_half_width,
             min_streak_scans=min_streak_scans,
             max_gap_scans=max_gap_scans,
@@ -292,14 +304,24 @@ def _single_pass_filter(
     _unique_mz, first_idx = np.unique(mz_sorted, return_index=True)
 
     keep_sorted, n_cols_kept = _vertical_single_pass_njit(
-        mz_sorted, scan_sorted, int_sorted,
-        np.ascontiguousarray(first_idx, dtype=np.int64), int(num_scans),
-        int(mz_idx_half_width), int(min_streak_scans), int(max_gap_scans),
+        mz_sorted,
+        scan_sorted,
+        int_sorted,
+        np.ascontiguousarray(first_idx, dtype=np.int64),
+        int(num_scans),
+        int(mz_idx_half_width),
+        int(min_streak_scans),
+        int(max_gap_scans),
         float(min_streak_intensity),
     )
     keep_mask = np.empty(n, dtype=bool)
     keep_mask[order] = keep_sorted
-    return (keep_mask, int(first_idx.size), int(n_cols_kept), np.zeros(0, dtype=np.float64))
+    return (
+        keep_mask,
+        int(first_idx.size),
+        int(n_cols_kept),
+        np.zeros(0, dtype=np.float64),
+    )
 
 
 @dataclass(frozen=True)
@@ -327,6 +349,13 @@ class VerticalNoiseFilter(NoiseFilter):
     min_streak_intensity: float = 50.0
     num_iterations: int = 2
 
+    def __post_init__(self) -> None:
+        for name in ("mz_idx_half_width", "max_gap_scans"):
+            integer(name, getattr(self, name))
+        for name in ("min_streak_scans", "num_iterations"):
+            integer(name, getattr(self, name), minimum=1)
+        nonnegative("min_streak_intensity", self.min_streak_intensity)
+
     def keep_mask(
         self,
         scan_indices: np.ndarray,
@@ -338,7 +367,10 @@ class VerticalNoiseFilter(NoiseFilter):
         frame_id: int,
     ) -> np.ndarray:
         return self.run(
-            scan_indices, mz_indices, intensities, num_scans=num_scans,
+            scan_indices,
+            mz_indices,
+            intensities,
+            num_scans=num_scans,
             diagnostics=False,
         )
 
@@ -379,6 +411,7 @@ class VerticalNoiseFilter(NoiseFilter):
         When True returns a :class:`VerticalNoiseDiagnostics` carrying the mask
         and per-pass telemetry — used by the timsTOF viewer's IM-filter page.
         """
+        index_arrays(scan_indices, mz_indices, intensities, num_scans)
         n = scan_indices.size
         if n == 0:
             empty = np.zeros(0, dtype=bool)
@@ -459,11 +492,11 @@ class VerticalNoiseFilter(NoiseFilter):
 
 
 def _offcol_box_max_py(
-    scan_sorted: np.ndarray,   # int64, sorted by (scan, mz_idx)
-    mz_sorted: np.ndarray,     # int64
-    int_sorted: np.ndarray,    # float64
-    block_start: np.ndarray,   # int64, len num_scans (start index of each scan's block)
-    block_len: np.ndarray,     # int64, len num_scans
+    scan_sorted: np.ndarray,  # int64, sorted by (scan, mz_idx)
+    mz_sorted: np.ndarray,  # int64
+    int_sorted: np.ndarray,  # float64
+    block_start: np.ndarray,  # int64, len num_scans (start index of each scan's block)
+    block_len: np.ndarray,  # int64, len num_scans
     scan_half_width: int,
     mz_idx_half_width: int,
 ) -> np.ndarray:
@@ -551,6 +584,13 @@ class HorizontalHaloFilter(NoiseFilter):
     mz_idx_half_width: int = 100
     scan_half_width: int = 2
 
+    def __post_init__(self) -> None:
+        nonnegative("peak_fraction", self.peak_fraction)
+        if self.peak_fraction > 1:
+            raise ValueError("peak_fraction must not exceed 1.")
+        integer("mz_idx_half_width", self.mz_idx_half_width)
+        integer("scan_half_width", self.scan_half_width)
+
     def keep_mask(
         self,
         scan_indices: np.ndarray,
@@ -561,6 +601,7 @@ class HorizontalHaloFilter(NoiseFilter):
         td: "TimsData",
         frame_id: int,
     ) -> np.ndarray:
+        index_arrays(scan_indices, mz_indices, intensities, num_scans)
         n = intensities.size
         if n == 0:
             return np.ones(0, dtype=bool)
@@ -572,15 +613,18 @@ class HorizontalHaloFilter(NoiseFilter):
 
         block_start = np.zeros(num_scans, dtype=np.int64)
         block_len = np.zeros(num_scans, dtype=np.int64)
-        uniq, starts, counts = np.unique(
-            scan_s, return_index=True, return_counts=True
-        )
+        uniq, starts, counts = np.unique(scan_s, return_index=True, return_counts=True)
         block_start[uniq] = starts
         block_len[uniq] = counts
 
         ref_sorted = _offcol_box_max(
-            scan_s, mz_s, int_s, block_start, block_len,
-            int(self.scan_half_width), int(self.mz_idx_half_width),
+            scan_s,
+            mz_s,
+            int_s,
+            block_start,
+            block_len,
+            int(self.scan_half_width),
+            int(self.mz_idx_half_width),
         )
         ref = np.empty(n, dtype=np.float64)
         ref[order] = ref_sorted

@@ -72,10 +72,18 @@ from .tdf import PandasTdf
 from .calibration import UnsupportedCalibrationError
 from .timsdata import TimsData, UnsupportedTdfError, timsdata_connect
 from .viz import plot_centroiding
+from .processing import iter_window_spectra
+from .timsdata import FrameMetadata
+from .validation import ValidationIssue, ValidationReport, validate_acquisition
 
-__version__ = "3.0.0"
+__version__ = "4.0.0"
 
 __all__ = [
+    "FrameMetadata",
+    "iter_window_spectra",
+    "ValidationIssue",
+    "ValidationReport",
+    "validate_acquisition",
     # I/O
     "PandasTdf",
     "TimsData",

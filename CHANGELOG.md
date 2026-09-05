@@ -7,6 +7,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.0.0] - 2026-09-04
+
+### Compatibility
+
+- `Precursor.scan_number` is now a float, preserving the recorded fractional
+  coordinate. Code using this metadata to index arrays must choose an explicit
+  rounding rule. Derived mobility, voltage, and CCS can change.
+- Metadata database connections are now read-only. Use a separate SQLite
+  connection to edit a working copy of an acquisition.
+- Invalid processing parameters and inconsistent binary data now raise instead
+  of being silently accepted. Supported valid extraction APIs still return arrays.
+
+### Fixed
+
+- Preserve fractional `Precursor.scan_number` coordinates for mobility, voltage,
+  and CCS conversion. The public field is now a float. Downstream array indexing
+  must use an explicit rounding rule. The bundled DDA data previously had up to
+  0.221% relative mobility error from truncation.
+- Disable the calibration reference generator that was using tdfpy's own
+  implementation while describing its output as independent vendor data.
+- Reject odd scan-count words, zero TOF deltas, out-of-range TOF indices,
+  decoded peak-count mismatches, invalid zstd data, and empty packets that
+  contradict frame metadata. Retain valid empty frames.
+- Preserve half-open DIA gate scan intervals after physical padding.
+- Respect effective per-frame calibration when collapsing multiple frames and
+  caching precursor-space gates. Read selection polygons from the frame's
+  property group.
+- Remove SQL access from built-in spectral processing and gate paths so they
+  can run concurrently through an open reader. Cache gate metadata at opening
+  and bound the calibration-sensitive gate cache.
+- Open metadata databases explicitly in SQLite read-only mode for both readers.
+- Fix `get_tdf_df` to open `analysis.tdf` rather than its containing directory.
+- Validate peak-array shapes, finite values, supported units, and processing
+  configuration bounds before kernel execution. Restrict automatic merge-kernel
+  fallback to Numba errors instead of retrying failed reader or filter operations.
+- Document seed-based `max_peaks` truncation, raw-spectrum unit-charge CCS,
+  PRM per-scan return values, and the DIA MS1 association limitation.
+
+### Added
+
+- `iter_window_spectra` for bounded reuse of adjacent DIA or PRM frame windows,
+  yielding ordinary `(window, peaks)` pairs without diagnostic overhead.
+- Optional `tdfpy[mcp]` installation and `tdfpy-mcp` stdio server with acquisition
+  discovery, metadata queries, DDA/DIA/PRM selections, raw and centroided spectra,
+  full-array exports, batched exports, calibration conversions, and file checks.
+  Data roots and output locations are configured explicitly. The core package
+  does not import or require the MCP SDK.
+- `validate_acquisition` and `tdfpy validate`, with optional full binary checks
+  and structured, frame-specific failure reports.
+- Immutable `FrameMetadata` snapshots and calibration keys.
+- Reproducible reader benchmarks and installed-distribution verification.
+
+### Maintenance
+
+- Add macOS, installed-wheel, formatting, and pull-request documentation checks.
+  Produce coverage and JUnit reports from one pytest run.
+- Verify the exact release revision and built distributions before publication.
+  Prepare optional Trusted Publishing while retaining token authentication until
+  the matching PyPI publisher is configured.
+
 ## [3.0.0] - 2026-08-15
 
 Bruker's `libtimsdata` is gone. tdfpy now reads `analysis.tdf_bin` itself, which

@@ -60,9 +60,7 @@ def test_slice_offsets_valid(tmp_path):
     bin_size = os.path.getsize(dest / "analysis.tdf_bin")
 
     with closing(sqlite3.connect(dest / "analysis.tdf")) as conn:
-        rows = conn.execute(
-            "SELECT Id, TimsId FROM Frames ORDER BY Id"
-        ).fetchall()
+        rows = conn.execute("SELECT Id, TimsId FROM Frames ORDER BY Id").fetchall()
 
     with open(dest / "analysis.tdf_bin", "rb") as f:
         for frame_id, offset in rows:
@@ -95,8 +93,7 @@ def test_slice_pasef_filtered(tmp_path):
 
     with closing(sqlite3.connect(dest / "analysis.tdf")) as conn:
         orphaned = conn.execute(
-            "SELECT COUNT(*) FROM PasefFrameMsMsInfo "
-            "WHERE Frame < 1 OR Frame > 10"
+            "SELECT COUNT(*) FROM PasefFrameMsMsInfo WHERE Frame < 1 OR Frame > 10"
         ).fetchone()[0]
         assert orphaned == 0
 
@@ -119,14 +116,10 @@ def test_slice_calibration_preserved(tmp_path):
     slice_d_folder(TEST_DATA, dest, frame_start=1, frame_end=10)
 
     with closing(sqlite3.connect(TEST_DATA / "analysis.tdf")) as orig_conn:
-        orig_meta = orig_conn.execute(
-            "SELECT * FROM GlobalMetadata"
-        ).fetchall()
+        orig_meta = orig_conn.execute("SELECT * FROM GlobalMetadata").fetchall()
 
     with closing(sqlite3.connect(dest / "analysis.tdf")) as new_conn:
-        new_meta = new_conn.execute(
-            "SELECT * FROM GlobalMetadata"
-        ).fetchall()
+        new_meta = new_conn.execute("SELECT * FROM GlobalMetadata").fetchall()
 
     assert orig_meta == new_meta
 

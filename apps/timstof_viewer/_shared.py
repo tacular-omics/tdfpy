@@ -699,13 +699,13 @@ def precursors_for_ms1_frame(analysis_dir: str, frame_id: int) -> list[dict]:
         iso_by_prec = {}
 
     # Resolve 1/K0 for every scan number we need in one call.
-    need = set(here["ScanNumber"].astype(int).tolist())
+    need = set(here["ScanNumber"].astype(float).tolist())
     for iso in iso_by_prec.values():
         need.add(iso["scan_begin"])
         need.add(iso["scan_end"])
     scan_list = sorted(need)
     with tdfpy.timsdata_connect(analysis_dir) as td:
-        k0_vals = np.asarray(td.scanNumToOneOverK0(frame_id, np.asarray(scan_list, dtype=np.int64)))
+        k0_vals = np.asarray(td.scanNumToOneOverK0(frame_id, np.asarray(scan_list, dtype=np.float64)))
     k0 = dict(zip(scan_list, k0_vals.tolist()))
 
     out: list[dict] = []
@@ -724,8 +724,8 @@ def precursors_for_ms1_frame(analysis_dir: str, frame_id: int) -> list[dict]:
             "charge": (
                 int(charge) if charge is not None and not pd.isna(charge) else None
             ),
-            "scan_number": int(row["ScanNumber"]),
-            "ook0": float(k0[int(row["ScanNumber"])]),
+            "scan_number": float(row["ScanNumber"]),
+            "ook0": float(k0[float(row["ScanNumber"])]),
             "intensity": float(row["Intensity"]),
             "isolation_mz": iso["isolation_mz"] if iso else None,
             "isolation_width": iso["isolation_width"] if iso else None,
@@ -886,7 +886,7 @@ def precursor_pasef_info(analysis_dir: str, precursor_id: int) -> dict:
     if not prow.empty:
         p = prow.iloc[0]
         info["parent_frame"] = int(p["Parent"])
-        info["scan_number"] = int(p["ScanNumber"])
+        info["scan_number"] = float(p["ScanNumber"])
         info["monoisotopic_mz"] = (
             float(p["MonoisotopicMz"]) if not pd.isna(p["MonoisotopicMz"]) else None
         )

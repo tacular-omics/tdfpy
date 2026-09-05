@@ -58,20 +58,32 @@ def main():
             kept_count = len(kept)
             rejected_count = len(rejected)
             kept_intensity = float(kept[:, 1].sum()) if kept_count > 0 else 0.0
-            rejected_intensity = float(rejected[:, 1].sum()) if rejected_count > 0 else 0.0
+            rejected_intensity = (
+                float(rejected[:, 1].sum()) if rejected_count > 0 else 0.0
+            )
 
-            stats_rows.append({
-                "method": label,
-                "raw_peaks": raw_count,
-                "centroided_peaks": len(all_centroids),
-                "kept_peaks": kept_count,
-                "rejected_peaks": rejected_count,
-                "raw_intensity": raw_intensity,
-                "kept_intensity": kept_intensity,
-                "rejected_intensity": rejected_intensity,
-                "pct_intensity_kept": round(100.0 * kept_intensity / raw_intensity, 2) if raw_intensity > 0 else 0.0,
-                "pct_intensity_rejected": round(100.0 * rejected_intensity / raw_intensity, 2) if raw_intensity > 0 else 0.0,
-            })
+            stats_rows.append(
+                {
+                    "method": label,
+                    "raw_peaks": raw_count,
+                    "centroided_peaks": len(all_centroids),
+                    "kept_peaks": kept_count,
+                    "rejected_peaks": rejected_count,
+                    "raw_intensity": raw_intensity,
+                    "kept_intensity": kept_intensity,
+                    "rejected_intensity": rejected_intensity,
+                    "pct_intensity_kept": round(
+                        100.0 * kept_intensity / raw_intensity, 2
+                    )
+                    if raw_intensity > 0
+                    else 0.0,
+                    "pct_intensity_rejected": round(
+                        100.0 * rejected_intensity / raw_intensity, 2
+                    )
+                    if raw_intensity > 0
+                    else 0.0,
+                }
+            )
 
             # plot
             out = PLOTS_DIR / f"noise_{label}.png"

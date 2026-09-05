@@ -1,6 +1,7 @@
 from collections.abc import Iterable, Iterator
 from typing import Generic, Literal, TypeVar
 
+from ._validation import choice, nonnegative
 from .elems import DiaWindow, DiaWindowGroup, Frame, Precursor, PrmTarget, PrmTransition
 
 T = TypeVar("T", bound=Frame)
@@ -131,6 +132,7 @@ class DiaWindowLookup:
         Yields:
             DiaWindow objects matching the criteria.
         """
+        nonnegative("rt_tolerance", rt_tolerance)
         rt_range: tuple[float, float] | None = None
         if rt is not None:
             rt_range = (rt - rt_tolerance, rt + rt_tolerance)
@@ -219,6 +221,8 @@ class PrecursorLookup:
         Note:
             Uses `monoisotopic_mz` if available, otherwise `largest_peak_mz`.
         """
+        choice("mz_tolerance_type", mz_tolerance_type, ("ppm", "da"))
+        nonnegative("mz_tolerance", mz_tolerance)
         mz_range: tuple[float, float] | None = None
         if mz is not None:
             if mz_tolerance_type == "ppm":
@@ -226,6 +230,7 @@ class PrecursorLookup:
             else:  # da
                 mz_range = (mz - mz_tolerance, mz + mz_tolerance)
 
+        nonnegative("rt_tolerance", rt_tolerance)
         rt_range: tuple[float, float] | None = None
         if rt is not None:
             rt_range = (rt - rt_tolerance, rt + rt_tolerance)
@@ -306,6 +311,8 @@ class PrmTargetLookup:
         Yields:
             PrmTarget objects matching the criteria.
         """
+        choice("mz_tolerance_type", mz_tolerance_type, ("ppm", "da"))
+        nonnegative("mz_tolerance", mz_tolerance)
         mz_range: tuple[float, float] | None = None
         if mz is not None:
             if mz_tolerance_type == "ppm":
@@ -313,15 +320,19 @@ class PrmTargetLookup:
             else:
                 mz_range = (mz - mz_tolerance, mz + mz_tolerance)
 
+        nonnegative("rt_tolerance", rt_tolerance)
         rt_range: tuple[float, float] | None = None
         if rt is not None:
             rt_range = (rt - rt_tolerance, rt + rt_tolerance)
 
+        nonnegative("ook0_tolerance", ook0_tolerance)
         ook0_range: tuple[float, float] | None = None
         if ook0 is not None:
             ook0_range = (ook0 - ook0_tolerance, ook0 + ook0_tolerance)
 
-        return self.query_range(mz_range=mz_range, rt_range=rt_range, ook0_range=ook0_range)
+        return self.query_range(
+            mz_range=mz_range, rt_range=rt_range, ook0_range=ook0_range
+        )
 
 
 class PrmTransitionLookup:
@@ -397,6 +408,7 @@ class PrmTransitionLookup:
         Yields:
             PrmTransition objects matching the criteria.
         """
+        nonnegative("rt_tolerance", rt_tolerance)
         rt_range: tuple[float, float] | None = None
         if rt is not None:
             rt_range = (rt - rt_tolerance, rt + rt_tolerance)

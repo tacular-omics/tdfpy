@@ -134,7 +134,5 @@ def test_exclude_region_drops_peaks_inside_band(
     # An aggressive region (steep, high cap) should drop strictly more than the
     # default and never add peaks.
     aggressive = ChargeStateRegion(line=((100.0, 0.6), (1700.0, 1.5)))
-    filtered = exclude_region(
-        ms1_spectrum, aggressive, td=td, frame_id=ms1_frame_id
-    )
+    filtered = exclude_region(ms1_spectrum, aggressive, td=td, frame_id=ms1_frame_id)
     assert filtered.mz_indices.size <= ms1_spectrum.mz_indices.size

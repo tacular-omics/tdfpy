@@ -87,13 +87,7 @@ _STRING_ALIASES: dict[str, type[IntensityThreshold]] = {
 
 
 NoiseSpec = (
-    NoiseFilter
-    | str
-    | float
-    | int
-    | list["NoiseSpec"]
-    | tuple["NoiseSpec", ...]
-    | None
+    NoiseFilter | str | float | int | list["NoiseSpec"] | tuple["NoiseSpec", ...] | None
 )
 
 

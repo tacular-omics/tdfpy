@@ -129,7 +129,9 @@ def _write_slice(
 
         if not rows:
             lo, hi = conn.execute("SELECT MIN(Id), MAX(Id) FROM Frames").fetchone()
-            available = f"{lo}..{hi}" if lo is not None else "none (Frames table is empty)"
+            available = (
+                f"{lo}..{hi}" if lo is not None else "none (Frames table is empty)"
+            )
             raise ValueError(
                 f"No frames in the requested range [{frame_start}, {frame_end}] "
                 f"(inclusive). Source .d folder has frame IDs {available}; frame "
@@ -228,17 +230,13 @@ def _rebuild_binary(
             # Read byte_count (total blob size including this 4-byte field).
             header = src.read(4)
             if len(header) < 4:
-                raise IOError(
-                    f"Failed to read blob header at offset {offset}"
-                )
+                raise IOError(f"Failed to read blob header at offset {offset}")
             (byte_count,) = struct.unpack("<I", header)
 
             # Read remaining bytes (scan_count + compressed data).
             remaining = byte_count - 4
             if remaining < 0:
-                raise IOError(
-                    f"Invalid byte_count {byte_count} at offset {offset}"
-                )
+                raise IOError(f"Invalid byte_count {byte_count} at offset {offset}")
             blob_rest = src.read(remaining)
             if len(blob_rest) < remaining:
                 raise IOError(
@@ -261,9 +259,7 @@ def _table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
     return row[0] > 0
 
 
-def _filter_sqlite(
-    conn: sqlite3.Connection, frame_start: int, frame_end: int
-) -> None:
+def _filter_sqlite(conn: sqlite3.Connection, frame_start: int, frame_end: int) -> None:
     """Delete rows outside the kept frame range from all relevant tables."""
     # Delete from Frames.
     conn.execute(

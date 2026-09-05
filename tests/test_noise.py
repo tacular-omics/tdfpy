@@ -290,17 +290,39 @@ class TestVerticalNumbaEquivalence:
     @pytest.mark.parametrize(
         "params",
         [
-            dict(mz_idx_half_width=3, min_streak_scans=5, max_gap_scans=1, min_streak_intensity=50.0),
-            dict(mz_idx_half_width=0, min_streak_scans=3, max_gap_scans=0, min_streak_intensity=0.0),
-            dict(mz_idx_half_width=5, min_streak_scans=8, max_gap_scans=3, min_streak_intensity=500.0),
-            dict(mz_idx_half_width=2, min_streak_scans=1, max_gap_scans=2, min_streak_intensity=1000.0),
+            dict(
+                mz_idx_half_width=3,
+                min_streak_scans=5,
+                max_gap_scans=1,
+                min_streak_intensity=50.0,
+            ),
+            dict(
+                mz_idx_half_width=0,
+                min_streak_scans=3,
+                max_gap_scans=0,
+                min_streak_intensity=0.0,
+            ),
+            dict(
+                mz_idx_half_width=5,
+                min_streak_scans=8,
+                max_gap_scans=3,
+                min_streak_intensity=500.0,
+            ),
+            dict(
+                mz_idx_half_width=2,
+                min_streak_scans=1,
+                max_gap_scans=2,
+                min_streak_intensity=1000.0,
+            ),
         ],
     )
     def test_single_pass_matches_python(self, params, fractional):
         rng = np.random.default_rng(7)
         scan, mz, inten, ns = _synthetic_frame(rng, fractional=fractional)
         k_nb, nc_nb, nck_nb, _ = _single_pass_filter(scan, mz, inten, ns, **params)
-        k_py, nc_py, nck_py, _ = _single_pass_filter_python(scan, mz, inten, ns, **params)
+        k_py, nc_py, nck_py, _ = _single_pass_filter_python(
+            scan, mz, inten, ns, **params
+        )
         np.testing.assert_array_equal(k_nb, k_py)
         assert (nc_nb, nck_nb) == (nc_py, nck_py)
 
@@ -308,8 +330,11 @@ class TestVerticalNumbaEquivalence:
         rng = np.random.default_rng(11)
         scan, mz, inten, ns = _synthetic_frame(rng, fractional=fractional)
         filt = VerticalNoiseFilter(
-            mz_idx_half_width=3, min_streak_scans=5, max_gap_scans=1,
-            min_streak_intensity=50.0, num_iterations=3,
+            mz_idx_half_width=3,
+            min_streak_scans=5,
+            max_gap_scans=1,
+            min_streak_intensity=50.0,
+            num_iterations=3,
         )
         numba_mask = filt.run(scan, mz, inten, num_scans=ns, diagnostics=False)
         original = _structural._HAS_NUMBA
@@ -327,8 +352,14 @@ class TestVerticalKernelEdgeCases:
         empty_i = np.zeros(0, dtype=np.int64)
         empty_f = np.zeros(0, dtype=np.float64)
         keep, n_cols, n_kept, spans = _single_pass_filter(
-            empty_i, empty_i, empty_f, 100,
-            mz_idx_half_width=3, min_streak_scans=5, max_gap_scans=1, min_streak_intensity=50.0,
+            empty_i,
+            empty_i,
+            empty_f,
+            100,
+            mz_idx_half_width=3,
+            min_streak_scans=5,
+            max_gap_scans=1,
+            min_streak_intensity=50.0,
         )
         assert keep.size == 0 and n_cols == 0 and n_kept == 0 and spans.size == 0
 
@@ -351,7 +382,9 @@ class TestVerticalKernelEdgeCases:
         assert not np.allclose(smoothed.intensities, np.round(smoothed.intensities))
 
         params = dict(
-            mz_idx_half_width=3, min_streak_scans=5, max_gap_scans=1,
+            mz_idx_half_width=3,
+            min_streak_scans=5,
+            max_gap_scans=1,
             min_streak_intensity=50.0,
         )
         k_nb, nc_nb, nck_nb, _ = _single_pass_filter(
@@ -379,7 +412,9 @@ def _halo_mask(filt, scan, mz_idx, inten, num_scans=200):
         np.asarray(scan, dtype=np.int64),
         np.asarray(mz_idx, dtype=np.int64),
         np.asarray(inten, dtype=np.float64),
-        num_scans=num_scans, td=None, frame_id=0,
+        num_scans=num_scans,
+        td=None,
+        frame_id=0,
     )
 
 
@@ -390,7 +425,9 @@ class TestHorizontalHaloFilter:
     def test_empty(self):
         keep = _halo_mask(
             HorizontalHaloFilter(),
-            np.zeros(0, dtype=np.int64), np.zeros(0, dtype=np.int64), np.zeros(0),
+            np.zeros(0, dtype=np.int64),
+            np.zeros(0, dtype=np.int64),
+            np.zeros(0),
         )
         assert keep.shape == (0,)
 
@@ -464,8 +501,12 @@ class TestHorizontalHaloFilterLive:
             frame_id = cursor.fetchone()[0]
             spec = read_spectrum(td, frame_id)
             mask = HorizontalHaloFilter().keep_mask(
-                spec.scan_indices, spec.mz_indices, spec.intensities,
-                num_scans=spec.num_scans, td=td, frame_id=frame_id,
+                spec.scan_indices,
+                spec.mz_indices,
+                spec.intensities,
+                num_scans=spec.num_scans,
+                td=td,
+                frame_id=frame_id,
             )
         assert mask.dtype == bool
         assert mask.size == spec.num_peaks

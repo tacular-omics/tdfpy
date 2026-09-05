@@ -204,9 +204,15 @@ class TestSpectra(unittest.TestCase):
                 )
 
                 if len(py_peaks) > 0:
-                    np.testing.assert_allclose(py_peaks[:, 0], numba_peaks[:, 0], rtol=1e-6)
-                    np.testing.assert_allclose(py_peaks[:, 1], numba_peaks[:, 1], rtol=1e-6)
-                    np.testing.assert_allclose(py_peaks[:, 2], numba_peaks[:, 2], rtol=1e-6)
+                    np.testing.assert_allclose(
+                        py_peaks[:, 0], numba_peaks[:, 0], rtol=1e-6
+                    )
+                    np.testing.assert_allclose(
+                        py_peaks[:, 1], numba_peaks[:, 1], rtol=1e-6
+                    )
+                    np.testing.assert_allclose(
+                        py_peaks[:, 2], numba_peaks[:, 2], rtol=1e-6
+                    )
 
     def test_peak_noise_filter_off_is_noop(self):
         """peak_noise_filter=False should produce identical output to omitting it."""
@@ -216,15 +222,23 @@ class TestSpectra(unittest.TestCase):
         im = rng.uniform(0.8, 0.9, size=200)
 
         baseline = merge_peaks(
-            mz, intensity, im,
-            mz_tolerance=20, mz_tolerance_type="ppm",
-            im_tolerance=0.02, im_tolerance_type="absolute",
+            mz,
+            intensity,
+            im,
+            mz_tolerance=20,
+            mz_tolerance_type="ppm",
+            im_tolerance=0.02,
+            im_tolerance_type="absolute",
             min_peaks=1,
         )
         with_flag_off = merge_peaks(
-            mz, intensity, im,
-            mz_tolerance=20, mz_tolerance_type="ppm",
-            im_tolerance=0.02, im_tolerance_type="absolute",
+            mz,
+            intensity,
+            im,
+            mz_tolerance=20,
+            mz_tolerance_type="ppm",
+            im_tolerance=0.02,
+            im_tolerance_type="absolute",
             min_peaks=1,
             peak_noise_filter=False,
         )
@@ -236,25 +250,39 @@ class TestSpectra(unittest.TestCase):
         # satellite points at 0.02 Da spacing on each side. With end_fraction=0.1
         # over a 0.1 Da window, threshold at d=0.02 is 10000 * (1 - 0.2*0.9) = 8200,
         # so all 100-intensity satellites (well below) get suppressed.
-        mz = np.array([
-            500.00 - 0.06, 500.00 - 0.04, 500.00 - 0.02,
-            500.00,
-            500.00 + 0.02, 500.00 + 0.04, 500.00 + 0.06,
-        ])
+        mz = np.array(
+            [
+                500.00 - 0.06,
+                500.00 - 0.04,
+                500.00 - 0.02,
+                500.00,
+                500.00 + 0.02,
+                500.00 + 0.04,
+                500.00 + 0.06,
+            ]
+        )
         intensity = np.array([100.0, 100.0, 100.0, 10000.0, 100.0, 100.0, 100.0])
         im = np.full(7, 0.85)
 
         # Use a tight centroid tolerance so satellites are NOT part of the centroid.
         without_filter = merge_peaks(
-            mz, intensity, im,
-            mz_tolerance=5, mz_tolerance_type="ppm",
-            im_tolerance=0.001, im_tolerance_type="absolute",
+            mz,
+            intensity,
+            im,
+            mz_tolerance=5,
+            mz_tolerance_type="ppm",
+            im_tolerance=0.001,
+            im_tolerance_type="absolute",
             min_peaks=1,
         )
         with_filter = merge_peaks(
-            mz, intensity, im,
-            mz_tolerance=5, mz_tolerance_type="ppm",
-            im_tolerance=0.001, im_tolerance_type="absolute",
+            mz,
+            intensity,
+            im,
+            mz_tolerance=5,
+            mz_tolerance_type="ppm",
+            im_tolerance=0.001,
+            im_tolerance_type="absolute",
             min_peaks=1,
             peak_noise_filter=True,
             peak_noise_window=0.1,
@@ -278,9 +306,13 @@ class TestSpectra(unittest.TestCase):
         im = np.full(3, 0.85)
 
         with_filter = merge_peaks(
-            mz, intensity, im,
-            mz_tolerance=5, mz_tolerance_type="ppm",
-            im_tolerance=0.001, im_tolerance_type="absolute",
+            mz,
+            intensity,
+            im,
+            mz_tolerance=5,
+            mz_tolerance_type="ppm",
+            im_tolerance=0.001,
+            im_tolerance_type="absolute",
             min_peaks=1,
             peak_noise_filter=True,
             peak_noise_window=0.1,
@@ -303,9 +335,13 @@ class TestSpectra(unittest.TestCase):
         im = np.array([0.85, 0.95])
 
         with_filter = merge_peaks(
-            mz, intensity, im,
-            mz_tolerance=5, mz_tolerance_type="ppm",
-            im_tolerance=0.001, im_tolerance_type="absolute",
+            mz,
+            intensity,
+            im,
+            mz_tolerance=5,
+            mz_tolerance_type="ppm",
+            im_tolerance=0.001,
+            im_tolerance_type="absolute",
             min_peaks=1,
             peak_noise_filter=True,
             peak_noise_window=0.1,
@@ -323,8 +359,12 @@ class TestSpectra(unittest.TestCase):
         intensity = np.zeros(3)
         im = np.full(3, 0.8)
         peaks = merge_peaks(
-            mz, intensity, im,
-            mz_tolerance=10, mz_tolerance_type="ppm", min_peaks=1,
+            mz,
+            intensity,
+            im,
+            mz_tolerance=10,
+            mz_tolerance_type="ppm",
+            min_peaks=1,
         )
         self.assertGreaterEqual(peaks.shape[0], 1)
         self.assertTrue(np.all(np.isfinite(peaks)))
@@ -349,9 +389,13 @@ class TestSpectra(unittest.TestCase):
         intensity = np.array([1000.0, 2000.0, 3000.0, 4000.0, 5000.0])
         im = np.full(5, 0.8)
         peaks = merge_peaks(
-            mz, intensity, im,
-            mz_tolerance=10, mz_tolerance_type="ppm",
-            min_peaks=1, max_peaks=0,
+            mz,
+            intensity,
+            im,
+            mz_tolerance=10,
+            mz_tolerance_type="ppm",
+            min_peaks=1,
+            max_peaks=0,
         )
         self.assertEqual(len(peaks), 5)
 
@@ -361,9 +405,13 @@ class TestSpectra(unittest.TestCase):
         intensity = np.array([1000.0, 2000.0, 3000.0, 4000.0, 5000.0])
         im = np.full(5, 0.8)
         peaks = merge_peaks(
-            mz, intensity, im,
-            mz_tolerance=10, mz_tolerance_type="ppm",
-            min_peaks=1, max_peaks=2,
+            mz,
+            intensity,
+            im,
+            mz_tolerance=10,
+            mz_tolerance_type="ppm",
+            min_peaks=1,
+            max_peaks=2,
         )
         self.assertEqual(len(peaks), 2)
 
@@ -391,8 +439,10 @@ class TestSpectra(unittest.TestCase):
         im = np.concatenate([anchors_im, np.asarray(sat_im)])
 
         params = dict(
-            mz_tolerance=10, mz_tolerance_type="ppm",
-            im_tolerance=0.001, im_tolerance_type="absolute",
+            mz_tolerance=10,
+            mz_tolerance_type="ppm",
+            im_tolerance=0.001,
+            im_tolerance_type="absolute",
             min_peaks=1,
             peak_noise_filter=True,
             peak_noise_window=0.1,
@@ -404,9 +454,15 @@ class TestSpectra(unittest.TestCase):
         self.assertEqual(len(py_peaks), len(nb_peaks))
         order_py = np.argsort(py_peaks[:, 0])
         order_nb = np.argsort(nb_peaks[:, 0])
-        np.testing.assert_allclose(py_peaks[order_py, 0], nb_peaks[order_nb, 0], rtol=1e-9)
-        np.testing.assert_allclose(py_peaks[order_py, 1], nb_peaks[order_nb, 1], rtol=1e-9)
-        np.testing.assert_allclose(py_peaks[order_py, 2], nb_peaks[order_nb, 2], rtol=1e-9)
+        np.testing.assert_allclose(
+            py_peaks[order_py, 0], nb_peaks[order_nb, 0], rtol=1e-9
+        )
+        np.testing.assert_allclose(
+            py_peaks[order_py, 1], nb_peaks[order_nb, 1], rtol=1e-9
+        )
+        np.testing.assert_allclose(
+            py_peaks[order_py, 2], nb_peaks[order_nb, 2], rtol=1e-9
+        )
 
 
 class TestWatershedCentroiderCall(unittest.TestCase):

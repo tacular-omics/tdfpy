@@ -43,7 +43,9 @@ def convert_table_to_df(db_path: str | Path, table_name: str) -> pd.DataFrame:
     try:
         # sqlite3.Connection's own context manager commits or rolls back the
         # transaction; it does not close the connection. closing() does.
-        with closing(sqlite3.connect(str(db_path))) as conn:
+        with closing(
+            sqlite3.connect(db_path.resolve().as_uri() + "?mode=ro", uri=True)
+        ) as conn:
             return pd.read_sql_query(f"SELECT * FROM {table_name}", conn)
     except (sqlite3.Error, pd.errors.DatabaseError) as e:
         raise RuntimeError(

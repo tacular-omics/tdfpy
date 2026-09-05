@@ -159,7 +159,9 @@ def test_prm_transition_query_by_rt():
     with PRM(D_PATH) as prm:
         # Frame 275 has RT close to the start
         first_tr = prm.transitions[1][0]
-        results = list(prm.transitions.query(target=1, rt=first_tr.rt, rt_tolerance=5.0))
+        results = list(
+            prm.transitions.query(target=1, rt=first_tr.rt, rt_tolerance=5.0)
+        )
         assert len(results) >= 1
         assert all(t.target.target_id == 1 for t in results)
 

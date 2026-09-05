@@ -21,7 +21,6 @@ from tdfpy.centroiding import (
     _merge_peaks_numba,
     _merge_peaks_python,
     get_raw_peaks,
-    merge_peaks,
 )
 
 REPO_ROOT = Path(__file__).parent.parent
@@ -71,6 +70,7 @@ def main() -> None:
 
     try:
         import numba
+
         print(f"numba {numba.__version__}")
     except Exception:
         pass
@@ -123,9 +123,12 @@ def main() -> None:
                 if np.allclose(
                     py_result[np.argsort(py_result[:, 0])],
                     nb_result[np.argsort(nb_result[:, 0])],
-                    rtol=1e-5, atol=1e-8,
+                    rtol=1e-5,
+                    atol=1e-8,
                 ):
-                    print(f"  [OK] Python and Numba outputs match on frame {frame_id}\n")
+                    print(
+                        f"  [OK] Python and Numba outputs match on frame {frame_id}\n"
+                    )
                 else:
                     print(f"  [WARN] Outputs differ on frame {frame_id}\n")
                 validated = True

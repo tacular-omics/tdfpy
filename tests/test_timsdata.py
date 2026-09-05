@@ -403,6 +403,9 @@ def test_empty_frame_reads_as_no_peaks(tmp_path: Path) -> None:
     d = _copy_fixture(tmp_path)
     offset, num_scans = _frame_header(d)
     _patch_bin_header(d, offset, byte_count=8)
+    with closing(sqlite3.connect(d / "analysis.tdf")) as conn:
+        conn.execute("UPDATE Frames SET NumPeaks=0 WHERE Id=1")
+        conn.commit()
     with timsdata.timsdata_connect(str(d)) as td:
         scans = td.readScans(1, 0, num_scans)
         assert len(scans) == num_scans

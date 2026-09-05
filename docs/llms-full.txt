@@ -351,6 +351,334 @@ with DDA("experiment_slice.d") as dda:
 
 
 ==============================================================================
+# analysis.md
+==============================================================================
+
+Spectrum batches and file checks
+
+These helpers support reading and centroiding timsTOF data. Existing extraction
+methods continue to return arrays. Processing diagnostics are an internal
+development tool, and chromatogram extraction is deferred.
+
+To process DIA or PRM windows with bounded reuse, pass windows in their existing
+order to `iter_window_spectra`. Adjacent windows of the same frame share one
+decode. Each result is a `(window, peaks)` pair. The numerical array matches
+`window.centroid()` with the same settings. No diagnostic accounting runs as
+part of batch extraction.
+
+```python
+from itertools import islice
+from tdfpy import DIA, MergePeaksCentroider, iter_window_spectra
+
+with DIA(D_PATH) as reader:
+    for window, peaks in iter_window_spectra(
+        islice(reader.windows, 4),
+        centroid=MergePeaksCentroider(max_peaks=10),
+    ):
+        assert peaks.shape[1] == 3
+        assert window.frame_id > 0
+```
+
+For PRM, pass `reader.transitions`. Unsorted inputs retain caller order and may
+decode a frame again. Consume the iterator inside the reader's context. It
+retains the current frame and uses no global spectrum cache or worker pool.
+Returned numerical arrays remain usable after the reader closes.
+
+For acquisition checks, run `tdfpy validate sample.d` or
+`python -m tdfpy validate sample.d`. Add `--full` to decode every binary frame.
+The command writes JSON and exits with status 0 on success or 1 for a failed
+check. The Python function returns a structured report:
+
+```python
+from tdfpy import validate_acquisition
+
+report = validate_acquisition(D_PATH)
+assert report.valid
+assert report.frames_checked > 0
+```
+
+Metadata mode checks supported metadata and calibration references. It does
+not validate compressed payloads. Full mode additionally runs the decoder's
+integrity checks for every frame, collecting frame-specific failures. Neither
+mode repairs data or proves numerical equivalence to vendor software.
+
+The built-in extraction and gate paths can share an open reader across worker
+threads. Metadata needed by those paths is snapshotted when the reader opens.
+Direct access to `td.conn` retains SQLite's thread rules. User-written filters
+must be thread-safe themselves. Wait for workers before closing the reader.
+
+All `ion_mobility_type="ccs"` raw-spectrum conversions assume charge +1.
+Raw peaks do not identify charge states. `Precursor.ccs` uses a known precursor
+charge when present, falling back to +1 when it is absent. Precursor scan
+coordinates retain the original fractional metadata value.
+
+For AI agents, an [optional MCP server](mcp.md) exposes acquisition queries,
+spectrum extraction, conversions, and file checks without changing the core
+Python installation.
+
+::: tdfpy.iter_window_spectra
+
+::: tdfpy.validate_acquisition
+
+
+==============================================================================
+# mcp.md
+==============================================================================
+
+Optional MCP interface
+
+The MCP server lets an AI agent inspect and extract timsTOF data through the
+same reader and centroiding code used by Python callers. It is a local stdio
+server. An MCP client launches it as a subprocess. Source acquisitions remain
+read-only, and complete spectrum exports go into a separate output directory.
+
+The server is available starting in tdfpy 4.0.0. Install it with
+`pip install 'tdfpy[mcp]'`. From a checkout, install and launch it with:
+
+```bash
+uv sync --extra mcp
+uv run --extra mcp tdfpy-mcp --data-root /data/timstof --output-dir /data/tdfpy-results
+```
+
+The launch command is `tdfpy-mcp`, or `python -m tdfpy.mcp`. Ordinary `pip install tdfpy` does not install the MCP
+SDK, and importing `tdfpy` does not import MCP or Pydantic.
+
+Repeat `--data-root` to expose several input directories. With one root, tools
+accept acquisition paths relative to it. With multiple roots, use absolute
+paths returned by discovery. The output directory must be outside acquisition
+folders. Paths in the launch configuration refer to the machine running the
+server, which is also where the data must be accessible.
+
+An MCP client that accepts an `mcpServers` configuration can use this entry for
+an installed environment. Replace every placeholder with an absolute path:
+
+```json
+{
+  "mcpServers": {
+    "tdfpy": {
+      "command": "/absolute/path/to/environment/bin/tdfpy-mcp",
+      "args": [
+        "--data-root", "/absolute/path/to/acquisitions",
+        "--output-dir", "/absolute/path/to/tdfpy-results"
+      ]
+    }
+  }
+}
+```
+
+On Windows, use the environment's `Scripts/tdfpy-mcp.exe`. For development, the
+client can instead launch the absolute path to `uv` with arguments
+`run --directory /absolute/path/to/tdfpy --extra mcp tdfpy-mcp`, followed by the
+same data and output arguments. The client may require a different surrounding
+configuration format, but the command and arguments are the same. This package
+does not change client settings automatically.
+
+What the agent can do
+
+| Tools | Purpose |
+| --- | --- |
+| `server_info`, `discover_acquisitions` | Find configured roots, limits, and available acquisitions |
+| `inspect_acquisition` | Summarize acquisition mode, frame types, retention-time coverage, and source files |
+| `list_metadata_tables`, `read_metadata_table` | Inspect actual SQLite schema and page selected columns with typed filters |
+| `query_frames` | Find frames by RT, polarity, and MS/MS type |
+| `query_precursors` | Find DDA precursors by RT and precursor m/z |
+| `query_dia_windows` | Find DIA windows by RT, isolation-center m/z, and window group |
+| `query_prm_targets`, `query_prm_transitions` | Inspect PRM targets and find their measured transitions |
+| `get_processing_options` | Discover both centroiders, ten noise filters and gates, smoothing, and region exclusion |
+| `preview_spectrum` | Extract a spectrum with full-result statistics and a bounded strongest-peak preview |
+| `export_spectrum` | Save a complete raw or centroided spectrum with extraction settings |
+| `export_window_batch` | Save several DIA or PRM spectra while reusing adjacent windows' decoded frames |
+| `read_artifact` | Inspect an export manifest or page through a numerical array |
+| `convert_coordinates` | Convert TOF, m/z, scan, inverse mobility, voltage, and charge-aware CCS coordinates |
+| `check_acquisition`, `check_frames` | Check supported metadata and page through binary integrity checks |
+
+The `tdfpy://guide` resource explains units and tool sequencing. The
+`tdfpy://processing` resource supplies configuration schemas, and
+`tdfpy://artifacts/{artifact_id}` returns an export manifest. Two optional MCP
+prompts, `inspect_timstof` and `extract_timstof`, guide common workflows. Clients
+that do not expose resources or prompts can use the equivalent tools.
+
+A typical extraction
+
+1. Discover the acquisition and inspect its mode.
+2. Query frames, precursors, or windows. Keep the returned selection object.
+3. Read the processing options before setting non-default parameters.
+4. Preview a small selection to check IDs, units, and processing settings.
+5. Export the complete result. For adjacent DIA or PRM windows, use a batch.
+6. Read the manifest or load the NPZ in Python for downstream analysis.
+
+For example, `query_dia_windows` accepts:
+
+```json
+{
+  "acquisition": "sample.d",
+  "rt": {"lower": 300.0, "upper": 330.0},
+  "mz": {"lower": 600.0, "upper": 650.0},
+  "limit": 10
+}
+```
+
+The `mz` condition matches isolation centers. It does not select every window
+whose isolation band overlaps the interval. A result contains a selection such
+as `{"kind": "dia_window", "id": 42}`. This ID is the window's zero-based
+position in the full acquisition lookup, not a window group or frame ID. Query
+pagination does not renumber it. PRM transitions use the same index convention.
+Frames and DDA precursors use their actual stored IDs.
+
+Pass the selection to `preview_spectrum` or `export_spectrum`. A processing
+configuration can use the existing Python algorithm names:
+
+```json
+{
+  "mode": "centroid",
+  "centroider": {
+    "name": "MergePeaksCentroider",
+    "parameters": {"mz_tolerance": 8.0, "min_peaks": 3}
+  },
+  "noise": [
+    {"name": "MadThreshold", "parameters": {"k": 3.0}}
+  ],
+  "ion_mobility_type": "ook0"
+}
+```
+
+Parameters are validated against the actual algorithm definitions. Unknown
+names and fields raise errors. All filters run before centroiding. The server
+imposes no automatic centroid peak cap. An explicitly requested `max_peaks`
+retains the underlying algorithm's seed-traversal meaning. The preview limit
+only limits what appears in the tool response.
+
+Frame selections can also specify `scan_begin` and `scan_end`. All selections
+can use an optional `mz_range`, and frame or window selections can use
+`mobility_range`. Each range has `lower` and `upper` fields. These physical
+ranges select the output after processing. They do not change the ions seen by
+the centroider. Mobility bounds use the requested output units. For changes to
+pre-centroid processing, use the existing exclusion, smoothing, and noise options.
+
+Numerical contracts
+
+- RT is in seconds. Selection intervals and scan bounds are half-open.
+- Raw mode returns digitizer peaks normalized to a 100 ms accumulation window.
+  Smoothing can change intensities. Filtering and centroid thresholds can remove
+  intensity. A reported intensity sum describes the selected processed result.
+- Frame and window arrays have columns `[mz, intensity, ook0]` or
+  `[mz, intensity, voltage]`, as stated in the export metadata.
+- DDA precursor arrays have columns `[mz, intensity]`. They use the existing
+  mobility-collapsed precursor picker. Processing overrides are rejected for
+  these selections. Query `PasefFrameMsMsInfo` by `Precursor` to obtain individual
+  frame and scan selections when custom processing is needed.
+- CCS conversion requires an explicit positive charge magnitude and m/z. The
+  extraction tools do not assume that raw ions have charge +1.
+- Empty valid selections return empty arrays. Read failures return tool errors.
+  A preview contains the strongest peaks in descending intensity order, and
+  its truncation flag makes omissions explicit. Exports retain complete arrays
+  in the underlying Python API's order.
+
+Exports contain named numerical arrays and a `metadata` Unicode array containing
+JSON. Load with `numpy.load(path, allow_pickle=False)`, then parse the manifest
+with `json.loads(str(data["metadata"]))`. The manifest records selections,
+processing requests, columns, package version, and source file identity. Source
+identity uses file sizes and modification times, not acquisition content hashes.
+The returned SHA256 identifies the exported artifact itself.
+
+Limits and operation
+
+Metadata pages contain at most 200 rows, previews at most 100 peaks, and window
+batches at most 32 windows. Discovery examines at most 20,000 directories and
+does not follow directory symlinks. `check_frames` processes at most 128 frames
+per request. Continue using `next_offset` until it is null. A single page's
+success does not certify the rest of the acquisition. Metadata-check responses
+show at most 200 issues with the total issue count and an explicit truncation flag.
+
+The default frame limit is five million stored peaks. Raise it at startup with
+`--max-frame-peaks` when a known dataset requires more. A spectrum selection may
+reference at most 128 frames. Each export is limited to 512 MiB of uncompressed
+numerical arrays. These are workload guards, not a guarantee against malformed
+binary data exhausting memory. Initial Numba compilation can take longer than
+subsequent requests, so give the client an appropriate tool timeout.
+
+Each request opens and closes its readers. There are no persistent acquisition
+handles for an agent to leak. Keep input datasets unchanged during processing.
+The server permits no arbitrary Python execution, arbitrary SQL, source edits,
+network transport, or automatic format repair. File checks exercise tdfpy's
+supported-format guards and decoder. They do not replace independently captured
+vendor references or establish the scientific quality of an experiment.
+
+Maintenance
+
+Run `just test-mcp` for direct numerical comparisons and MCP protocol tests,
+including a real stdio subprocess. The normal installed-wheel check verifies
+that the core package works without MCP. The optional CI jobs exercise MCP on
+Linux, Windows, and macOS. Run `uv run python scripts/verify_distribution.py dist --with-mcp` to check
+both the core wheel and the optional install with its console entry point.
+
+The implementation uses the [official MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk).
+
+
+==============================================================================
+# maintenance.md
+==============================================================================
+
+Maintenance and release verification
+
+Run `just check` for lint, formatting verification, type checking, and tests.
+Run `uv run --group docs mkdocs build --strict` for documentation validation.
+The test suite executes examples from the getting-started and analysis pages.
+
+Build distributions with `uv build --out-dir dist`, then run
+`uv run python scripts/verify_distribution.py dist`. Use a clean output
+directory containing one wheel and one source archive. Verification checks
+the pure Python wheel and its typing marker, checks source archive exclusions,
+and installs the wheel into a temporary environment outside the checkout.
+It exercises DDA, DIA, and PRM extraction with the bundled fixtures. Runtime
+dependencies must be available in the uv cache or from the package index.
+
+CI tests Linux and Windows on Python 3.12, 3.13, and 3.14, plus a representative
+macOS job. Coverage and JUnit output come from one pytest invocation. The release
+workflow checks the tagged revision and its installed artifacts before upload.
+Numba's compiled code is not fully represented by ordinary coverage tracing.
+
+Independent reference values must remain independent. The calibration generator
+is disabled because its former import path now resolves to tdfpy's own reader.
+Do not replace `tests/data/calibration_golden.json` or `peaks_golden.json` with
+values produced by the implementation being tested. Any future external capture
+must record the reference implementation version, acquisition checksums,
+calibration and pressure settings, and a separate output path. Review new
+captures before extending the committed references.
+
+An independent raw-decoding reference set and broader instrument fixtures remain
+external validation work. Prioritize calibration changes, negative polarity,
+empty frames, and acquisition boundaries. Cross-version agreement between two
+tdfpy builds is useful regression evidence, but is not vendor validation.
+
+The publishing workflow supports PyPI Trusted Publishing behind the repository
+variable `PYPI_TRUSTED_PUBLISHING=true`. First configure the existing PyPI
+project's GitHub publisher for owner `tacular-omics`, repository `tdfpy`, and
+workflow `python-publish.yml`. This workflow does not specify a GitHub
+environment. Verify the publisher configuration, then enable the variable.
+The OIDC path needs no API token. Until enabled, the existing token-based step
+continues to run. After successful migration, revoke and remove the old token.
+See the [PyPI setup documentation](https://docs.pypi.org/trusted-publishers/adding-a-publisher/).
+
+Benchmark a fixed acquisition with
+`uv run python scripts/benchmark_reader.py tests/data/example_dia.d`.
+The JSON output records acquisition checksums, versions, opening time, raw
+decoding throughput, first and warm centroid calls, repeated-window timings,
+and process peak RSS where supported. The first centroid call only measures
+fresh compilation if it runs in a fresh process with an empty `NUMBA_CACHE_DIR`.
+RSS includes imports and all benchmark stages. Timings are measurements, not
+portable CI pass/fail thresholds.
+
+Version 4.0.0 preserves array-returning APIs. The public
+`Precursor.scan_number` now contains a float. Downstream callers that index a
+scan array with that metadata value must choose an explicit rounding rule.
+Corrected mobility and CCS values can differ from earlier releases. Invalid
+parameters that were silently accepted now raise. Metadata database connections
+are read-only. These compatibility changes are documented in the 4.0.0 release
+notes. Local checks and benchmark commands do not publish releases.
+
+
+==============================================================================
 # api/readers.md
 ==============================================================================
 
@@ -748,7 +1076,7 @@ are marked as used and skipped in subsequent iterations.
 | `im_tolerance` | `0.1` | Width of the ion mobility window |
 | `im_tolerance_type` | `"relative"` | `"relative"` (fraction of 1/K0) or `"absolute"` |
 | `min_peaks` | `3` | Raw peaks required to form a centroid; set to `0` or `1` to keep all |
-| `max_peaks` | `None` | Cap on output peaks (highest-intensity first) |
+| `max_peaks` | `None` | Cap on output peaks by raw seed intensity, not final summed intensity |
 | `use_numba` | `True` | Set to `False` to force the Python fallback |
 
 ```python
@@ -798,6 +1126,9 @@ threshold or a method validated for your acquisition; always verify
 against `noise=None` first.
 
 ::: tdfpy.merge_peaks
+
+Raw-spectrum CCS conversion assumes charge +1. Use a known precursor charge
+with the explicit CCS conversion function for charge-specific values.
 
 
 ==============================================================================

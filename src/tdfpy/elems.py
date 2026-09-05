@@ -15,7 +15,7 @@ from .centroiding import (
     get_raw_peaks,
 )
 from .noise import NoiseSpec
-from .pipeline import Centroider, MergePeaksCentroider, Smooth
+from .pipeline import Centroider, Smooth
 from .regions import ChargeStateRegion
 from .timsdata import TimsData, oneOverK0ToCCSforMz
 
@@ -55,56 +55,17 @@ def _frame_centroid(
     ion_mobility_type: Literal["ook0", "ccs", "voltage"],
     centroid: Centroider | None,
 ) -> np.ndarray:
-    """Shared body for the ``centroid`` methods across frame elements.
-
-    For :class:`~tdfpy.pipeline.MergePeaksCentroider` (the default): tries
-    Numba first, falls back to pure Python on failure. Other centroiders
-    are called once with no fallback.
-    """
-    cfg: Centroider = centroid if centroid is not None else MergePeaksCentroider()
-    try:
-        return get_centroided_spectrum(
-            td,
-            frame_id,
-            scan_range=scan_range,
-            exclude=exclude,
-            smooth=smooth,
-            noise=noise,
-            ion_mobility_type=ion_mobility_type,
-            centroid=cfg,
-        )
-    except (ImportError, RuntimeError, TypeError, ValueError) as e:
-        if not isinstance(cfg, MergePeaksCentroider) or not cfg.use_numba:
-            raise
-        # Surface in both channels: warnings.warn for interactive users, and the
-        # logger for observability pipelines (which often suppress warnings).
-        logger.warning(
-            "Numba centroiding failed for frame %d (%s: %s); falling back to the "
-            "pure-Python implementation.",
-            frame_id,
-            type(e).__name__,
-            e,
-        )
-        warnings.warn(
-            f"Numba centroiding failed for frame {frame_id} "
-            f"({type(e).__name__}: {e}). Falling back to the pure-Python "
-            "implementation; results are identical but slower. Set "
-            "use_numba=False on the centroider to silence this warning.",
-            UserWarning,
-            stacklevel=3,
-        )
-        from dataclasses import replace
-
-        return get_centroided_spectrum(
-            td,
-            frame_id,
-            scan_range=scan_range,
-            exclude=exclude,
-            smooth=smooth,
-            noise=noise,
-            ion_mobility_type=ion_mobility_type,
-            centroid=replace(cfg, use_numba=False),
-        )
+    """Run the common pipeline once. JIT fallback belongs to the kernel."""
+    return get_centroided_spectrum(
+        td,
+        frame_id,
+        scan_range=scan_range,
+        exclude=exclude,
+        smooth=smooth,
+        noise=noise,
+        ion_mobility_type=ion_mobility_type,
+        centroid=centroid,
+    )
 
 
 class MsMsType(Enum):
@@ -293,7 +254,7 @@ class Precursor(_TdfData):
     | `average_mz` | `float` | Intensity-weighted average m/z |
     | `monoisotopic_mz` | `float \\| None` | Monoisotopic m/z (if determined) |
     | `charge` | `int \\| None` | Charge state (if determined) |
-    | `scan_number` | `int` | Mobility scan bin containing this precursor |
+    | `scan_number` | `float` | Fractional mobility scan coordinate |
     | `intensity` | `float` | Summed precursor intensity |
     | `parent_frame` | `int` | MS1 frame ID |
     | `pasef_frame_msms_infos` | `tuple[PasefFrameMsmsInfo, ...]` | Associated PASEF MS/MS windows |
@@ -305,7 +266,7 @@ class Precursor(_TdfData):
     average_mz: float
     monoisotopic_mz: float | None
     charge: int | None
-    scan_number: int
+    scan_number: float
     intensity: float
     parent_frame: int
     pasef_frame_msms_infos: tuple[PasefFrameMsmsInfo, ...]
@@ -699,8 +660,9 @@ class DiaWindow(DiaWindowGroup, _TdfData):
 class DIAMs1Frame(Frame):
     """An MS1 frame from a DIA acquisition.
 
-    Inherits all fields from `Frame`. The `dia_windows` field lists the DIA
-    isolation windows that were active during this frame.
+    Inherits all fields from `Frame`. The `dia_windows` field only matches identical frame IDs. Normal DIA
+    windows belong to MS2 frames, so this tuple is empty. Use reader.windows
+    to access isolation windows. This field does not associate acquisition cycles.
     """
 
     dia_windows: tuple[DiaWindow, ...]

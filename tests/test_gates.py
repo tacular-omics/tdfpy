@@ -336,8 +336,10 @@ def test_polygon_gate_filters_with_injected_polygon(dda_td, monkeypatch):
         np.array([500.0, 800.0, 800.0, 500.0]),
         np.array([0.5, 0.5, 1.7, 1.7]),
     )
-    monkeypatch.setattr(gates_mod, "read_selection_polygon", lambda td: poly)
-    gates_mod._GATE_CACHE.pop(dda_td, None)  # avoid a cached "no polygon" result
+    monkeypatch.setattr(
+        gates_mod, "read_selection_polygon", lambda td, frame_id=None: poly
+    )
+    dda_td._gate_cache.clear()  # avoid a cached "no polygon" result
 
     fid = _first_ms1_frame(dda_td)
     spec = read_spectrum(dda_td, fid)
@@ -357,7 +359,7 @@ def test_polygon_gate_filters_with_injected_polygon(dda_td, monkeypatch):
     # index of rounding slack, converted back to m/z).
     kept_mz = np.asarray(dda_td.indexToMz(fid, spec.mz_indices[mask]))
     assert kept_mz.min() > 495.0 and kept_mz.max() < 805.0
-    gates_mod._GATE_CACHE.pop(dda_td, None)  # don't leak the injected gate
+    dda_td._gate_cache.clear()  # don't leak the injected gate
 
 
 def test_polygon_gate_pads_by_default():

@@ -1,6 +1,6 @@
 {
   "title": "tdfpy: A Python package for parsing and centroiding Bruker timsTOF mass spectrometry data",
-  "version": "3.0.0",
+  "version": "4.0.0",
   "description": "tdfpy is a Python package for reading Bruker timsTOF data from analysis.tdf and analysis.tdf_bin files inside a .d directory. It accesses the SQLite metadata and compressed binary peak data directly, so workflows do not need the Bruker native library. High-level readers represent data-dependent acquisition, data-independent acquisition, and parallel reaction monitoring runs through frames, precursors, isolation windows, targets, and transitions. Metadata is loaded when a run is opened, while raw peak arrays are decoded only when requested. Spectrum extraction can retain ion mobility as arrays of mass-to-charge ratio, intensity, and inverse reduced mobility. Processing pipelines support region exclusion, smoothing, configurable noise filters, and two centroiding approaches: greedy peak merging in floating-point mass space and watershed region growth in time-of-flight index space. Frames and acquisition objects can also be selected by identifiers, mass-to-charge ranges, and retention time. tdfpy is intended for proteomics workflows that need scriptable access to timsTOF measurements, mobility-resolved peaks, and PASEF acquisition metadata on Linux, macOS, or Windows.",
   "creators": [
     {

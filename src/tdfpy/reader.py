@@ -34,7 +34,9 @@ from .timsdata import TimsData
 logger = logging.getLogger(__name__)
 
 
-def get_acquisition_type(analysis_dir: str | Path) -> Literal["DDA", "DIA", "PRM", "Unknown"]:
+def get_acquisition_type(
+    analysis_dir: str | Path,
+) -> Literal["DDA", "DIA", "PRM", "Unknown"]:
     """
     Determine the acquisition type (DDA, DIA, or PRM) of a .d folder by
     examining the MsMsType values in the Frames table.
@@ -279,7 +281,7 @@ class DDA(_DFolder):
                 if not pd.isna(row["MonoisotopicMz"])
                 else None,
                 charge=int(row["Charge"]) if not pd.isna(row["Charge"]) else None,
-                scan_number=int(row["ScanNumber"]),
+                scan_number=float(row["ScanNumber"]),
                 intensity=float(row["Intensity"]),
                 parent_frame=int(row["Parent"]),
                 pasef_frame_msms_infos=tuple(
@@ -587,12 +589,16 @@ class PRM(_DFolder):
             target_id = int(row["Id"])
             target = PrmTarget(
                 target_id=target_id,
-                external_id=str(row["ExternalId"]) if not pd.isna(row["ExternalId"]) else None,
+                external_id=str(row["ExternalId"])
+                if not pd.isna(row["ExternalId"])
+                else None,
                 time=float(row["Time"]),
                 one_over_k0=float(row["OneOverK0"]),
                 monoisotopic_mz=float(row["MonoisotopicMz"]),
                 charge=int(row["Charge"]),
-                description=str(row["Description"]) if not pd.isna(row["Description"]) else "",
+                description=str(row["Description"])
+                if not pd.isna(row["Description"])
+                else "",
             )
             self._prm_targets[target_id] = target
 

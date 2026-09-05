@@ -29,8 +29,7 @@ def test_dda_precursors():
         assert p1.average_mz == pytest.approx(1293.371888)
         assert p1.monoisotopic_mz == pytest.approx(1292.637062)
         assert p1.charge == 2
-        # Note: ScanNumber is truncated to int in reader.py
-        assert p1.scan_number == 162
+        assert p1.scan_number == pytest.approx(162.94034090909093)
         assert p1.intensity == pytest.approx(3603.0)
         assert p1.parent_frame == 1
 
@@ -53,7 +52,7 @@ def test_dda_precursors():
         assert p_last.largest_peak_mz == pytest.approx(635.842079)
         assert p_last.average_mz == pytest.approx(636.152187)
         assert p_last.charge == 2
-        assert p_last.scan_number == 375
+        assert p_last.scan_number == pytest.approx(375.340166)
         assert p_last.parent_frame == 700
 
 

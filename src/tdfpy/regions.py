@@ -84,9 +84,9 @@ class ChargeStateRegion:
         )
         mz_cutoff = mz_1 + (ook0_per_scan - ook0_1) * mz_per_ook0
         mz_cutoff_clipped = np.clip(mz_cutoff, a_min=1e-6, a_max=None)
-        index_cutoff = np.asarray(
-            td.mzToIndex(frame_id, mz_cutoff_clipped)
-        ).astype(np.float64, copy=True)
+        index_cutoff = np.asarray(td.mzToIndex(frame_id, mz_cutoff_clipped)).astype(
+            np.float64, copy=True
+        )
         index_cutoff = np.where(mz_cutoff > 0, index_cutoff, 0.0)
         if self.cap_at_upper_endpoint:
             index_cutoff[ook0_per_scan > ook0_cap] = np.inf

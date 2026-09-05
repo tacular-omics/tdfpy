@@ -19,7 +19,7 @@ abstract: >-
   ranges, and retention time. tdfpy is intended for proteomics workflows that
   need scriptable access to timsTOF measurements, mobility-resolved peaks, and
   PASEF acquisition metadata on Linux, macOS, or Windows.
-version: "3.0.0"
+version: "4.0.0"
 authors:
   - given-names: Patrick T.
     family-names: Garrett
@@ -34,7 +34,7 @@ repository-code: https://github.com/tacular-omics/tdfpy
 url: https://tacular-omics.github.io/tdfpy/
 license: MIT
 doi: "10.5281/zenodo.19100532"
-date-released: "2026-08-15"
+date-released: "2026-09-04"
 keywords:
   - Python
   - Proteomics

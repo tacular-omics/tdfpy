@@ -15,11 +15,19 @@ from __future__ import annotations
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Iterable, Literal
+from typing import Callable, Iterable, Literal
 
 import numpy as np
 
-from .noise import NoiseFilter
+from ._validation import (
+    arrays,
+    choice,
+    index_arrays,
+    integer,
+    merge_config,
+    nonnegative,
+)
+from .noise import NoiseFilter, NoiseSpec, coerce_filters
 from .regions import ChargeStateRegion
 from .timsdata import TimsData, oneOverK0ToCCSforMz
 
@@ -27,6 +35,7 @@ logger = logging.getLogger(__name__)
 
 try:
     from numba import njit as _njit  # ty: ignore[unresolved-import]
+
     _HAS_NUMBA = True
 except ImportError:
     _HAS_NUMBA = False
@@ -59,6 +68,11 @@ class RawSpectrum:
     intensities: np.ndarray  # float64, len N
     num_scans: int
 
+    def __post_init__(self) -> None:
+        index_arrays(
+            self.scan_indices, self.mz_indices, self.intensities, self.num_scans
+        )
+
     def __len__(self) -> int:
         return int(self.intensities.size)
 
@@ -72,6 +86,8 @@ class RawSpectrum:
 
     def filter(self, mask: np.ndarray) -> "RawSpectrum":
         """Return a new spectrum keeping only points where ``mask`` is True."""
+        if mask.dtype != np.bool_ or mask.shape != self.intensities.shape:
+            raise ValueError("A peak mask must be boolean with one entry per peak.")
         return RawSpectrum(
             scan_indices=self.scan_indices[mask],
             mz_indices=self.mz_indices[mask],
@@ -96,28 +112,7 @@ class RawSpectrum:
 
 def read_spectrum(td: TimsData, frame_id: int) -> RawSpectrum:
     """Read a frame's raw peaks into integer-index form."""
-    if td.conn is None:
-        raise RuntimeError("TimsData connection is not open")
-
-    cursor = td.conn.cursor()
-    cursor.execute("SELECT NumScans FROM Frames WHERE Id = ?", (frame_id,))
-    result = cursor.fetchone()
-    if result is None:
-        cursor.execute("SELECT MIN(Id), MAX(Id) FROM Frames")
-        lo, hi = cursor.fetchone()
-        valid = f"{lo}..{hi}" if lo is not None else "none (Frames table is empty)"
-        raise ValueError(
-            f"Frame {frame_id} not found in the Frames table (valid frame IDs: "
-            f"{valid}). Frame IDs are 1-based; iterate a reader (e.g. reader.ms1) "
-            "or read PandasTdf(path).frames['Id'] to list them."
-        )
-    (num_scans,) = result
-    if num_scans == 0:
-        logger.warning(
-            "read_spectrum: frame %d has NumScans=0; returning an empty spectrum.",
-            frame_id,
-        )
-        return RawSpectrum.empty_like(0)
+    num_scans = td.frame_metadata(frame_id).num_scans
 
     scan_indices, mz_indices_u32, intensities_u32 = td.read_frame_arrays(
         frame_id, 0, num_scans
@@ -192,8 +187,8 @@ def subset_scans(
     restrict centroiding / raw-peak extraction to the isolation window's
     scan range.
     """
-    if spectrum.empty:
-        return spectrum
+    integer("scan_num_begin", scan_num_begin, minimum=None)
+    integer("scan_num_end", scan_num_end, minimum=None)
     if scan_num_begin < 0 or scan_num_end < scan_num_begin:
         raise ValueError(
             f"Invalid scan range [{scan_num_begin}, {scan_num_end}): the bounds are "
@@ -257,8 +252,11 @@ def convert(
     """Convert integer indices to (m/z, intensity, ion_mobility).
 
     Returns a ``(N, 3)`` array. Empty input yields an empty array of the
-    same shape so callers don't need to special-case.
+    same shape so callers don't need to special-case. CCS assumes charge +1.
+    Raw peaks do not identify a charge state. Use a known precursor charge
+    with the explicit CCS conversion function for charge-specific values.
     """
+    choice("ion_mobility_type", ion_mobility_type, ("ook0", "ccs", "voltage"))
     if spectrum.empty:
         return np.empty((0, 3), dtype=np.float64)
 
@@ -305,8 +303,7 @@ class Centroider(ABC):
         frame_id: int,
         *,
         ion_mobility_type: Literal["ook0", "ccs", "voltage"] = "ook0",
-    ) -> np.ndarray:
-        ...
+    ) -> np.ndarray: ...
 
 
 @dataclass(frozen=True)
@@ -328,6 +325,18 @@ class MergePeaksCentroider(Centroider):
     peak_noise_window: float = 0.1
     peak_noise_end_fraction: float = 0.1
     use_numba: bool = True
+
+    def __post_init__(self) -> None:
+        merge_config(
+            self.mz_tolerance,
+            self.mz_tolerance_type,
+            self.im_tolerance,
+            self.im_tolerance_type,
+            self.min_peaks,
+            self.max_peaks,
+            self.peak_noise_window,
+            self.peak_noise_end_fraction,
+        )
 
     def __call__(
         self,
@@ -390,6 +399,9 @@ def box_smooth(
     """
     if mode not in ("sum", "mean"):
         raise ValueError(f"box_smooth mode must be 'sum' or 'mean', got {mode!r}.")
+    arrays(scan_indices, mz_indices, intensities)
+    integer("scan_half_width", scan_half_width)
+    integer("mz_idx_half_width", mz_idx_half_width)
     n = intensities.size
     if n == 0:
         return np.zeros(0, dtype=np.float64)
@@ -495,10 +507,10 @@ class Smooth:
     mode: Literal["sum", "mean"] = "sum"
 
     def __post_init__(self) -> None:
+        integer("scan_half_width", self.scan_half_width)
+        integer("mz_idx_half_width", self.mz_idx_half_width)
         if self.mode not in ("sum", "mean"):
-            raise ValueError(
-                f"Smooth mode must be 'sum' or 'mean', got {self.mode!r}."
-            )
+            raise ValueError(f"Smooth mode must be 'sum' or 'mean', got {self.mode!r}.")
 
     def apply(self, spectrum: RawSpectrum) -> RawSpectrum:
         """Return ``spectrum`` with intensities box-smoothed per this config."""
@@ -514,12 +526,21 @@ _CELL_STRIDE = np.int64(1_000_000_000)
 
 
 if _HAS_NUMBA:
+
     @_njit(cache=True)
     def _watershed_njit_kernel(
-        scan_arr, mz_arr, int_arr, weight_arr, mz_val_arr, im_arr,
-        attach_scan_half_width, attach_mz_idx_half_width,
-        min_seed_intensity, min_centroid_intensity,
-        max_scan_from_seed, max_mz_idx_from_seed,
+        scan_arr,
+        mz_arr,
+        int_arr,
+        weight_arr,
+        mz_val_arr,
+        im_arr,
+        attach_scan_half_width,
+        attach_mz_idx_half_width,
+        min_seed_intensity,
+        min_centroid_intensity,
+        max_scan_from_seed,
+        max_mz_idx_from_seed,
     ):
         """Numba-JIT watershed kernel.
 
@@ -588,13 +609,15 @@ if _HAS_NUMBA:
                             continue
                         j_group = group_id[j]
                         # Leash: reject if too far from this group's seed.
-                        if max_scan_from_seed >= 0 and abs(
-                            p_scan - seed_scan[j_group]
-                        ) > max_scan_from_seed:
+                        if (
+                            max_scan_from_seed >= 0
+                            and abs(p_scan - seed_scan[j_group]) > max_scan_from_seed
+                        ):
                             continue
-                        if max_mz_idx_from_seed >= 0 and abs(
-                            p_mz - seed_mz[j_group]
-                        ) > max_mz_idx_from_seed:
+                        if (
+                            max_mz_idx_from_seed >= 0
+                            and abs(p_mz - seed_mz[j_group]) > max_mz_idx_from_seed
+                        ):
                             continue
                         d = d_scan + d_mz
                         j_seed_int = seed_intensities[j_group]
@@ -602,12 +625,15 @@ if _HAS_NUMBA:
                         # higher seed intensity; on tie, smaller point
                         # index (makes the result independent of how the
                         # neighborhood is traversed).
-                        if best_group < 0 or d < best_dist or (
-                            d == best_dist and j_seed_int > best_seed_int
-                        ) or (
-                            d == best_dist
-                            and j_seed_int == best_seed_int
-                            and j < best_j
+                        if (
+                            best_group < 0
+                            or d < best_dist
+                            or (d == best_dist and j_seed_int > best_seed_int)
+                            or (
+                                d == best_dist
+                                and j_seed_int == best_seed_int
+                                and j < best_j
+                            )
                         ):
                             best_group = j_group
                             best_dist = d
@@ -733,24 +759,29 @@ def _watershed_python_kernel(
                         continue
                     q_group = int(group_id[q])
                     # Leash: reject if too far from this group's seed.
-                    if max_scan_from_seed >= 0 and abs(
-                        p_scan - seed_scan[q_group]
-                    ) > max_scan_from_seed:
+                    if (
+                        max_scan_from_seed >= 0
+                        and abs(p_scan - seed_scan[q_group]) > max_scan_from_seed
+                    ):
                         continue
-                    if max_mz_idx_from_seed >= 0 and abs(
-                        p_mz - seed_mz[q_group]
-                    ) > max_mz_idx_from_seed:
+                    if (
+                        max_mz_idx_from_seed >= 0
+                        and abs(p_mz - seed_mz[q_group]) > max_mz_idx_from_seed
+                    ):
                         continue
                     d = d_scan + d_mz
                     q_seed_int = seed_intensities[q_group]
                     # Tiebreak: shorter dist > higher seed intensity >
                     # smaller point index — matches the Numba kernel.
-                    if best_group < 0 or d < best_dist or (
-                        d == best_dist and q_seed_int > best_seed_int
-                    ) or (
-                        d == best_dist
-                        and q_seed_int == best_seed_int
-                        and q < best_j
+                    if (
+                        best_group < 0
+                        or d < best_dist
+                        or (d == best_dist and q_seed_int > best_seed_int)
+                        or (
+                            d == best_dist
+                            and q_seed_int == best_seed_int
+                            and q < best_j
+                        )
                     ):
                         best_group = q_group
                         best_dist = d
@@ -865,13 +896,26 @@ def _watershed_kernel(
 
     if _HAS_NUMBA and use_numba:
         return _watershed_njit_kernel(
-            scan_arr, mz_arr, int_arr, weight_arr, mz_val_arr, im_arr,
-            attach_scan_half_width, attach_mz_idx_half_width,
-            float(min_seed_intensity), float(min_centroid_intensity),
-            max_s, max_m,
+            scan_arr,
+            mz_arr,
+            int_arr,
+            weight_arr,
+            mz_val_arr,
+            im_arr,
+            attach_scan_half_width,
+            attach_mz_idx_half_width,
+            float(min_seed_intensity),
+            float(min_centroid_intensity),
+            max_s,
+            max_m,
         )
     return _watershed_python_kernel(
-        scan_arr, mz_arr, int_arr, weight_arr, mz_val_arr, im_arr,
+        scan_arr,
+        mz_arr,
+        int_arr,
+        weight_arr,
+        mz_val_arr,
+        im_arr,
         attach_scan_half_width=attach_scan_half_width,
         attach_mz_idx_half_width=attach_mz_idx_half_width,
         min_seed_intensity=min_seed_intensity,
@@ -922,6 +966,18 @@ class WatershedCentroider(Centroider):
     max_mz_idx_from_seed: int | None = 10
     use_numba: bool = True
 
+    def __post_init__(self) -> None:
+        for name in ("attach_scan_half_width", "attach_mz_idx_half_width"):
+            integer(name, getattr(self, name), minimum=1)
+        for name in ("smooth_scan_half_width", "smooth_mz_idx_half_width"):
+            integer(name, getattr(self, name))
+        for name in ("max_scan_from_seed", "max_mz_idx_from_seed"):
+            value = getattr(self, name)
+            if value is not None:
+                integer(name, value)
+        nonnegative("min_seed_intensity", self.min_seed_intensity)
+        nonnegative("min_centroid_intensity", self.min_centroid_intensity)
+
     def __call__(
         self,
         spectrum: RawSpectrum,
@@ -935,9 +991,7 @@ class WatershedCentroider(Centroider):
 
         # Convert once for the final centroid coordinates only; the
         # algorithm itself runs on integer indices for stability.
-        converted = convert(
-            spectrum, td, frame_id, ion_mobility_type=ion_mobility_type
-        )
+        converted = convert(spectrum, td, frame_id, ion_mobility_type=ion_mobility_type)
         mz_values = converted[:, 0]
         im_values = converted[:, 2]
 
@@ -972,9 +1026,7 @@ class WatershedCentroider(Centroider):
         )
 
 
-def centroid_peaks(
-    peaks: np.ndarray, centroider: MergePeaksCentroider
-) -> np.ndarray:
+def centroid_peaks(peaks: np.ndarray, centroider: MergePeaksCentroider) -> np.ndarray:
     """Cluster ``(mz, intensity, ion_mobility)`` peaks into centroids.
 
     Convenience wrapper for users who already have a converted ``(N, 3)``
@@ -1001,6 +1053,46 @@ def centroid_peaks(
         peak_noise_end_fraction=centroider.peak_noise_end_fraction,
         use_numba=centroider.use_numba,
     )
+
+
+def _prepare_spectrum(
+    spectrum: RawSpectrum,
+    td: TimsData,
+    frame_id: int,
+    *,
+    scan_range: tuple[int, int] | None = None,
+    exclude: ChargeStateRegion | None = None,
+    smoothing: Smooth | None = None,
+    noise: NoiseSpec = None,
+    ion_mobility_type: str = "ook0",
+    observe: Callable[[str, RawSpectrum], None] | None = None,
+) -> RawSpectrum:
+    """Shared ordered processing for arrays, diagnostics, and window batches."""
+    choice("ion_mobility_type", ion_mobility_type, ("ook0", "ccs", "voltage"))
+    filters = coerce_filters(noise)
+
+    def record(name: str) -> None:
+        if observe is not None:
+            observe(name, spectrum)
+
+    record("read")
+    if scan_range is not None:
+        if len(scan_range) != 2:
+            raise ValueError("scan_range must contain two bounds.")
+        spectrum = subset_scans(
+            spectrum, scan_num_begin=scan_range[0], scan_num_end=scan_range[1]
+        )
+        record("subset_scans")
+    if exclude is not None:
+        spectrum = exclude_region(spectrum, exclude, td=td, frame_id=frame_id)
+        record("exclude_region")
+    if smoothing is not None:
+        spectrum = smoothing.apply(spectrum)
+        record("smooth")
+    for index, f in enumerate(filters):
+        spectrum = apply_noise(spectrum, (f,), td=td, frame_id=frame_id)
+        record(f"noise[{index}]:{type(f).__name__}")
+    return spectrum
 
 
 __all__ = [

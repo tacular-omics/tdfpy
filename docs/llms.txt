@@ -28,11 +28,16 @@ tdfpy decodes `analysis.tdf_bin` directly in Python/NumPy -- no Bruker native li
 
 ## Utilities
 
+- [Spectrum batches and file checks](https://tacular-omics.github.io/tdfpy/analysis/): window batches and acquisition validation
+- [Maintenance](https://tacular-omics.github.io/tdfpy/maintenance/): reference protection, artifact verification, and release checks
+
 - [Utilities](https://tacular-omics.github.io/tdfpy/utilities.md): `slice_d_folder` — extract a frame-range subset of a `.d` folder
 - [PandasTDF](https://tacular-omics.github.io/tdfpy/api/low-level.md): `PandasTdf` — pandas DataFrame wrapper around `analysis.tdf` SQLite; `TimsData` / `timsdata_connect` — pure-Python `analysis.tdf_bin` frame reader
 - `plot_centroiding`: 2×2 diagnostic panel — raw peaks, centroids, noise-rejected, 1D spectrum comparison
 
 ## Optional
+
+- [MCP interface](https://tacular-omics.github.io/tdfpy/mcp/): optional local agent tools for metadata queries, spectrum extraction, exports, conversions, and file checks
 
 - [GitHub repository](https://github.com/tacular-omics/tdfpy): source, issue tracker
 - [PyPI](https://pypi.org/project/tdfpy/): release distribution

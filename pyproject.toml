@@ -53,6 +53,11 @@ DOI = "https://doi.org/10.5281/zenodo.19100532"
 
 [project.optional-dependencies]
 viz = ["matplotlib>=3.7"]
+mcp = ["mcp>=2.0,<3"]
+
+[project.scripts]
+tdfpy = "tdfpy.__main__:main"
+tdfpy-mcp = "tdfpy.mcp:main"
 
 [tool.hatch.version]
 path = "src/tdfpy/__init__.py"

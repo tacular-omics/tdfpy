@@ -66,8 +66,14 @@ with PRM("sample.d") as prm:
 
     for transition in prm.transitions:
         print(transition.isolation_mz, transition.collision_energy)
-        peaks = transition.peaks  # shape (N, 2): [m/z, intensity]
+        peaks = transition.peaks  # list of raw per-scan (N, 2) arrays
 ```
+
+Frame-batched window processing and acquisition validation are described in the
+[analysis guide](docs/analysis.md). An [optional MCP server](docs/mcp.md) gives AI
+agents tools for inspecting acquisitions and extracting spectra.
+Use `tdfpy validate sample.d --full` to check all binary frames without modifying
+an acquisition.
 
 ## Lookups and Queries
 

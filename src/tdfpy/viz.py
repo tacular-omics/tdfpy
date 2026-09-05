@@ -18,7 +18,6 @@ if TYPE_CHECKING:
     from .timsdata import TimsData
 
 
-
 def plot_centroiding(
     td: TimsData,
     frame_id: int,
@@ -120,9 +119,14 @@ def plot_centroiding(
     # Since both come from the same RawSpectrum in the same order, the kept
     # rows are a strict subset — compute the rejected rows via a row-mask.
     if filters and len(raw) < len(raw_all):
-        kept_keys = set(zip(kept_spectrum.scan_indices.tolist(), kept_spectrum.mz_indices.tolist()))
+        kept_keys = set(
+            zip(kept_spectrum.scan_indices.tolist(), kept_spectrum.mz_indices.tolist())
+        )
         rejected_mask = np.array(
-            [(int(s), int(m)) not in kept_keys for s, m in zip(spectrum.scan_indices, spectrum.mz_indices)],
+            [
+                (int(s), int(m)) not in kept_keys
+                for s, m in zip(spectrum.scan_indices, spectrum.mz_indices)
+            ],
             dtype=bool,
         )
         rejected_raw = raw_all[rejected_mask]
@@ -174,9 +178,25 @@ def plot_centroiding(
             m &= (im >= im_range[0]) & (im <= im_range[1])
         return m
 
-    mz_raw_p, int_raw_p, im_raw_p = mz_raw[_mask(mz_raw, im_raw)], int_raw[_mask(mz_raw, im_raw)], im_raw[_mask(mz_raw, im_raw)]
-    mz_c_p, int_c_p, im_c_p = mz_c[_mask(mz_c, im_c)], int_c[_mask(mz_c, im_c)], im_c[_mask(mz_c, im_c)]
-    mz_nr_p, int_nr_p, im_nr_p = (mz_nr[_mask(mz_nr, im_nr)], int_nr[_mask(mz_nr, im_nr)], im_nr[_mask(mz_nr, im_nr)]) if len(mz_nr) > 0 else (mz_nr, int_nr, im_nr)
+    mz_raw_p, int_raw_p, im_raw_p = (
+        mz_raw[_mask(mz_raw, im_raw)],
+        int_raw[_mask(mz_raw, im_raw)],
+        im_raw[_mask(mz_raw, im_raw)],
+    )
+    mz_c_p, int_c_p, im_c_p = (
+        mz_c[_mask(mz_c, im_c)],
+        int_c[_mask(mz_c, im_c)],
+        im_c[_mask(mz_c, im_c)],
+    )
+    mz_nr_p, int_nr_p, im_nr_p = (
+        (
+            mz_nr[_mask(mz_nr, im_nr)],
+            int_nr[_mask(mz_nr, im_nr)],
+            im_nr[_mask(mz_nr, im_nr)],
+        )
+        if len(mz_nr) > 0
+        else (mz_nr, int_nr, im_nr)
+    )
 
     # --- layout ---------------------------------------------------------------
     im_label = {"ook0": "1/K₀ (V·s/cm²)", "ccs": "CCS (Å²)", "voltage": "Voltage (V)"}[
@@ -195,8 +215,13 @@ def plot_centroiding(
 
     # Panel 1 — raw 2D ion map
     sc_raw = ax_raw.scatter(
-        mz_raw_p, im_raw_p,
-        c=log_int_raw, s=1, cmap="viridis", alpha=0.4, rasterized=True,
+        mz_raw_p,
+        im_raw_p,
+        c=log_int_raw,
+        s=1,
+        cmap="viridis",
+        alpha=0.4,
+        rasterized=True,
     )
     cb = fig.colorbar(sc_raw, ax=ax_raw, pad=0.02)
     cb.set_label("log(intensity + 1)", fontsize=8)
@@ -206,19 +231,32 @@ def plot_centroiding(
 
     # Panel 2 — centroided overlaid on faded raw
     ax_cent.scatter(
-        mz_raw_p, im_raw_p,
-        c=log_int_raw, s=1, cmap="viridis", alpha=0.15, rasterized=True,
+        mz_raw_p,
+        im_raw_p,
+        c=log_int_raw,
+        s=1,
+        cmap="viridis",
+        alpha=0.15,
+        rasterized=True,
     )
     if len(mz_c_p) > 0:
         s_min, s_max = 20, 200
         if int_c_p.max() > int_c_p.min():
-            s_c = s_min + (s_max - s_min) * (int_c_p - int_c_p.min()) / (int_c_p.max() - int_c_p.min())
+            s_c = s_min + (s_max - s_min) * (int_c_p - int_c_p.min()) / (
+                int_c_p.max() - int_c_p.min()
+            )
         else:
             s_c = np.full(len(int_c_p), (s_min + s_max) / 2)
         sc_cent = ax_cent.scatter(
-            mz_c_p, im_c_p,
-            c=log_int_c, s=s_c, cmap="plasma",
-            marker="*", edgecolors="white", linewidths=0.3, zorder=3,
+            mz_c_p,
+            im_c_p,
+            c=log_int_c,
+            s=s_c,
+            cmap="plasma",
+            marker="*",
+            edgecolors="white",
+            linewidths=0.3,
+            zorder=3,
         )
         cb2 = fig.colorbar(sc_cent, ax=ax_cent, pad=0.02)
         cb2.set_label("log(intensity + 1)", fontsize=8)
@@ -233,12 +271,27 @@ def plot_centroiding(
     )
     if len(mz_nr_p) > 0:
         ax_lost.scatter(
-            mz_nr_p, im_nr_p,
-            s=6, c="crimson", alpha=0.5, linewidths=0, rasterized=True,
+            mz_nr_p,
+            im_nr_p,
+            s=6,
+            c="crimson",
+            alpha=0.5,
+            linewidths=0,
+            rasterized=True,
         )
     else:
-        ax_lost.text(0.5, 0.5, "No noise-rejected raw peaks" if filters else "Set `noise=` to see\nrejected peaks",
-                     ha="center", va="center", transform=ax_lost.transAxes, fontsize=10, color="grey")
+        ax_lost.text(
+            0.5,
+            0.5,
+            "No noise-rejected raw peaks"
+            if filters
+            else "Set `noise=` to see\nrejected peaks",
+            ha="center",
+            va="center",
+            transform=ax_lost.transAxes,
+            fontsize=10,
+            color="grey",
+        )
     ax_lost.set_xlabel("m/z")
     ax_lost.set_ylabel(im_label)
     ax_lost.set_title(nr_title, color="firebrick")
@@ -251,26 +304,45 @@ def plot_centroiding(
         bin_centres = 0.5 * (bin_edges[:-1] + bin_edges[1:])
 
         hist_raw, _ = np.histogram(mz_raw_p, bins=bin_edges, weights=int_raw_p)
-        ax_spec.fill_between(bin_centres, hist_raw, alpha=0.25, color="steelblue", label="Raw (summed)")
+        ax_spec.fill_between(
+            bin_centres, hist_raw, alpha=0.25, color="steelblue", label="Raw (summed)"
+        )
         ax_spec.plot(bin_centres, hist_raw, lw=0.4, color="steelblue", alpha=0.5)
 
         if len(mz_nr_p) > 0:
             markerline_nr, stemlines_nr, _ = ax_spec.stem(
-                mz_nr_p, int_nr_p, linefmt="firebrick", markerfmt="x", basefmt=" ",
+                mz_nr_p,
+                int_nr_p,
+                linefmt="firebrick",
+                markerfmt="x",
+                basefmt=" ",
             )
             markerline_nr.set_markersize(4)
             markerline_nr.set_color("firebrick")
             plt.setp(stemlines_nr, linewidth=0.6, alpha=0.6)
-            ax_spec.plot([], [], color="firebrick", marker="x", markersize=4, label="Noise-rejected")
+            ax_spec.plot(
+                [],
+                [],
+                color="firebrick",
+                marker="x",
+                markersize=4,
+                label="Noise-rejected",
+            )
 
     if len(mz_c_p) > 0:
         markerline, stemlines, _ = ax_spec.stem(
-            mz_c_p, int_c_p, linefmt="tomato", markerfmt="D", basefmt=" ",
+            mz_c_p,
+            int_c_p,
+            linefmt="tomato",
+            markerfmt="D",
+            basefmt=" ",
         )
         markerline.set_markersize(3)
         markerline.set_color("tomato")
         plt.setp(stemlines, linewidth=0.8, alpha=0.85)
-        ax_spec.plot([], [], color="tomato", marker="D", markersize=3, label="Centroided (kept)")
+        ax_spec.plot(
+            [], [], color="tomato", marker="D", markersize=3, label="Centroided (kept)"
+        )
 
     ax_spec.set_xlabel("m/z")
     ax_spec.set_ylabel("Intensity")
@@ -289,9 +361,18 @@ def plot_centroiding(
         f"min_peaks={min_peaks}   noise={noise}"
     )
     fig.text(
-        0.5, 0.97, stats,
-        ha="center", va="top", fontsize=8.5, family="monospace",
-        bbox={"boxstyle": "round,pad=0.4", "facecolor": "#f5f5f5", "edgecolor": "#cccccc"},
+        0.5,
+        0.97,
+        stats,
+        ha="center",
+        va="top",
+        fontsize=8.5,
+        family="monospace",
+        bbox={
+            "boxstyle": "round,pad=0.4",
+            "facecolor": "#f5f5f5",
+            "edgecolor": "#cccccc",
+        },
     )
 
     return fig

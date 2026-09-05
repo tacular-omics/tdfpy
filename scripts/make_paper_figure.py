@@ -37,8 +37,7 @@ FILTERS = (VerticalNoiseFilter(), HorizontalHaloFilter())
 def _busiest_ms1_frame(td) -> int:
     cur = td.conn.cursor()
     cur.execute(
-        "SELECT Id FROM Frames WHERE MsMsType = 0 "
-        "ORDER BY NumPeaks DESC, Id LIMIT 1"
+        "SELECT Id FROM Frames WHERE MsMsType = 0 ORDER BY NumPeaks DESC, Id LIMIT 1"
     )
     return int(cur.fetchone()[0])
 
@@ -47,8 +46,10 @@ def _zoom(arr: np.ndarray) -> np.ndarray:
     if arr.size == 0:
         return arr
     m = (
-        (arr[:, 0] >= MZ_RANGE[0]) & (arr[:, 0] <= MZ_RANGE[1])
-        & (arr[:, 2] >= OOK0_RANGE[0]) & (arr[:, 2] <= OOK0_RANGE[1])
+        (arr[:, 0] >= MZ_RANGE[0])
+        & (arr[:, 0] <= MZ_RANGE[1])
+        & (arr[:, 2] >= OOK0_RANGE[0])
+        & (arr[:, 2] <= OOK0_RANGE[1])
     )
     return arr[m]
 
@@ -78,9 +79,14 @@ def main() -> None:
         rejected = raw_all[rej_mask]
 
         centroids = merge_peaks(
-            kept[:, 0], kept[:, 1], kept[:, 2],
-            mz_tolerance=8.0, mz_tolerance_type="ppm",
-            im_tolerance=0.01, im_tolerance_type="relative", min_peaks=3,
+            kept[:, 0],
+            kept[:, 1],
+            kept[:, 2],
+            mz_tolerance=8.0,
+            mz_tolerance_type="ppm",
+            im_tolerance=0.01,
+            im_tolerance_type="relative",
+            min_peaks=3,
         )
 
     kept, rejected, centroids = _zoom(kept), _zoom(rejected), _zoom(centroids)
@@ -93,47 +99,94 @@ def main() -> None:
     ax_rej = fig.add_subplot(gs[1, 1], sharex=ax_raw, sharey=ax_raw)
 
     # 1 — raw ion map: rejected (grey) behind, retained (colour) in front
-    ax_raw.scatter(rejected[:, 0], rejected[:, 2], s=2, c="0.78", alpha=0.6,
-                   linewidths=0, rasterized=True, zorder=1)
-    sc = ax_raw.scatter(kept[:, 0], kept[:, 2], s=3, c=np.log1p(kept[:, 1]),
-                        cmap="viridis", linewidths=0, rasterized=True, zorder=2)
+    ax_raw.scatter(
+        rejected[:, 0],
+        rejected[:, 2],
+        s=2,
+        c="0.78",
+        alpha=0.6,
+        linewidths=0,
+        rasterized=True,
+        zorder=1,
+    )
+    sc = ax_raw.scatter(
+        kept[:, 0],
+        kept[:, 2],
+        s=3,
+        c=np.log1p(kept[:, 1]),
+        cmap="viridis",
+        linewidths=0,
+        rasterized=True,
+        zorder=2,
+    )
     fig.colorbar(sc, ax=ax_raw, pad=0.02).set_label("log(intensity + 1)", fontsize=8)
     ax_raw.set_ylabel("1/K₀ (V·s/cm²)")
-    ax_raw.set_title(f"Raw peaks (n={len(kept) + len(rejected):,}) — "
-                     f"retained over rejected (grey)")
+    ax_raw.set_title(
+        f"Raw peaks (n={len(kept) + len(rejected):,}) — retained over rejected (grey)"
+    )
 
     # 2 — centroids over the faded retained cloud
-    ax_cent.scatter(kept[:, 0], kept[:, 2], s=2, c="0.8", alpha=0.5,
-                    linewidths=0, rasterized=True, zorder=1)
+    ax_cent.scatter(
+        kept[:, 0],
+        kept[:, 2],
+        s=2,
+        c="0.8",
+        alpha=0.5,
+        linewidths=0,
+        rasterized=True,
+        zorder=1,
+    )
     if len(centroids):
         s_c = 20 + 180 * (centroids[:, 1] - centroids[:, 1].min()) / (
-            np.ptp(centroids[:, 1]) or 1.0)
-        ax_cent.scatter(centroids[:, 0], centroids[:, 2], s=s_c,
-                        c=np.log1p(centroids[:, 1]), cmap="plasma", marker="*",
-                        edgecolors="white", linewidths=0.3, zorder=3)
+            np.ptp(centroids[:, 1]) or 1.0
+        )
+        ax_cent.scatter(
+            centroids[:, 0],
+            centroids[:, 2],
+            s=s_c,
+            c=np.log1p(centroids[:, 1]),
+            cmap="plasma",
+            marker="*",
+            edgecolors="white",
+            linewidths=0.3,
+            zorder=3,
+        )
     ax_cent.set_title(f"Centroids (n={len(centroids):,})")
 
     # 3 — 1-D spectrum: retained raw (summed) + centroid stem lines
     edges = np.linspace(*MZ_RANGE, int((MZ_RANGE[1] - MZ_RANGE[0]) / 0.05) + 1)
     centres = 0.5 * (edges[:-1] + edges[1:])
     profile, _ = np.histogram(kept[:, 0], bins=edges, weights=kept[:, 1])
-    ax_spec.fill_between(centres, profile, color="0.8", lw=0,
-                         label="retained raw (summed)")
-    ax_spec.vlines(centroids[:, 0], 0, centroids[:, 1], color="tomato", lw=0.8,
-                   label="centroids")
-    ax_spec.set_xlim(MZ_RANGE); ax_spec.set_ylim(bottom=0)
-    ax_spec.set_xlabel("m/z"); ax_spec.set_ylabel("intensity")
+    ax_spec.fill_between(
+        centres, profile, color="0.8", lw=0, label="retained raw (summed)"
+    )
+    ax_spec.vlines(
+        centroids[:, 0], 0, centroids[:, 1], color="tomato", lw=0.8, label="centroids"
+    )
+    ax_spec.set_xlim(MZ_RANGE)
+    ax_spec.set_ylim(bottom=0)
+    ax_spec.set_xlabel("m/z")
+    ax_spec.set_ylabel("intensity")
     ax_spec.set_title("Centroided spectrum")
     ax_spec.legend(loc="upper right", fontsize=8)
 
     # 4 — rejected peaks on their own
-    ax_rej.scatter(rejected[:, 0], rejected[:, 2], s=3, c="crimson", alpha=0.45,
-                   linewidths=0, rasterized=True)
-    ax_rej.set_xlabel("m/z"); ax_rej.set_ylabel("1/K₀ (V·s/cm²)")
+    ax_rej.scatter(
+        rejected[:, 0],
+        rejected[:, 2],
+        s=3,
+        c="crimson",
+        alpha=0.45,
+        linewidths=0,
+        rasterized=True,
+    )
+    ax_rej.set_xlabel("m/z")
+    ax_rej.set_ylabel("1/K₀ (V·s/cm²)")
     ax_rej.set_title(f"Rejected as noise (n={len(rejected):,})", color="crimson")
 
     for ax in (ax_raw, ax_cent, ax_rej):
-        ax.set_xlim(MZ_RANGE); ax.set_ylim(OOK0_RANGE)
+        ax.set_xlim(MZ_RANGE)
+        ax.set_ylim(OOK0_RANGE)
     ax_cent.set_xlabel("m/z")
 
     fig.savefig(OUT, dpi=150, bbox_inches="tight")

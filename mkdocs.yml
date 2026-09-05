@@ -14,6 +14,9 @@ nav:
   - Home: index.md
   - Getting Started: getting-started.md
   - Utilities: utilities.md
+  - Spectrum batches and file checks: analysis.md
+  - MCP interface: mcp.md
+  - Maintenance: maintenance.md
   - API Reference:
     - Readers: api/readers.md
     - Frames: api/frames.md

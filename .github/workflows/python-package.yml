@@ -7,6 +7,9 @@ on:
     branches: ["main"]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   build:
 
@@ -14,6 +17,9 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
         python-version: ["3.12", "3.13", "3.14"]
+        include:
+          - os: macos-latest
+            python-version: "3.12"
 
     runs-on: ${{ matrix.os }}
 
@@ -42,27 +48,14 @@ jobs:
     - name: Verify the interpreter matches this matrix leg
       run: uv run python -c "import sys; assert '.'.join(map(str, sys.version_info[:2])) == '${{ matrix.python-version }}', sys.version"
 
-    - name: Build wheel and verify it ships no native libraries
-      run: |
-        pip install build
-        python -m build --wheel --outdir /tmp/verify-dist
-        python -c "
-        import zipfile, sys, pathlib
-        wheels = list(pathlib.Path('/tmp/verify-dist').glob('*.whl'))
-        assert wheels, 'No wheel found'
-        with zipfile.ZipFile(wheels[0]) as zf:
-            names = zf.namelist()
-        # tdfpy reads .tdf_bin directly; shipping a Bruker blob again would
-        # reintroduce the redistribution question and the platform lock-in.
-        bad = [n for n in names if n.endswith(('.so', '.dll', '.dylib', '.pyd'))]
-        if bad:
-            print('FAIL: wheel contains native binaries:', bad)
-            sys.exit(1)
-        if not wheels[0].name.endswith('-py3-none-any.whl'):
-            print('FAIL: expected a pure-Python wheel, got', wheels[0].name)
-            sys.exit(1)
-        print('OK: pure-Python wheel, no native binaries')
-        "
+    - name: Build wheel from source distribution
+      run: uv build --out-dir dist
+
+    - name: Verify distribution contents and installed wheel
+      run: uv run python scripts/verify_distribution.py dist
+
+    - name: Check formatting
+      run: just format-check
 
     - name: Lint with ruff
       run: just lint
@@ -81,10 +74,6 @@ jobs:
         files: coverage.xml
         fail_ci_if_error: false
 
-    - name: Generate JUnit test results
-      if: ${{ !cancelled() }}
-      run: uv run pytest tests --ignore=tests/test_docs.py --junitxml=junit.xml -o junit_family=legacy
-
     - name: Upload test results to Codecov
       if: ${{ !cancelled() }}
       uses: codecov/codecov-action@v6
@@ -94,3 +83,24 @@ jobs:
         report_type: test_results
         files: junit.xml
         fail_ci_if_error: false
+
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+      - run: uv sync --locked --group docs
+      - run: uv run --group docs mkdocs build --strict
+
+  mcp:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+      - run: uv sync --locked --extra mcp
+      - run: uv run --extra mcp pytest tests/test_mcp.py -v
+      - run: uv build --out-dir dist
+      - run: uv run python scripts/verify_distribution.py dist --with-mcp

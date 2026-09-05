@@ -24,21 +24,26 @@ test:
 
 # Run linter
 lint:
-    uv run ruff check src/
+    uv run ruff check src/ tests/ scripts/
 
 # Format code
 format:
     uv run ruff check --select I --fix src/ tests/
     uv run ruff check --select F401 --fix src/ tests/
-    uv run ruff format src/ tests/
+    uv run ruff format src/ tests/ scripts/
 
-# ty type checking
+# Verify formatting without changing files
+format-check:
+    uv run ruff format --check src/ tests/ scripts/
+
+# Type check the core and optional interface
 ty:
-    uv run ty check src/
+    uv run --extra mcp ty check src/
 
 # Run lint and tests
 check:
     just lint
+    just format-check
     just ty
     just test
 
@@ -92,7 +97,11 @@ upgrade:
 
 # Run tests with coverage
 test-cov:
-    uv run pytest tests --ignore=tests/test_docs.py --cov=src/tdfpy --cov-branch --cov-report=term-missing --cov-report=html --cov-report=xml
+    uv run pytest tests --cov=src/tdfpy --cov-branch --cov-report=term-missing --cov-report=html --cov-report=xml --junitxml=junit.xml
 
 codecov-tests:
     uv run pytest tests --cov --junitxml=junit.xml -o junit_family=legacy
+
+# Test the optional MCP interface, including its stdio protocol
+test-mcp:
+    uv run --extra mcp pytest tests/test_mcp.py -v

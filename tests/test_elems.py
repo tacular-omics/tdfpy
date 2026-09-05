@@ -1,4 +1,3 @@
-
 import pytest
 
 from tdfpy.elems import DiaWindowGroup, MsMsType, Polarity
@@ -12,18 +11,21 @@ class TestMsMsType:
 
 
 class TestPolarity:
-    @pytest.mark.parametrize("s,expected", [
-        ("positive", Polarity.POSITIVE),
-        ("POSITIVE", Polarity.POSITIVE),
-        ("+", Polarity.POSITIVE),
-        ("negative", Polarity.NEGATIVE),
-        ("NEGATIVE", Polarity.NEGATIVE),
-        ("-", Polarity.NEGATIVE),
-        ("unknown", Polarity.UNKNOWN),
-        ("?", Polarity.UNKNOWN),
-        ("mixed", Polarity.MIXED),
-        ("mix", Polarity.MIXED),
-    ])
+    @pytest.mark.parametrize(
+        "s,expected",
+        [
+            ("positive", Polarity.POSITIVE),
+            ("POSITIVE", Polarity.POSITIVE),
+            ("+", Polarity.POSITIVE),
+            ("negative", Polarity.NEGATIVE),
+            ("NEGATIVE", Polarity.NEGATIVE),
+            ("-", Polarity.NEGATIVE),
+            ("unknown", Polarity.UNKNOWN),
+            ("?", Polarity.UNKNOWN),
+            ("mixed", Polarity.MIXED),
+            ("mix", Polarity.MIXED),
+        ],
+    )
     def test_from_str(self, s, expected):
         assert Polarity.from_str(s) == expected
 

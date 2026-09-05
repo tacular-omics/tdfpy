@@ -28,12 +28,11 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Callable
-from weakref import WeakKeyDictionary
+from typing import TYPE_CHECKING, Any, Callable
 
 import numpy as np
 
-from ..slicer import _table_exists
+from .._validation import nonnegative
 from . import NoiseFilter
 
 if TYPE_CHECKING:
@@ -42,33 +41,14 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-# Per-run set of MS1 frame ids, built once and cached so the MS1-only guard is a
-# set lookup rather than a SQL round-trip per frame per gate.
-_MS1_FRAMES: "WeakKeyDictionary[TimsData, frozenset[int]]" = WeakKeyDictionary()
-
-
 def _is_ms1_frame(td: "TimsData", frame_id: int) -> bool:
-    """True only when ``frame_id`` is a confirmed MS1 frame in this run.
-
-    These gates encode MS1 precursor-selection regions, so callers apply them
-    only when this returns True. A non-MS1 (MS2/PRM) frame, an absent/unknown
-    frame id, or a run with no open connection all return False, so the caller
-    no-ops (keeps everything) rather than testing peaks against the wrong region.
-    The MS1 frame set is queried once per run and cached.
-    """
-    from ..elems import MsMsType  # local import avoids a package import cycle
-
-    conn = td.conn
-    if conn is None:
+    """Check immutable frame metadata without a per-call SQL query."""
+    if td.handle is None:
         return False
-    ms1 = _MS1_FRAMES.get(td)
-    if ms1 is None:
-        rows = conn.execute(
-            "SELECT Id FROM Frames WHERE MsMsType=?", (MsMsType.MS1.value,)
-        ).fetchall()
-        ms1 = frozenset(int(r[0]) for r in rows)
-        _MS1_FRAMES[td] = ms1
-    return int(frame_id) in ms1
+    try:
+        return td.frame_metadata(frame_id).msms_type == 0
+    except ValueError:
+        return False
 
 
 def _ms1_only_noop(
@@ -323,99 +303,71 @@ def build_window_intervals(
 # ---------------------------------------------------------------------------
 
 
-def read_selection_polygon(td: "TimsData") -> tuple[np.ndarray, np.ndarray] | None:
-    """Read the PASEF selection polygon (IMS PolygonFilter) as ``(mz, im)`` arrays.
+def read_selection_polygon(
+    td: "TimsData", frame_id: int | None = None
+) -> tuple[np.ndarray, np.ndarray] | None:
+    """Read a selection polygon from the opening-time metadata snapshot.
 
-    Bruker stores the two vertex arrays as little-endian ``f64`` BLOBs in
-    ``GroupProperties``, keyed by the ``IMS_PolygonFilter_Mass`` /
-    ``IMS_PolygonFilter_Mobility`` property definitions (resolved by permanent
-    name — numeric ids are not stable). Returns ``None`` when the run carries no
-    usable polygon (property absent, no value, <3 vertices, or length mismatch).
+    When frame_id is supplied, use that frame's property group. Both vertex
+    arrays must belong to the same property group.
     """
-    conn = td.conn
-    if conn is None:
+    if td.handle is None:
         return None
-    if not _table_exists(conn, "PropertyDefinitions") or not _table_exists(
-        conn, "GroupProperties"
-    ):
-        return None
-
-    def prop_id(name: str) -> int | None:
-        row = conn.execute(
-            "SELECT Id FROM PropertyDefinitions WHERE PermanentName=?", (name,)
-        ).fetchone()
-        return int(row[0]) if row is not None else None
-
-    mz_id = prop_id("IMS_PolygonFilter_Mass")
-    im_id = prop_id("IMS_PolygonFilter_Mobility")
+    definitions = {
+        r["PermanentName"]: r["Id"] for r in td.metadata_table("PropertyDefinitions")
+    }
+    mz_id = definitions.get("IMS_PolygonFilter_Mass")
+    im_id = definitions.get("IMS_PolygonFilter_Mobility")
     if mz_id is None or im_id is None:
         return None
-
-    def read_blob(prop: int) -> np.ndarray | None:
-        row = conn.execute(
-            "SELECT Value FROM GroupProperties WHERE Property=? LIMIT 1", (prop,)
-        ).fetchone()
-        if row is None or row[0] is None:
-            return None
-        return np.frombuffer(bytes(row[0]), dtype="<f8")
-
-    mz = read_blob(mz_id)
-    im = read_blob(im_id)
-    if mz is None or im is None or mz.size < 3 or mz.size != im.size:
-        return None
-    return np.asarray(mz, dtype=np.float64), np.asarray(im, dtype=np.float64)
+    groups: dict[int | None, dict[int, Any]] = {}
+    for row in td.metadata_table("GroupProperties"):
+        groups.setdefault(row["PropertyGroup"], {})[row["Property"]] = row["Value"]
+    if frame_id is None:
+        candidates = list(groups.values())
+    else:
+        candidates = [groups.get(td.frame_metadata(frame_id).property_group, {})]
+    for values in candidates:
+        mz_blob, im_blob = values.get(mz_id), values.get(im_id)
+        if mz_blob is None or im_blob is None:
+            continue
+        mz = np.frombuffer(mz_blob, dtype="<f8")
+        im = np.frombuffer(im_blob, dtype="<f8")
+        if mz.size >= 3 and mz.size == im.size:
+            return mz, im
+    return None
 
 
 def read_dia_ms1_boxes(td: "TimsData") -> list[tuple[int, int, float, float]]:
-    """Read distinct diaPASEF isolation windows as ``(scan_begin, scan_end, mz_lo, mz_hi)``.
-
-    ``scan_end`` is exclusive (as stored). ``mz_lo``/``mz_hi`` derive from
-    ``IsolationMz ± IsolationWidth/2``. Returns an empty list for ddaPASEF / when
-    ``DiaFrameMsMsWindows`` is absent or carries no m/z info.
-    """
-    conn = td.conn
-    if conn is None or not _table_exists(conn, "DiaFrameMsMsWindows"):
+    """Read distinct half-open DIA scan windows from the metadata snapshot."""
+    if td.handle is None:
         return []
-    rows = conn.execute(
-        "SELECT DISTINCT ScanNumBegin, ScanNumEnd, IsolationMz, IsolationWidth "
-        "FROM DiaFrameMsMsWindows "
-        "WHERE IsolationMz IS NOT NULL AND IsolationWidth IS NOT NULL"
-    ).fetchall()
-    boxes: list[tuple[int, int, float, float]] = []
-    for scan_begin, scan_end, iso_mz, iso_width in rows:
-        scan_begin, scan_end = int(scan_begin), int(scan_end)
-        if scan_end <= scan_begin:
+    boxes = []
+    seen = set()
+    for row in td.metadata_table("DiaFrameMsMsWindows"):
+        begin, end = int(row["ScanNumBegin"]), int(row["ScanNumEnd"])
+        mz, width = row["IsolationMz"], row["IsolationWidth"]
+        if mz is None or width is None or end <= begin:
             continue
-        half = float(iso_width) / 2.0
-        boxes.append((scan_begin, scan_end, float(iso_mz) - half, float(iso_mz) + half))
+        box = (begin, end, float(mz) - float(width) / 2, float(mz) + float(width) / 2)
+        if box not in seen:
+            boxes.append(box)
+            seen.add(box)
     return boxes
-
-
-# ---------------------------------------------------------------------------
-# NoiseFilter gates (run-level gate cached per TimsData + params)
-# ---------------------------------------------------------------------------
-
-# Cache the built per-scan gate per TimsData so it isn't rebuilt for every frame.
-# Keyed by (kind, num_scans, mz_pad, im_pad); the value ``None`` records "no gate
-# for this run" (e.g. no polygon / no windows) so repeated calls stay cheap.
-#
-# The key deliberately omits frame_id: the TOF intervals are baked from the m/z
-# and mobility calibration of whichever MS1 frame first triggers the build, then
-# reused for every MS1 frame in the run. This assumes a single run-wide MS1
-# calibration, which holds for timsTOF acquisitions; a run recalibrated mid-
-# acquisition would apply the first frame's calibration to later frames.
-_GATE_CACHE: "WeakKeyDictionary[TimsData, dict[tuple, PerScanTofIntervals | None]]" = (
-    WeakKeyDictionary()
-)
 
 
 def _cached(
     td: "TimsData", key: tuple, build: Callable[[], PerScanTofIntervals | None]
 ) -> PerScanTofIntervals | None:
-    per_td = _GATE_CACHE.setdefault(td, {})
-    if key not in per_td:
-        per_td[key] = build()
-    return per_td[key]
+    # Keep caches on their reader and serialize first construction. Bound the
+    # cache because temperature changes may produce many effective calibrations.
+    with td._gate_lock:
+        if key not in td._gate_cache:
+            value = build()
+            if len(td._gate_cache) >= 16:
+                td._gate_cache.pop(next(iter(td._gate_cache)))
+            td._gate_cache[key] = value
+        return td._gate_cache[key]
 
 
 @dataclass(frozen=True)
@@ -437,6 +389,10 @@ class SelectionPolygonGate(NoiseFilter):
     mz_pad: float = 5.0
     im_pad: float = 0.05
 
+    def __post_init__(self) -> None:
+        nonnegative("mz_pad", self.mz_pad)
+        nonnegative("im_pad", self.im_pad)
+
     def keep_mask(
         self,
         scan_indices: np.ndarray,
@@ -450,7 +406,14 @@ class SelectionPolygonGate(NoiseFilter):
         noop = _ms1_only_noop(td, frame_id, intensities, "SelectionPolygonGate")
         if noop is not None:
             return noop
-        key = ("polygon", num_scans, self.mz_pad, self.im_pad)
+        key = (
+            "polygon",
+            num_scans,
+            self.mz_pad,
+            self.im_pad,
+            td.calibration_key(frame_id),
+            td.frame_metadata(frame_id).property_group,
+        )
         gate = _cached(
             td, key, lambda: _build_polygon_gate(td, frame_id, num_scans, self)
         )
@@ -480,6 +443,10 @@ class DiaMs1WindowGate(NoiseFilter):
     mz_pad: float = 5.0
     im_pad: float = 0.05
 
+    def __post_init__(self) -> None:
+        nonnegative("mz_pad", self.mz_pad)
+        nonnegative("im_pad", self.im_pad)
+
     def keep_mask(
         self,
         scan_indices: np.ndarray,
@@ -493,7 +460,13 @@ class DiaMs1WindowGate(NoiseFilter):
         noop = _ms1_only_noop(td, frame_id, intensities, "DiaMs1WindowGate")
         if noop is not None:
             return noop
-        key = ("dia_ms1", num_scans, self.mz_pad, self.im_pad)
+        key = (
+            "dia_ms1",
+            num_scans,
+            self.mz_pad,
+            self.im_pad,
+            td.calibration_key(frame_id),
+        )
         gate = _cached(
             td, key, lambda: _build_dia_ms1_gate(td, frame_id, num_scans, self)
         )
@@ -514,7 +487,7 @@ def _build_polygon_gate(
     # selection ring — skip the polygon gate there (dia_ms1 handles diaPASEF MS1).
     if read_dia_ms1_boxes(td):
         return None
-    poly = read_selection_polygon(td)
+    poly = read_selection_polygon(td, frame_id)
     if poly is None or num_scans == 0:
         return None
     poly_mz, poly_im = poly
@@ -555,8 +528,13 @@ def _build_dia_ms1_gate(
                 frame_id, [max(im0, im1) + params.im_pad, min(im0, im1) - params.im_pad]
             )
         )
-        scan_lo = int(np.floor(max(min(s0, s1), 0.0)))
-        scan_hi = min(int(np.ceil(max(max(s0, s1), 0.0))), num_scans - 1)
+        # Preserve [begin, end) after padding. Snap numerical round-trip
+        # residue at integer boundaries before taking the ceiling.
+        bounds = np.array([min(s0, s1), max(s0, s1)])
+        nearest = np.rint(bounds)
+        bounds = np.where(np.abs(bounds - nearest) < 1e-9, nearest, bounds)
+        scan_lo = max(0, int(np.ceil(bounds[0])))
+        scan_hi = min(int(np.ceil(bounds[1])) - 1, num_scans - 1)
         tof_boxes.append((scan_lo, scan_hi, tof_lo, tof_hi))
 
     return build_window_intervals(tof_boxes, num_scans)

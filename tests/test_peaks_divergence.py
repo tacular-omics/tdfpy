@@ -57,7 +57,9 @@ def _golden() -> dict:
     return json.loads(GOLDEN_PATH.read_text())
 
 
-GOLDEN = _golden() if GOLDEN_PATH.exists() else {"dda_precursors": [], "dia_windows": []}
+GOLDEN = (
+    _golden() if GOLDEN_PATH.exists() else {"dda_precursors": [], "dia_windows": []}
+)
 
 
 def _agreement(

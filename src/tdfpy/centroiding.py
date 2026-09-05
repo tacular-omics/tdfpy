@@ -6,22 +6,23 @@ for reading centroided MS1 spectra with peak clustering/centroiding algorithms.
 """
 
 import logging
+import warnings
 from collections.abc import Sequence
 from typing import Any, Literal, NamedTuple
+from pathlib import Path
 
 import numpy as np
 import pandas as pd  # type: ignore
 
-from .noise import NoiseSpec, coerce_filters
+from ._validation import arrays, merge_config
+from .noise import NoiseSpec
 from .pipeline import (
     Centroider,
     MergePeaksCentroider,
     Smooth,
-    apply_noise,
+    _prepare_spectrum,
     convert,
-    exclude_region,
     read_spectrum,
-    subset_scans,
 )
 from .regions import ChargeStateRegion
 from .tdf import PandasTdf
@@ -30,6 +31,8 @@ from .timsdata import TimsData
 # Try to import Numba for JIT-accelerated implementation
 try:
     from numba import njit as _njit  # ty: ignore[unresolved-import]
+    from numba.core.errors import NumbaError  # ty: ignore[unresolved-import]
+
     _HAS_NUMBA = True
 except ImportError:
     _HAS_NUMBA = False
@@ -59,12 +62,24 @@ class Peak(NamedTuple):
 
 
 if _HAS_NUMBA:
+
     @_njit(cache=True)
     def _merge_peaks_numba_kernel(
-        mz_sorted, intensity_sorted, im_sorted, intensity_order,
-        mz_tol_factor, mz_tol_abs, mob_tol_factor, mob_tol_abs,
-        mz_is_ppm, im_is_relative, min_peaks, max_peaks,
-        peak_noise_filter, peak_noise_window, peak_noise_end_fraction,
+        mz_sorted,
+        intensity_sorted,
+        im_sorted,
+        intensity_order,
+        mz_tol_factor,
+        mz_tol_abs,
+        mob_tol_factor,
+        mob_tol_abs,
+        mz_is_ppm,
+        im_is_relative,
+        min_peaks,
+        max_peaks,
+        peak_noise_filter,
+        peak_noise_window,
+        peak_noise_end_fraction,
     ):
         n = len(mz_sorted)
         out_mz = np.empty(n, dtype=np.float64)
@@ -116,7 +131,7 @@ if _HAS_NUMBA:
             else:
                 mz_tol = mz_peak * mz_tol_factor if mz_is_ppm else mz_tol_abs
                 left_idx = np.searchsorted(mz_sorted, mz_peak - mz_tol)
-                right_idx = np.searchsorted(mz_sorted, mz_peak + mz_tol, side='right')
+                right_idx = np.searchsorted(mz_sorted, mz_peak + mz_tol, side="right")
 
             # Dynamic IM region growing: start at seed, expand bounds outward
             # one step at a time until no unused peak is within im_tolerance of
@@ -134,12 +149,16 @@ if _HAS_NUMBA:
                         continue
                     im_i = im_sorted[i]
                     if im_i < im_lo:
-                        expand = im_lo * mob_tol_factor if im_is_relative else mob_tol_abs
+                        expand = (
+                            im_lo * mob_tol_factor if im_is_relative else mob_tol_abs
+                        )
                         if im_lo - im_i <= expand * 1.0000001:
                             im_lo = im_i
                             changed = True
                     elif im_i > im_hi:
-                        expand = im_hi * mob_tol_factor if im_is_relative else mob_tol_abs
+                        expand = (
+                            im_hi * mob_tol_factor if im_is_relative else mob_tol_abs
+                        )
                         if im_i - im_hi <= expand * 1.0000001:
                             im_hi = im_i
                             changed = True
@@ -183,7 +202,9 @@ if _HAS_NUMBA:
                 noise_left_mz = mz_peak - peak_noise_window
                 noise_right_mz = mz_peak + peak_noise_window
                 noise_left_idx = np.searchsorted(mz_sorted, noise_left_mz)
-                noise_right_idx = np.searchsorted(mz_sorted, noise_right_mz, side='right')
+                noise_right_idx = np.searchsorted(
+                    mz_sorted, noise_right_mz, side="right"
+                )
                 for i in range(noise_left_idx, noise_right_idx):
                     if used[i]:
                         continue
@@ -193,7 +214,9 @@ if _HAS_NUMBA:
                     d = mz_sorted[i] - mz_peak
                     if d < 0.0:
                         d = -d
-                    threshold = anchor_int * (1.0 - d * noise_inv_window * noise_one_minus_end)
+                    threshold = anchor_int * (
+                        1.0 - d * noise_inv_window * noise_one_minus_end
+                    )
                     if intensity_sorted[i] < threshold:
                         used[i] = True
 
@@ -234,9 +257,18 @@ def _merge_peaks_numba(
     im_s = np.ascontiguousarray(ion_mobility_array[sort_idx], dtype=np.float64)
     intensity_order = np.ascontiguousarray(np.argsort(int_s)[::-1].astype(np.int64))
     out_mz, out_int, out_im = _merge_peaks_numba_kernel(
-        mz_s, int_s, im_s, intensity_order,
-        mz_tol_factor, mz_tol_abs, mob_tol_factor, mob_tol_abs,
-        mz_is_ppm, im_is_relative, min_peaks, _max_peaks,
+        mz_s,
+        int_s,
+        im_s,
+        intensity_order,
+        mz_tol_factor,
+        mz_tol_abs,
+        mob_tol_factor,
+        mob_tol_abs,
+        mz_is_ppm,
+        im_is_relative,
+        min_peaks,
+        _max_peaks,
         1 if peak_noise_filter else 0,
         float(peak_noise_window),
         float(peak_noise_end_fraction),
@@ -276,7 +308,8 @@ def merge_peaks(
         im_tolerance_type: Type of ion mobility tolerance - "relative" or "absolute"
         min_peaks: Minimum number of nearby raw peaks required to form a centroid.
                   Set to 0 or 1 to keep all peaks (no filtering).
-        max_peaks: Maximum number of centroided peaks to return (keeps highest intensity)
+        max_peaks: Maximum centroids in descending raw seed intensity order.
+            This does not rank final summed intensities. Nonpositive means unlimited.
         peak_noise_filter: If True, after each centroid is formed suppress raw
             points within ±``peak_noise_window`` Da of the anchor m/z and inside
             the centroid's IM window whose intensity falls below a linear
@@ -304,20 +337,42 @@ def merge_peaks(
         peaks = merge_peaks(mz, intensity, im, mz_tolerance=10, mz_tolerance_type="ppm")
         ```
     """
-    # Use Numba implementation if available
+    merge_config(
+        mz_tolerance,
+        mz_tolerance_type,
+        im_tolerance,
+        im_tolerance_type,
+        min_peaks,
+        max_peaks,
+        peak_noise_window,
+        peak_noise_end_fraction,
+    )
+    arrays(mz_array, intensity_array, ion_mobility_array)
+    if np.any(mz_array < 0) or np.any(intensity_array < 0):
+        raise ValueError("m/z and intensities must be nonnegative.")
     if _HAS_NUMBA and use_numba:
-        return _merge_peaks_numba(
-            mz_array, intensity_array, ion_mobility_array,
-            mz_tolerance=mz_tolerance,
-            mz_tolerance_type=mz_tolerance_type,
-            im_tolerance=im_tolerance,
-            im_tolerance_type=im_tolerance_type,
-            min_peaks=min_peaks,
-            max_peaks=max_peaks,
-            peak_noise_filter=peak_noise_filter,
-            peak_noise_window=peak_noise_window,
-            peak_noise_end_fraction=peak_noise_end_fraction,
-        )
+        try:
+            return _merge_peaks_numba(
+                mz_array,
+                intensity_array,
+                ion_mobility_array,
+                mz_tolerance=mz_tolerance,
+                mz_tolerance_type=mz_tolerance_type,
+                im_tolerance=im_tolerance,
+                im_tolerance_type=im_tolerance_type,
+                min_peaks=min_peaks,
+                max_peaks=max_peaks,
+                peak_noise_filter=peak_noise_filter,
+                peak_noise_window=peak_noise_window,
+                peak_noise_end_fraction=peak_noise_end_fraction,
+            )
+
+        except NumbaError as exc:
+            warnings.warn(
+                f"Numba compilation failed. Using the Python merge kernel: {exc}",
+                RuntimeWarning,
+                stacklevel=2,
+            )
 
     # Fallback to Python implementation
     return _merge_peaks_python(
@@ -437,12 +492,20 @@ def _merge_peaks_python(
                     continue
                 im_i = float(mobility_window[i])
                 if im_i < im_lo:
-                    expand = im_lo * mobility_tol_factor if im_tolerance_type == "relative" else mobility_tol_abs
+                    expand = (
+                        im_lo * mobility_tol_factor
+                        if im_tolerance_type == "relative"
+                        else mobility_tol_abs
+                    )
                     if im_lo - im_i <= expand * 1.0000001:
                         im_lo = im_i
                         changed = True
                 elif im_i > im_hi:
-                    expand = im_hi * mobility_tol_factor if im_tolerance_type == "relative" else mobility_tol_abs
+                    expand = (
+                        im_hi * mobility_tol_factor
+                        if im_tolerance_type == "relative"
+                        else mobility_tol_abs
+                    )
                     if im_i - im_hi <= expand * 1.0000001:
                         im_hi = im_i
                         changed = True
@@ -598,18 +661,16 @@ def get_raw_peaks(
         ion_mobility_type: Ion mobility representation — ``"ook0"`` (1/K0),
             ``"ccs"``, or ``"voltage"``.
     """
-    spectrum = read_spectrum(td, frame_id)
-    if scan_range is not None:
-        spectrum = subset_scans(
-            spectrum, scan_num_begin=scan_range[0], scan_num_end=scan_range[1]
-        )
-    if exclude is not None:
-        spectrum = exclude_region(spectrum, exclude, td=td, frame_id=frame_id)
-    if smooth is not None:
-        spectrum = smooth.apply(spectrum)
-    filters = coerce_filters(noise)
-    if filters:
-        spectrum = apply_noise(spectrum, filters, td=td, frame_id=frame_id)
+    spectrum = _prepare_spectrum(
+        read_spectrum(td, frame_id),
+        td,
+        frame_id,
+        scan_range=scan_range,
+        exclude=exclude,
+        smoothing=smooth,
+        noise=noise,
+        ion_mobility_type=ion_mobility_type,
+    )
     return convert(spectrum, td, frame_id, ion_mobility_type=ion_mobility_type)
 
 
@@ -640,19 +701,16 @@ def get_centroided_spectrum(
 
     Returns an ``(N, 3)`` array of ``[mz, intensity, ion_mobility]`` centroids.
     """
-    spectrum = read_spectrum(td, frame_id)
-    if scan_range is not None:
-        spectrum = subset_scans(
-            spectrum, scan_num_begin=scan_range[0], scan_num_end=scan_range[1]
-        )
-    if exclude is not None:
-        spectrum = exclude_region(spectrum, exclude, td=td, frame_id=frame_id)
-    if smooth is not None:
-        spectrum = smooth.apply(spectrum)
-    filters = coerce_filters(noise)
-    if filters:
-        spectrum = apply_noise(spectrum, filters, td=td, frame_id=frame_id)
-
+    spectrum = _prepare_spectrum(
+        read_spectrum(td, frame_id),
+        td,
+        frame_id,
+        scan_range=scan_range,
+        exclude=exclude,
+        smoothing=smooth,
+        noise=noise,
+        ion_mobility_type=ion_mobility_type,
+    )
     if spectrum.empty:
         # An empty frame is common on sparse acquisitions, so this is INFO, not
         # a warning. If a *noise filter* emptied a non-empty frame, apply_noise
@@ -664,12 +722,12 @@ def get_centroided_spectrum(
         return np.empty((0, 3), dtype=np.float64)
 
     centroider = centroid if centroid is not None else MergePeaksCentroider()
-    centroids = centroider(
-        spectrum, td, frame_id, ion_mobility_type=ion_mobility_type
-    )
+    centroids = centroider(spectrum, td, frame_id, ion_mobility_type=ion_mobility_type)
     logger.info(
         "Centroided frame %d: %d raw → %d centroids",
-        frame_id, len(spectrum), len(centroids),
+        frame_id,
+        len(spectrum),
+        len(centroids),
     )
     return centroids
 
@@ -755,29 +813,33 @@ def get_mobility_collapsed_spectrum(
     if not scan_ranges:
         return np.empty((0, 2), dtype=np.float64)
 
-    # Sum intensities per TOF index across every scan of every range. TOF indices
-    # are integers on a shared grid within a frame, so this is an exact rollup
-    # with no binning error.
-    tof_chunks: list[np.ndarray] = []
-    intensity_chunks: list[np.ndarray] = []
+    # Only combine integer bins across frames with identical effective m/z
+    # conversions. Frames sharing a calibration row may have different drift.
+    groups: dict[tuple, tuple[int, list[np.ndarray], list[np.ndarray]]] = {}
     for frame_id, scan_begin, scan_end in scan_ranges:
-        _, tof_indices, intensities = td.read_frame_arrays(
-            frame_id, scan_begin, scan_end
-        )
-        if tof_indices.size:
-            tof_chunks.append(tof_indices)
-            intensity_chunks.append(intensities)
-
-    if not tof_chunks:
+        _, tof, intensity = td.read_frame_arrays(frame_id, scan_begin, scan_end)
+        if tof.size:
+            key = td.mz_calibration_key(frame_id)
+            if key not in groups:
+                groups[key] = (frame_id, [], [])
+            groups[key][1].append(tof)
+            groups[key][2].append(intensity)
+    if not groups:
         return np.empty((0, 2), dtype=np.float64)
 
-    tof_index_array, intensity_array = _sum_by_tof_index(
-        np.concatenate(tof_chunks), np.concatenate(intensity_chunks)
-    )
-
-    # The TOF grid is per-frame; all ranges of one precursor share a calibration,
-    # so converting with the first frame is exact.
-    mz_array = td.indexToMz(scan_ranges[0][0], tof_index_array.astype(np.float64))
+    mz_chunks = []
+    intensity_chunks = []
+    for frame_id, tofs, intensities in groups.values():
+        bins, sums = _sum_by_tof_index(
+            np.concatenate(tofs), np.concatenate(intensities)
+        )
+        mz_chunks.append(td.indexToMz(frame_id, bins))
+        intensity_chunks.append(sums)
+    mz_array = np.concatenate(mz_chunks)
+    intensity_array = np.concatenate(intensity_chunks)
+    if len(groups) > 1:
+        mz_array, inverse = np.unique(mz_array, return_inverse=True)
+        intensity_array = np.bincount(inverse.ravel(), weights=intensity_array)
 
     peaks = merge_peaks(
         mz_array,
@@ -786,7 +848,7 @@ def get_mobility_collapsed_spectrum(
         mz_tolerance=mz_tolerance,
         mz_tolerance_type=mz_tolerance_type,
         # Mobility is already summed away, so no peak may be split by it.
-        im_tolerance=np.inf,
+        im_tolerance=0.0,
         im_tolerance_type="absolute",
         # Each merged peak is a real ion even when it occupies a single TOF bin;
         # requiring more would discard most of the spectrum.
@@ -802,7 +864,7 @@ def calculate_nmass(mz: float, charge: int) -> float:
 
 
 def get_tdf_df(td: TimsData) -> pd.DataFrame:
-    pd_tdf = PandasTdf(td.analysis_directory)
+    pd_tdf = PandasTdf(Path(td.analysis_directory) / "analysis.tdf")
 
     merged_df = pd.merge(
         pd_tdf.precursors,

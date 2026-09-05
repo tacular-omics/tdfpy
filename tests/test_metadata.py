@@ -295,7 +295,9 @@ def test_calibration_mobility_calibration_user_value(dda: DDA) -> None:
 
 
 def test_calibration_mobility_standard_deviation_percent_value(dda: DDA) -> None:
-    assert dda.calibration.mobility_standard_deviation_percent == pytest.approx(0.000932)
+    assert dda.calibration.mobility_standard_deviation_percent == pytest.approx(
+        0.000932
+    )
 
 
 def test_calibration_reference_mobility_list_value(dda: DDA) -> None:

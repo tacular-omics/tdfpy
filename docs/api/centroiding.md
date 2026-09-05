@@ -106,7 +106,7 @@ are marked as used and skipped in subsequent iterations.
 | `im_tolerance` | `0.1` | Width of the ion mobility window |
 | `im_tolerance_type` | `"relative"` | `"relative"` (fraction of 1/K0) or `"absolute"` |
 | `min_peaks` | `3` | Raw peaks required to form a centroid; set to `0` or `1` to keep all |
-| `max_peaks` | `None` | Cap on output peaks (highest-intensity first) |
+| `max_peaks` | `None` | Cap on output peaks by raw seed intensity, not final summed intensity |
 | `use_numba` | `True` | Set to `False` to force the Python fallback |
 
 ```python
@@ -156,3 +156,6 @@ threshold or a method validated for your acquisition; always verify
 against `noise=None` first.
 
 ::: tdfpy.merge_peaks
+
+Raw-spectrum CCS conversion assumes charge +1. Use a known precursor charge
+with the explicit CCS conversion function for charge-specific values.
