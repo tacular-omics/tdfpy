@@ -111,7 +111,7 @@ with DDA(D_PATH) as dda:
     # Iterate over MS1 frames
     for frame in dda.ms1:
         print(f"Frame {frame.frame_id} at RT {frame.time:.1f}s")
-        # Centroid the frame — returns shape (N, 3): [m/z, intensity, 1/K0]
+        # Centroid the frame. Returns shape (N, 3): [m/z, intensity, 1/K0]
         peaks = frame.centroid()
         print(f"  {len(peaks)} centroided peaks")
         break
@@ -223,7 +223,7 @@ from tdfpy import DDA
 
 with DDA(D_PATH) as dda:
     frame = dda.ms1[1]
-    peaks = frame.centroid()  # fine — connection is open
+    peaks = frame.centroid()  # The connection is open
 
 # peaks = frame.centroid()  # RuntimeError: connection is closed
 ```
