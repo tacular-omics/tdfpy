@@ -1,0 +1,3191 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A Python library for parsing Bruker timsTOF data with centroiding and noise filtering.">
+      
+      
+      
+      
+        <link rel="prev" href="../pipeline/">
+      
+      
+        <link rel="next" href="../regions/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.5">
+    
+    
+      
+        <title>Noise filters - tdfpy</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#noise-filters" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="tdfpy" class="md-header__button md-logo" aria-label="tdfpy" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            tdfpy
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Noise filters
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/tacular-omics/tdfpy" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    tacular-omics/tdfpy
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="tdfpy" class="md-nav__button md-logo" aria-label="tdfpy" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    tdfpy
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/tacular-omics/tdfpy" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    tacular-omics/tdfpy
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../utilities/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Utilities
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../analysis/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Spectrum batches and file checks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../mcp/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MCP interface
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../maintenance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Maintenance
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../readers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Readers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../frames/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Frames
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../precursor/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Precursor
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../windows/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DIA Windows
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../prm/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PRM Data Elements
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../metadata/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Metadata
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../lookup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Lookups
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../centroiding/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Centroiding
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pipeline/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Pipeline
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Noise filters
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Noise filters
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#base-class-coercion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Base class &amp; coercion
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tdfpy.NoiseFilter" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        NoiseFilter
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="NoiseFilter">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#tdfpy.NoiseFilter.keep_mask" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        keep_mask
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tdfpy.coerce_filters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        coerce_filters
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#intensity-threshold-filters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Intensity-threshold filters
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tdfpy.IntensityThreshold" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        IntensityThreshold
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="IntensityThreshold">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#tdfpy.IntensityThreshold.compute_threshold" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        compute_threshold
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tdfpy.AbsoluteThreshold" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AbsoluteThreshold
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tdfpy.MadThreshold" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MadThreshold
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tdfpy.PercentileThreshold" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PercentileThreshold
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tdfpy.HistogramThreshold" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        HistogramThreshold
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tdfpy.BaselineThreshold" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        BaselineThreshold
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tdfpy.IterativeMedianThreshold" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        IterativeMedianThreshold
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#structural-filters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Structural filters
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tdfpy.VerticalNoiseFilter" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        VerticalNoiseFilter
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="VerticalNoiseFilter">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#tdfpy.VerticalNoiseFilter.keep_mask" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        keep_mask
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tdfpy.VerticalNoiseFilter.run" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        run
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tdfpy.noise.VerticalNoiseDiagnostics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        VerticalNoiseDiagnostics
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tdfpy.HorizontalHaloFilter" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        HorizontalHaloFilter
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="HorizontalHaloFilter">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#tdfpy.HorizontalHaloFilter.keep_mask" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        keep_mask
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#precursor-space-gates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Precursor-space gates
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tdfpy.SelectionPolygonGate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SelectionPolygonGate
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="SelectionPolygonGate">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#tdfpy.SelectionPolygonGate.keep_mask" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        keep_mask
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tdfpy.DiaMs1WindowGate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DiaMs1WindowGate
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="DiaMs1WindowGate">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#tdfpy.DiaMs1WindowGate.keep_mask" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        keep_mask
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../regions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Region exclusion
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../low-level/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PandasTDF
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#base-class-coercion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Base class &amp; coercion
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tdfpy.NoiseFilter" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        NoiseFilter
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="NoiseFilter">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#tdfpy.NoiseFilter.keep_mask" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        keep_mask
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tdfpy.coerce_filters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        coerce_filters
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#intensity-threshold-filters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Intensity-threshold filters
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tdfpy.IntensityThreshold" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        IntensityThreshold
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="IntensityThreshold">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#tdfpy.IntensityThreshold.compute_threshold" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        compute_threshold
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tdfpy.AbsoluteThreshold" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AbsoluteThreshold
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tdfpy.MadThreshold" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MadThreshold
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tdfpy.PercentileThreshold" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PercentileThreshold
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tdfpy.HistogramThreshold" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        HistogramThreshold
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tdfpy.BaselineThreshold" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        BaselineThreshold
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tdfpy.IterativeMedianThreshold" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        IterativeMedianThreshold
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#structural-filters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Structural filters
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tdfpy.VerticalNoiseFilter" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        VerticalNoiseFilter
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="VerticalNoiseFilter">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#tdfpy.VerticalNoiseFilter.keep_mask" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        keep_mask
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tdfpy.VerticalNoiseFilter.run" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        run
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tdfpy.noise.VerticalNoiseDiagnostics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        VerticalNoiseDiagnostics
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tdfpy.HorizontalHaloFilter" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        HorizontalHaloFilter
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="HorizontalHaloFilter">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#tdfpy.HorizontalHaloFilter.keep_mask" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        keep_mask
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#precursor-space-gates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Precursor-space gates
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tdfpy.SelectionPolygonGate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SelectionPolygonGate
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="SelectionPolygonGate">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#tdfpy.SelectionPolygonGate.keep_mask" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        keep_mask
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tdfpy.DiaMs1WindowGate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DiaMs1WindowGate
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="DiaMs1WindowGate">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#tdfpy.DiaMs1WindowGate.keep_mask" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        keep_mask
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="noise-filters">Noise filters</h1>
+<p>Composable noise filters live in <code>tdfpy.noise</code>. A pipeline of filters is
+applied in order; each takes raw <code>(scan_indices, mz_indices, intensities)</code>
+and returns a boolean keep-mask. Frozen dataclasses make them hashable
+(suitable for caching) and <code>dataclasses.replace</code>-tweakable.</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">tdfpy</span><span class="w"> </span><span class="kn">import</span> <span class="n">MadThreshold</span><span class="p">,</span> <span class="n">VerticalNoiseFilter</span><span class="p">,</span> <span class="n">get_raw_peaks</span>
+
+<span class="n">peaks</span> <span class="o">=</span> <span class="n">get_raw_peaks</span><span class="p">(</span>
+    <span class="n">td</span><span class="p">,</span> <span class="n">frame_id</span><span class="p">,</span>
+    <span class="n">noise</span><span class="o">=</span><span class="p">[</span>
+        <span class="n">VerticalNoiseFilter</span><span class="p">(</span><span class="n">min_streak_scans</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span> <span class="n">num_iterations</span><span class="o">=</span><span class="mi">2</span><span class="p">),</span>
+        <span class="n">MadThreshold</span><span class="p">(</span><span class="n">k</span><span class="o">=</span><span class="mi">3</span><span class="p">),</span>
+    <span class="p">],</span>
+<span class="p">)</span>
+</code></pre></div>
+<p>User-facing APIs (<code>get_raw_peaks</code>, <code>get_centroided_spectrum</code>,
+<code>Frame.raw_peaks</code>, etc.) also accept the string shorthand for terseness:
+<code>noise="mad"</code>, <code>noise="iterative_median"</code>, <code>noise=500.0</code>, etc. See
+<a href="#tdfpy.coerce_filters"><code>coerce_filters</code></a> for the accepted forms.</p>
+<hr />
+<h2 id="base-class-coercion">Base class &amp; coercion</h2>
+
+
+<div class="doc doc-object doc-class">
+
+
+
+<h2 id="tdfpy.NoiseFilter" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-class"></code>            <span class="doc doc-object-name doc-class-name">tdfpy.NoiseFilter</span>
+
+
+</h2>
+
+
+    <div class="doc doc-contents first">
+            <p class="doc doc-class-bases">
+              Bases: <code><span title="abc.ABC">ABC</span></code></p>
+
+
+
+        <p>Base class for raw-peak noise filters.</p>
+<p>Subclasses are typically frozen dataclasses with their tunable knobs as
+fields. They implement a single method, :meth:<code>keep_mask</code>, which
+returns a boolean array of length <code>len(intensities)</code> indicating which
+points to keep.</p>
+<p>Filters operate on integer indices (TOF index + scan number) and raw
+intensity. Conversion to m/z and 1/K0 happens later in the pipeline so
+filters never need to do per-point unit conversions themselves.</p>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="tdfpy.NoiseFilter.keep_mask" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-method"></code>            <span class="doc doc-object-name doc-function-name">keep_mask</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-abstractmethod"><code>abstractmethod</code></small>
+  </span>
+
+</h3>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">keep_mask</span><span class="p">(</span>
+    <span class="n">scan_indices</span><span class="p">:</span> <span class="n"><span title="numpy">np</span></span><span class="o">.</span><span class="n"><span title="numpy.ndarray">ndarray</span></span><span class="p">,</span>
+    <span class="n">mz_indices</span><span class="p">:</span> <span class="n"><span title="numpy">np</span></span><span class="o">.</span><span class="n"><span title="numpy.ndarray">ndarray</span></span><span class="p">,</span>
+    <span class="n">intensities</span><span class="p">:</span> <span class="n"><span title="numpy">np</span></span><span class="o">.</span><span class="n"><span title="numpy.ndarray">ndarray</span></span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">num_scans</span><span class="p">:</span> <span class="n"><span title="int">int</span></span><span class="p">,</span>
+    <span class="n">td</span><span class="p">:</span> <span class="s2">&quot;TimsData&quot;</span><span class="p">,</span>
+    <span class="n">frame_id</span><span class="p">:</span> <span class="n"><span title="int">int</span></span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><span title="numpy">np</span></span><span class="o">.</span><span class="n"><span title="numpy.ndarray">ndarray</span></span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Return a boolean keep-mask of length <code>len(intensities)</code>.</p>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/tdfpy/noise/__init__.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">47</span>
+<span class="normal">48</span>
+<span class="normal">49</span>
+<span class="normal">50</span>
+<span class="normal">51</span>
+<span class="normal">52</span>
+<span class="normal">53</span>
+<span class="normal">54</span>
+<span class="normal">55</span>
+<span class="normal">56</span>
+<span class="normal">57</span>
+<span class="normal">58</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@abstractmethod</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">keep_mask</span><span class="p">(</span>
+    <span class="bp">self</span><span class="p">,</span>
+    <span class="n">scan_indices</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">mz_indices</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">intensities</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">num_scans</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+    <span class="n">td</span><span class="p">:</span> <span class="s2">&quot;TimsData&quot;</span><span class="p">,</span>
+    <span class="n">frame_id</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Return a boolean keep-mask of length ``len(intensities)``.&quot;&quot;&quot;</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h2 id="tdfpy.coerce_filters" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-function"></code>            <span class="doc doc-object-name doc-function-name">tdfpy.coerce_filters</span>
+
+
+</h2>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">coerce_filters</span><span class="p">(</span><span class="n">spec</span><span class="p">:</span> <span class="n"><span title="tdfpy.noise.NoiseSpec">NoiseSpec</span></span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><span title="tuple">tuple</span></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-internal" title="            tdfpy.NoiseFilter (tdfpy.noise.NoiseFilter)" href="#tdfpy.NoiseFilter">NoiseFilter</a></span><span class="p">,</span> <span class="o">...</span><span class="p">]</span>
+</code></pre></div>
+
+    <div class="doc doc-contents first">
+
+        <p>Normalize a user-facing noise spec to a tuple of filter instances.</p>
+<p>Accepts:</p>
+<ul>
+<li><code>None</code> → empty tuple (no filtering)</li>
+<li>a single :class:<code>NoiseFilter</code> instance → one-element tuple</li>
+<li>a list/tuple of any of the above → flattened tuple</li>
+<li>a string from <code>"mad" | "percentile" | "histogram" | "baseline" |
+  "iterative_median"</code> → an :class:<code>IntensityThreshold</code> subclass with
+  defaults</li>
+<li>a numeric (<code>float</code> / <code>int</code>) → :class:<code>AbsoluteThreshold</code></li>
+</ul>
+<p>Strings and numerics are how existing call sites stay terse; the tuple
+output is hashable for caching (e.g. Streamlit <code>@cache_data</code>).</p>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/tdfpy/noise/__init__.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 94</span>
+<span class="normal"> 95</span>
+<span class="normal"> 96</span>
+<span class="normal"> 97</span>
+<span class="normal"> 98</span>
+<span class="normal"> 99</span>
+<span class="normal">100</span>
+<span class="normal">101</span>
+<span class="normal">102</span>
+<span class="normal">103</span>
+<span class="normal">104</span>
+<span class="normal">105</span>
+<span class="normal">106</span>
+<span class="normal">107</span>
+<span class="normal">108</span>
+<span class="normal">109</span>
+<span class="normal">110</span>
+<span class="normal">111</span>
+<span class="normal">112</span>
+<span class="normal">113</span>
+<span class="normal">114</span>
+<span class="normal">115</span>
+<span class="normal">116</span>
+<span class="normal">117</span>
+<span class="normal">118</span>
+<span class="normal">119</span>
+<span class="normal">120</span>
+<span class="normal">121</span>
+<span class="normal">122</span>
+<span class="normal">123</span>
+<span class="normal">124</span>
+<span class="normal">125</span>
+<span class="normal">126</span>
+<span class="normal">127</span>
+<span class="normal">128</span>
+<span class="normal">129</span>
+<span class="normal">130</span>
+<span class="normal">131</span>
+<span class="normal">132</span>
+<span class="normal">133</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">coerce_filters</span><span class="p">(</span><span class="n">spec</span><span class="p">:</span> <span class="n">NoiseSpec</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">NoiseFilter</span><span class="p">,</span> <span class="o">...</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Normalize a user-facing noise spec to a tuple of filter instances.</span>
+
+<span class="sd">    Accepts:</span>
+
+<span class="sd">    - ``None`` → empty tuple (no filtering)</span>
+<span class="sd">    - a single :class:`NoiseFilter` instance → one-element tuple</span>
+<span class="sd">    - a list/tuple of any of the above → flattened tuple</span>
+<span class="sd">    - a string from ``&quot;mad&quot; | &quot;percentile&quot; | &quot;histogram&quot; | &quot;baseline&quot; |</span>
+<span class="sd">      &quot;iterative_median&quot;`` → an :class:`IntensityThreshold` subclass with</span>
+<span class="sd">      defaults</span>
+<span class="sd">    - a numeric (``float`` / ``int``) → :class:`AbsoluteThreshold`</span>
+
+<span class="sd">    Strings and numerics are how existing call sites stay terse; the tuple</span>
+<span class="sd">    output is hashable for caching (e.g. Streamlit ``@cache_data``).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">spec</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">()</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">spec</span><span class="p">,</span> <span class="n">NoiseFilter</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">(</span><span class="n">spec</span><span class="p">,)</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">spec</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="bp">cls</span> <span class="o">=</span> <span class="n">_STRING_ALIASES</span><span class="p">[</span><span class="n">spec</span><span class="p">]</span>
+        <span class="k">except</span> <span class="ne">KeyError</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;Unknown noise filter name </span><span class="si">{</span><span class="n">spec</span><span class="si">!r}</span><span class="s2">. &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;Valid names: </span><span class="si">{</span><span class="nb">sorted</span><span class="p">(</span><span class="n">_STRING_ALIASES</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">exc</span>
+        <span class="k">return</span> <span class="p">(</span><span class="bp">cls</span><span class="p">(),)</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">spec</span><span class="p">,</span> <span class="p">(</span><span class="nb">int</span><span class="p">,</span> <span class="nb">float</span><span class="p">))</span> <span class="ow">and</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">spec</span><span class="p">,</span> <span class="nb">bool</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">(</span><span class="n">AbsoluteThreshold</span><span class="p">(</span><span class="n">value</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">spec</span><span class="p">)),)</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">spec</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)):</span>
+        <span class="n">out</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">NoiseFilter</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">spec</span><span class="p">:</span>
+            <span class="n">out</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">coerce_filters</span><span class="p">(</span><span class="n">item</span><span class="p">))</span>
+        <span class="k">return</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">out</span><span class="p">)</span>
+    <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span>
+        <span class="sa">f</span><span class="s2">&quot;Cannot coerce </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">spec</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2"> to a noise filter. &quot;</span>
+        <span class="s2">&quot;Expected NoiseFilter, str, float, list/tuple, or None.&quot;</span>
+    <span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div><hr />
+<h2 id="intensity-threshold-filters">Intensity-threshold filters</h2>
+<p>Each subclass exposes the knobs of its estimator as dataclass fields.</p>
+
+
+<div class="doc doc-object doc-class">
+
+
+
+<h2 id="tdfpy.IntensityThreshold" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-class"></code>            <span class="doc doc-object-name doc-class-name">tdfpy.IntensityThreshold</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-dataclass"><code>dataclass</code></small>
+  </span>
+
+</h2>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">IntensityThreshold</span><span class="p">()</span>
+</code></pre></div>
+
+    <div class="doc doc-contents first">
+            <p class="doc doc-class-bases">
+              Bases: <code><a class="autorefs autorefs-internal" title="            tdfpy.NoiseFilter (tdfpy.noise.NoiseFilter)" href="#tdfpy.NoiseFilter">NoiseFilter</a></code></p>
+
+
+
+        <p>Drop points whose intensity is below a computed threshold.</p>
+<p>Subclasses implement :meth:<code>compute_threshold</code> to derive the threshold
+from the intensity distribution. The keep-mask is then the simple
+<code>intensities &gt;= threshold</code> comparison.</p>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="tdfpy.IntensityThreshold.compute_threshold" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-method"></code>            <span class="doc doc-object-name doc-function-name">compute_threshold</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-abstractmethod"><code>abstractmethod</code></small>
+  </span>
+
+</h3>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">compute_threshold</span><span class="p">(</span><span class="n">intensities</span><span class="p">:</span> <span class="n"><span title="numpy">np</span></span><span class="o">.</span><span class="n"><span title="numpy.ndarray">ndarray</span></span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><span title="float">float</span></span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Return the intensity floor for this estimator.</p>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/tdfpy/noise/intensity.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">46</span>
+<span class="normal">47</span>
+<span class="normal">48</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@abstractmethod</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">compute_threshold</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">intensities</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Return the intensity floor for this estimator.&quot;&quot;&quot;</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h2 id="tdfpy.AbsoluteThreshold" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-class"></code>            <span class="doc doc-object-name doc-class-name">tdfpy.AbsoluteThreshold</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-dataclass"><code>dataclass</code></small>
+  </span>
+
+</h2>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">AbsoluteThreshold</span><span class="p">(</span><span class="n">value</span><span class="p">:</span> <span class="n"><span title="float">float</span></span> <span class="o">=</span> <span class="mf">0.0</span><span class="p">)</span>
+</code></pre></div>
+
+    <div class="doc doc-contents first">
+            <p class="doc doc-class-bases">
+              Bases: <code><a class="autorefs autorefs-internal" title="            tdfpy.IntensityThreshold
+
+
+  
+      dataclass
+   (tdfpy.noise.intensity.IntensityThreshold)" href="#tdfpy.IntensityThreshold">IntensityThreshold</a></code></p>
+
+
+
+        <p>Constant intensity floor, ignored estimator.</p>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h2 id="tdfpy.MadThreshold" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-class"></code>            <span class="doc doc-object-name doc-class-name">tdfpy.MadThreshold</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-dataclass"><code>dataclass</code></small>
+  </span>
+
+</h2>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">MadThreshold</span><span class="p">(</span><span class="n">k</span><span class="p">:</span> <span class="n"><span title="float">float</span></span> <span class="o">=</span> <span class="mf">3.0</span><span class="p">,</span> <span class="n">scale</span><span class="p">:</span> <span class="n"><span title="float">float</span></span> <span class="o">=</span> <span class="mf">1.4826</span><span class="p">)</span>
+</code></pre></div>
+
+    <div class="doc doc-contents first">
+            <p class="doc doc-class-bases">
+              Bases: <code><a class="autorefs autorefs-internal" title="            tdfpy.IntensityThreshold
+
+
+  
+      dataclass
+   (tdfpy.noise.intensity.IntensityThreshold)" href="#tdfpy.IntensityThreshold">IntensityThreshold</a></code></p>
+
+
+
+        <p>Median Absolute Deviation threshold: <code>median + k · scale · MAD</code>.</p>
+<p><code>scale = 1.4826</code> makes MAD a consistent estimator of the standard
+deviation for a Gaussian distribution.</p>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h2 id="tdfpy.PercentileThreshold" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-class"></code>            <span class="doc doc-object-name doc-class-name">tdfpy.PercentileThreshold</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-dataclass"><code>dataclass</code></small>
+  </span>
+
+</h2>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">PercentileThreshold</span><span class="p">(</span><span class="n">q</span><span class="p">:</span> <span class="n"><span title="float">float</span></span> <span class="o">=</span> <span class="mf">75.0</span><span class="p">)</span>
+</code></pre></div>
+
+    <div class="doc doc-contents first">
+            <p class="doc doc-class-bases">
+              Bases: <code><a class="autorefs autorefs-internal" title="            tdfpy.IntensityThreshold
+
+
+  
+      dataclass
+   (tdfpy.noise.intensity.IntensityThreshold)" href="#tdfpy.IntensityThreshold">IntensityThreshold</a></code></p>
+
+
+
+        <p>Drop everything below the <code>q</code>-th percentile of intensities.</p>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h2 id="tdfpy.HistogramThreshold" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-class"></code>            <span class="doc doc-object-name doc-class-name">tdfpy.HistogramThreshold</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-dataclass"><code>dataclass</code></small>
+  </span>
+
+</h2>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">HistogramThreshold</span><span class="p">(</span><span class="n">bins</span><span class="p">:</span> <span class="n"><span title="int">int</span></span> <span class="o">=</span> <span class="mi">100</span><span class="p">,</span> <span class="n">k</span><span class="p">:</span> <span class="n"><span title="float">float</span></span> <span class="o">=</span> <span class="mf">3.0</span><span class="p">)</span>
+</code></pre></div>
+
+    <div class="doc doc-contents first">
+            <p class="doc doc-class-bases">
+              Bases: <code><a class="autorefs autorefs-internal" title="            tdfpy.IntensityThreshold
+
+
+  
+      dataclass
+   (tdfpy.noise.intensity.IntensityThreshold)" href="#tdfpy.IntensityThreshold">IntensityThreshold</a></code></p>
+
+
+
+        <p>Mode-of-histogram noise floor + <code>k</code> standard deviations.</p>
+<p>Bins the intensities into <code>bins</code> equal-width bins, takes the modal
+bin as the noise mode, estimates noise std from the FWHM around it,
+and returns <code>mode + k · std</code>.</p>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h2 id="tdfpy.BaselineThreshold" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-class"></code>            <span class="doc doc-object-name doc-class-name">tdfpy.BaselineThreshold</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-dataclass"><code>dataclass</code></small>
+  </span>
+
+</h2>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">BaselineThreshold</span><span class="p">(</span><span class="n">q</span><span class="p">:</span> <span class="n"><span title="float">float</span></span> <span class="o">=</span> <span class="mf">25.0</span><span class="p">,</span> <span class="n">k</span><span class="p">:</span> <span class="n"><span title="float">float</span></span> <span class="o">=</span> <span class="mf">3.0</span><span class="p">)</span>
+</code></pre></div>
+
+    <div class="doc doc-contents first">
+            <p class="doc doc-class-bases">
+              Bases: <code><a class="autorefs autorefs-internal" title="            tdfpy.IntensityThreshold
+
+
+  
+      dataclass
+   (tdfpy.noise.intensity.IntensityThreshold)" href="#tdfpy.IntensityThreshold">IntensityThreshold</a></code></p>
+
+
+
+        <p>Bottom-quartile baseline: <code>mean + k · std</code> of the lowest <code>q</code> %.</p>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h2 id="tdfpy.IterativeMedianThreshold" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-class"></code>            <span class="doc doc-object-name doc-class-name">tdfpy.IterativeMedianThreshold</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-dataclass"><code>dataclass</code></small>
+  </span>
+
+</h2>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">IterativeMedianThreshold</span><span class="p">(</span>
+    <span class="n">passes</span><span class="p">:</span> <span class="n"><span title="int">int</span></span> <span class="o">=</span> <span class="mi">3</span><span class="p">,</span>
+    <span class="n">inner_k</span><span class="p">:</span> <span class="n"><span title="float">float</span></span> <span class="o">=</span> <span class="mf">2.0</span><span class="p">,</span>
+    <span class="n">final_k</span><span class="p">:</span> <span class="n"><span title="float">float</span></span> <span class="o">=</span> <span class="mf">3.0</span><span class="p">,</span>
+    <span class="n">scale</span><span class="p">:</span> <span class="n"><span title="float">float</span></span> <span class="o">=</span> <span class="mf">1.4826</span><span class="p">,</span>
+    <span class="n">min_remaining</span><span class="p">:</span> <span class="n"><span title="int">int</span></span> <span class="o">=</span> <span class="mi">100</span><span class="p">,</span>
+<span class="p">)</span>
+</code></pre></div>
+
+    <div class="doc doc-contents first">
+            <p class="doc doc-class-bases">
+              Bases: <code><a class="autorefs autorefs-internal" title="            tdfpy.IntensityThreshold
+
+
+  
+      dataclass
+   (tdfpy.noise.intensity.IntensityThreshold)" href="#tdfpy.IntensityThreshold">IntensityThreshold</a></code></p>
+
+
+
+        <p>Iteratively trim peaks above <code>median + inner_k · scale · MAD</code>.</p>
+<p>Repeats up to <code>passes</code> times (or until fewer than <code>min_remaining</code>
+points are left). The final threshold is <code>median + final_k · std</code>
+of the surviving distribution.</p>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div><hr />
+<h2 id="structural-filters">Structural filters</h2>
+
+
+<div class="doc doc-object doc-class">
+
+
+
+<h2 id="tdfpy.VerticalNoiseFilter" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-class"></code>            <span class="doc doc-object-name doc-class-name">tdfpy.VerticalNoiseFilter</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-dataclass"><code>dataclass</code></small>
+  </span>
+
+</h2>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">VerticalNoiseFilter</span><span class="p">(</span>
+    <span class="n">mz_idx_half_width</span><span class="p">:</span> <span class="n"><span title="int">int</span></span> <span class="o">=</span> <span class="mi">3</span><span class="p">,</span>
+    <span class="n">min_streak_scans</span><span class="p">:</span> <span class="n"><span title="int">int</span></span> <span class="o">=</span> <span class="mi">5</span><span class="p">,</span>
+    <span class="n">max_gap_scans</span><span class="p">:</span> <span class="n"><span title="int">int</span></span> <span class="o">=</span> <span class="mi">1</span><span class="p">,</span>
+    <span class="n">min_streak_intensity</span><span class="p">:</span> <span class="n"><span title="float">float</span></span> <span class="o">=</span> <span class="mf">50.0</span><span class="p">,</span>
+    <span class="n">num_iterations</span><span class="p">:</span> <span class="n"><span title="int">int</span></span> <span class="o">=</span> <span class="mi">2</span><span class="p">,</span>
+<span class="p">)</span>
+</code></pre></div>
+
+    <div class="doc doc-contents first">
+            <p class="doc doc-class-bases">
+              Bases: <code><a class="autorefs autorefs-internal" title="            tdfpy.NoiseFilter (tdfpy.noise.NoiseFilter)" href="#tdfpy.NoiseFilter">NoiseFilter</a></code></p>
+
+
+
+        <p>Keep points belonging to vertical streaks in (scan, TOF_index) space.</p>
+<p>A real ion produces an intensity streak along the ion-mobility axis at
+roughly the same TOF index across many consecutive scans. Noise tends
+to be isolated single hits or short streaks. This filter walks each
+TOF index, builds the IM intensity profile in a small m/z window,
+finds gap-closed runs of occupied scans, and keeps points whose scan
+falls inside a run that's long enough and intense enough.</p>
+<p>Iterated passes (<code>num_iterations &gt; 1</code>) feed each pass the survivors
+of the previous one — points that only just survived because they sat
+next to barely-thick noise get dropped on a later pass once that noise
+is gone.</p>
+<p>See <code>apps/ALGORITHM.md</code> for the full write-up.</p>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="tdfpy.VerticalNoiseFilter.keep_mask" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-method"></code>            <span class="doc doc-object-name doc-function-name">keep_mask</span>
+
+
+</h3>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">keep_mask</span><span class="p">(</span>
+    <span class="n">scan_indices</span><span class="p">:</span> <span class="n"><span title="numpy">np</span></span><span class="o">.</span><span class="n"><span title="numpy.ndarray">ndarray</span></span><span class="p">,</span>
+    <span class="n">mz_indices</span><span class="p">:</span> <span class="n"><span title="numpy">np</span></span><span class="o">.</span><span class="n"><span title="numpy.ndarray">ndarray</span></span><span class="p">,</span>
+    <span class="n">intensities</span><span class="p">:</span> <span class="n"><span title="numpy">np</span></span><span class="o">.</span><span class="n"><span title="numpy.ndarray">ndarray</span></span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">num_scans</span><span class="p">:</span> <span class="n"><span title="int">int</span></span><span class="p">,</span>
+    <span class="n">td</span><span class="p">:</span> <span class="s2">&quot;TimsData&quot;</span><span class="p">,</span>
+    <span class="n">frame_id</span><span class="p">:</span> <span class="n"><span title="int">int</span></span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><span title="numpy">np</span></span><span class="o">.</span><span class="n"><span title="numpy.ndarray">ndarray</span></span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/tdfpy/noise/structural.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">359</span>
+<span class="normal">360</span>
+<span class="normal">361</span>
+<span class="normal">362</span>
+<span class="normal">363</span>
+<span class="normal">364</span>
+<span class="normal">365</span>
+<span class="normal">366</span>
+<span class="normal">367</span>
+<span class="normal">368</span>
+<span class="normal">369</span>
+<span class="normal">370</span>
+<span class="normal">371</span>
+<span class="normal">372</span>
+<span class="normal">373</span>
+<span class="normal">374</span>
+<span class="normal">375</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">keep_mask</span><span class="p">(</span>
+    <span class="bp">self</span><span class="p">,</span>
+    <span class="n">scan_indices</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">mz_indices</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">intensities</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">num_scans</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+    <span class="n">td</span><span class="p">:</span> <span class="s2">&quot;TimsData&quot;</span><span class="p">,</span>
+    <span class="n">frame_id</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+    <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">run</span><span class="p">(</span>
+        <span class="n">scan_indices</span><span class="p">,</span>
+        <span class="n">mz_indices</span><span class="p">,</span>
+        <span class="n">intensities</span><span class="p">,</span>
+        <span class="n">num_scans</span><span class="o">=</span><span class="n">num_scans</span><span class="p">,</span>
+        <span class="n">diagnostics</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+    <span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="tdfpy.VerticalNoiseFilter.run" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-method"></code>            <span class="doc doc-object-name doc-function-name">run</span>
+
+
+</h3>
+          <div class="doc-overloads">
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">run</span><span class="p">(</span>
+    <span class="n">scan_indices</span><span class="p">:</span> <span class="n"><span title="numpy">np</span></span><span class="o">.</span><span class="n"><span title="numpy.ndarray">ndarray</span></span><span class="p">,</span>
+    <span class="n">mz_indices</span><span class="p">:</span> <span class="n"><span title="numpy">np</span></span><span class="o">.</span><span class="n"><span title="numpy.ndarray">ndarray</span></span><span class="p">,</span>
+    <span class="n">intensities</span><span class="p">:</span> <span class="n"><span title="numpy">np</span></span><span class="o">.</span><span class="n"><span title="numpy.ndarray">ndarray</span></span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">num_scans</span><span class="p">:</span> <span class="n"><span title="int">int</span></span><span class="p">,</span>
+    <span class="n">diagnostics</span><span class="p">:</span> <span class="n"><span title="typing.Literal">Literal</span></span><span class="p">[</span><span class="kc">False</span><span class="p">]</span> <span class="o">=</span> <span class="o">...</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><span title="numpy">np</span></span><span class="o">.</span><span class="n"><span title="numpy.ndarray">ndarray</span></span>
+</code></pre></div><div class="doc-signature highlight"><pre><span></span><code><span class="nf">run</span><span class="p">(</span>
+    <span class="n">scan_indices</span><span class="p">:</span> <span class="n"><span title="numpy">np</span></span><span class="o">.</span><span class="n"><span title="numpy.ndarray">ndarray</span></span><span class="p">,</span>
+    <span class="n">mz_indices</span><span class="p">:</span> <span class="n"><span title="numpy">np</span></span><span class="o">.</span><span class="n"><span title="numpy.ndarray">ndarray</span></span><span class="p">,</span>
+    <span class="n">intensities</span><span class="p">:</span> <span class="n"><span title="numpy">np</span></span><span class="o">.</span><span class="n"><span title="numpy.ndarray">ndarray</span></span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">num_scans</span><span class="p">:</span> <span class="n"><span title="int">int</span></span><span class="p">,</span>
+    <span class="n">diagnostics</span><span class="p">:</span> <span class="n"><span title="typing.Literal">Literal</span></span><span class="p">[</span><span class="kc">True</span><span class="p">]</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;VerticalNoiseDiagnostics&quot;</span>
+</code></pre></div>          </div>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">run</span><span class="p">(</span>
+    <span class="n">scan_indices</span><span class="p">:</span> <span class="n"><span title="numpy">np</span></span><span class="o">.</span><span class="n"><span title="numpy.ndarray">ndarray</span></span><span class="p">,</span>
+    <span class="n">mz_indices</span><span class="p">:</span> <span class="n"><span title="numpy">np</span></span><span class="o">.</span><span class="n"><span title="numpy.ndarray">ndarray</span></span><span class="p">,</span>
+    <span class="n">intensities</span><span class="p">:</span> <span class="n"><span title="numpy">np</span></span><span class="o">.</span><span class="n"><span title="numpy.ndarray">ndarray</span></span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">num_scans</span><span class="p">:</span> <span class="n"><span title="int">int</span></span><span class="p">,</span>
+    <span class="n">diagnostics</span><span class="p">:</span> <span class="n"><span title="bool">bool</span></span> <span class="o">=</span> <span class="kc">False</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;np.ndarray | VerticalNoiseDiagnostics&quot;</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Run the filter on raw arrays.</p>
+<p>When <code>diagnostics</code> is False (default) returns the keep-mask only.
+When True returns a :class:<code>VerticalNoiseDiagnostics</code> carrying the mask
+and per-pass telemetry — used by the timsTOF viewer's IM-filter page.</p>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/tdfpy/noise/structural.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">399</span>
+<span class="normal">400</span>
+<span class="normal">401</span>
+<span class="normal">402</span>
+<span class="normal">403</span>
+<span class="normal">404</span>
+<span class="normal">405</span>
+<span class="normal">406</span>
+<span class="normal">407</span>
+<span class="normal">408</span>
+<span class="normal">409</span>
+<span class="normal">410</span>
+<span class="normal">411</span>
+<span class="normal">412</span>
+<span class="normal">413</span>
+<span class="normal">414</span>
+<span class="normal">415</span>
+<span class="normal">416</span>
+<span class="normal">417</span>
+<span class="normal">418</span>
+<span class="normal">419</span>
+<span class="normal">420</span>
+<span class="normal">421</span>
+<span class="normal">422</span>
+<span class="normal">423</span>
+<span class="normal">424</span>
+<span class="normal">425</span>
+<span class="normal">426</span>
+<span class="normal">427</span>
+<span class="normal">428</span>
+<span class="normal">429</span>
+<span class="normal">430</span>
+<span class="normal">431</span>
+<span class="normal">432</span>
+<span class="normal">433</span>
+<span class="normal">434</span>
+<span class="normal">435</span>
+<span class="normal">436</span>
+<span class="normal">437</span>
+<span class="normal">438</span>
+<span class="normal">439</span>
+<span class="normal">440</span>
+<span class="normal">441</span>
+<span class="normal">442</span>
+<span class="normal">443</span>
+<span class="normal">444</span>
+<span class="normal">445</span>
+<span class="normal">446</span>
+<span class="normal">447</span>
+<span class="normal">448</span>
+<span class="normal">449</span>
+<span class="normal">450</span>
+<span class="normal">451</span>
+<span class="normal">452</span>
+<span class="normal">453</span>
+<span class="normal">454</span>
+<span class="normal">455</span>
+<span class="normal">456</span>
+<span class="normal">457</span>
+<span class="normal">458</span>
+<span class="normal">459</span>
+<span class="normal">460</span>
+<span class="normal">461</span>
+<span class="normal">462</span>
+<span class="normal">463</span>
+<span class="normal">464</span>
+<span class="normal">465</span>
+<span class="normal">466</span>
+<span class="normal">467</span>
+<span class="normal">468</span>
+<span class="normal">469</span>
+<span class="normal">470</span>
+<span class="normal">471</span>
+<span class="normal">472</span>
+<span class="normal">473</span>
+<span class="normal">474</span>
+<span class="normal">475</span>
+<span class="normal">476</span>
+<span class="normal">477</span>
+<span class="normal">478</span>
+<span class="normal">479</span>
+<span class="normal">480</span>
+<span class="normal">481</span>
+<span class="normal">482</span>
+<span class="normal">483</span>
+<span class="normal">484</span>
+<span class="normal">485</span>
+<span class="normal">486</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">run</span><span class="p">(</span>
+    <span class="bp">self</span><span class="p">,</span>
+    <span class="n">scan_indices</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">mz_indices</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">intensities</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">num_scans</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+    <span class="n">diagnostics</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;np.ndarray | VerticalNoiseDiagnostics&quot;</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Run the filter on raw arrays.</span>
+
+<span class="sd">    When ``diagnostics`` is False (default) returns the keep-mask only.</span>
+<span class="sd">    When True returns a :class:`VerticalNoiseDiagnostics` carrying the mask</span>
+<span class="sd">    and per-pass telemetry — used by the timsTOF viewer&#39;s IM-filter page.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">index_arrays</span><span class="p">(</span><span class="n">scan_indices</span><span class="p">,</span> <span class="n">mz_indices</span><span class="p">,</span> <span class="n">intensities</span><span class="p">,</span> <span class="n">num_scans</span><span class="p">)</span>
+    <span class="n">n</span> <span class="o">=</span> <span class="n">scan_indices</span><span class="o">.</span><span class="n">size</span>
+    <span class="k">if</span> <span class="n">n</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="n">empty</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">bool</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">diagnostics</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">empty</span>
+        <span class="k">return</span> <span class="n">VerticalNoiseDiagnostics</span><span class="p">(</span>
+            <span class="n">keep_point_mask</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
+            <span class="n">num_columns_evaluated</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+            <span class="n">num_columns_with_kept_runs</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+            <span class="n">num_kept_points</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+            <span class="n">feature_span_intensities</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">),</span>
+            <span class="n">per_pass_kept</span><span class="o">=</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span>
+        <span class="p">)</span>
+
+    <span class="n">cumulative</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">bool</span><span class="p">)</span>
+    <span class="n">per_pass_kept</span> <span class="o">=</span> <span class="p">[</span><span class="n">n</span><span class="p">]</span>
+    <span class="n">last_n_cols</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">last_n_cols_kept</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">last_span_intensities</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
+
+    <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">num_iterations</span><span class="p">)):</span>
+        <span class="n">active</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nonzero</span><span class="p">(</span><span class="n">cumulative</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">active</span><span class="o">.</span><span class="n">size</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">break</span>
+        <span class="n">mask</span><span class="p">,</span> <span class="n">n_cols</span><span class="p">,</span> <span class="n">n_cols_kept</span><span class="p">,</span> <span class="n">spans</span> <span class="o">=</span> <span class="n">_single_pass_filter</span><span class="p">(</span>
+            <span class="n">scan_indices</span><span class="p">[</span><span class="n">cumulative</span><span class="p">],</span>
+            <span class="n">mz_indices</span><span class="p">[</span><span class="n">cumulative</span><span class="p">],</span>
+            <span class="n">intensities</span><span class="p">[</span><span class="n">cumulative</span><span class="p">],</span>
+            <span class="n">num_scans</span><span class="p">,</span>
+            <span class="n">mz_idx_half_width</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">mz_idx_half_width</span><span class="p">,</span>
+            <span class="n">min_streak_scans</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">min_streak_scans</span><span class="p">,</span>
+            <span class="n">max_gap_scans</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">max_gap_scans</span><span class="p">,</span>
+            <span class="n">min_streak_intensity</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">min_streak_intensity</span><span class="p">,</span>
+            <span class="n">collect_span_intensities</span><span class="o">=</span><span class="n">diagnostics</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">kept</span> <span class="o">=</span> <span class="n">active</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span>
+        <span class="n">cumulative</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">bool</span><span class="p">)</span>
+        <span class="n">cumulative</span><span class="p">[</span><span class="n">kept</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span>
+        <span class="n">per_pass_kept</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">cumulative</span><span class="o">.</span><span class="n">sum</span><span class="p">()))</span>
+        <span class="n">last_n_cols</span> <span class="o">=</span> <span class="n">n_cols</span>
+        <span class="n">last_n_cols_kept</span> <span class="o">=</span> <span class="n">n_cols_kept</span>
+        <span class="n">last_span_intensities</span> <span class="o">=</span> <span class="n">spans</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">cumulative</span><span class="o">.</span><span class="n">any</span><span class="p">():</span>
+            <span class="k">break</span>
+
+    <span class="n">n_kept</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">cumulative</span><span class="o">.</span><span class="n">sum</span><span class="p">())</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span>
+        <span class="s2">&quot;VerticalNoiseFilter: kept </span><span class="si">%d</span><span class="s2">/</span><span class="si">%d</span><span class="s2"> points over </span><span class="si">%d</span><span class="s2"> pass(es) (per-pass: </span><span class="si">%s</span><span class="s2">).&quot;</span><span class="p">,</span>
+        <span class="n">n_kept</span><span class="p">,</span>
+        <span class="n">n</span><span class="p">,</span>
+        <span class="nb">len</span><span class="p">(</span><span class="n">per_pass_kept</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span>
+        <span class="n">per_pass_kept</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="k">if</span> <span class="n">n_kept</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+            <span class="s2">&quot;VerticalNoiseFilter: removed ALL </span><span class="si">%d</span><span class="s2"> points. The streak thresholds &quot;</span>
+            <span class="s2">&quot;may be too strict (min_streak_scans=</span><span class="si">%d</span><span class="s2">, min_streak_intensity=</span><span class="si">%.1f</span><span class="s2">).&quot;</span><span class="p">,</span>
+            <span class="n">n</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">min_streak_scans</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">min_streak_intensity</span><span class="p">,</span>
+        <span class="p">)</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">diagnostics</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">cumulative</span>
+    <span class="k">return</span> <span class="n">VerticalNoiseDiagnostics</span><span class="p">(</span>
+        <span class="n">keep_point_mask</span><span class="o">=</span><span class="n">cumulative</span><span class="p">,</span>
+        <span class="n">num_columns_evaluated</span><span class="o">=</span><span class="n">last_n_cols</span><span class="p">,</span>
+        <span class="n">num_columns_with_kept_runs</span><span class="o">=</span><span class="n">last_n_cols_kept</span><span class="p">,</span>
+        <span class="n">num_kept_points</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">cumulative</span><span class="o">.</span><span class="n">sum</span><span class="p">()),</span>
+        <span class="n">feature_span_intensities</span><span class="o">=</span><span class="n">last_span_intensities</span><span class="p">,</span>
+        <span class="n">per_pass_kept</span><span class="o">=</span><span class="n">per_pass_kept</span><span class="p">,</span>
+    <span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h2 id="tdfpy.noise.VerticalNoiseDiagnostics" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-class"></code>            <span class="doc doc-object-name doc-class-name">tdfpy.noise.VerticalNoiseDiagnostics</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-dataclass"><code>dataclass</code></small>
+  </span>
+
+</h2>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">VerticalNoiseDiagnostics</span><span class="p">(</span>
+    <span class="n">keep_point_mask</span><span class="p">:</span> <span class="n"><span title="numpy">np</span></span><span class="o">.</span><span class="n"><span title="numpy.ndarray">ndarray</span></span><span class="p">,</span>
+    <span class="n">num_columns_evaluated</span><span class="p">:</span> <span class="n"><span title="int">int</span></span><span class="p">,</span>
+    <span class="n">num_columns_with_kept_runs</span><span class="p">:</span> <span class="n"><span title="int">int</span></span><span class="p">,</span>
+    <span class="n">num_kept_points</span><span class="p">:</span> <span class="n"><span title="int">int</span></span><span class="p">,</span>
+    <span class="n">feature_span_intensities</span><span class="p">:</span> <span class="n"><span title="numpy">np</span></span><span class="o">.</span><span class="n"><span title="numpy.ndarray">ndarray</span></span><span class="p">,</span>
+    <span class="n">per_pass_kept</span><span class="p">:</span> <span class="n"><span title="list">list</span></span><span class="p">[</span><span class="n"><span title="int">int</span></span><span class="p">]</span> <span class="o">=</span> <span class="n"><span title="list">list</span></span><span class="p">(),</span>
+<span class="p">)</span>
+</code></pre></div>
+
+    <div class="doc doc-contents first">
+
+
+
+        <p>Diagnostics from a single or iterated pass of :class:<code>VerticalNoiseFilter</code>.</p>
+<p>Fields are populated from the <em>final</em> pass when <code>num_iterations &gt; 1</code>,
+except for :attr:<code>per_pass_kept</code> which traces all passes.</p>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h2 id="tdfpy.HorizontalHaloFilter" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-class"></code>            <span class="doc doc-object-name doc-class-name">tdfpy.HorizontalHaloFilter</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-dataclass"><code>dataclass</code></small>
+  </span>
+
+</h2>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">HorizontalHaloFilter</span><span class="p">(</span>
+    <span class="n">peak_fraction</span><span class="p">:</span> <span class="n"><span title="float">float</span></span> <span class="o">=</span> <span class="mf">0.15</span><span class="p">,</span>
+    <span class="n">mz_idx_half_width</span><span class="p">:</span> <span class="n"><span title="int">int</span></span> <span class="o">=</span> <span class="mi">100</span><span class="p">,</span>
+    <span class="n">scan_half_width</span><span class="p">:</span> <span class="n"><span title="int">int</span></span> <span class="o">=</span> <span class="mi">2</span><span class="p">,</span>
+<span class="p">)</span>
+</code></pre></div>
+
+    <div class="doc doc-contents first">
+            <p class="doc doc-class-bases">
+              Bases: <code><a class="autorefs autorefs-internal" title="            tdfpy.NoiseFilter (tdfpy.noise.NoiseFilter)" href="#tdfpy.NoiseFilter">NoiseFilter</a></code></p>
+
+
+
+        <p>Remove the weak m/z halo flanking bright peaks — left/right only.</p>
+<p>High-intensity ions are flanked by a halo of weak peaks — likely from
+charge interactions within the fragment-ion cloud or detector effects —
+that are not resolvable to high-precision m/z values. A real ion forms a
+<em>vertical streak</em> along the ion-mobility axis (the same TOF index across
+many consecutive mobility scans), so this filter only removes peaks to the
+<strong>left and right</strong> (offset in TOF/m-z index) of a bright neighbour and
+<strong>never above or below</strong> (offset in ion mobility at the same index).</p>
+<p>For each peak it computes a local reference intensity — the <strong>maximum
+intensity in the surrounding box</strong> <code>(±scan_half_width scans,
+±mz_idx_half_width TOF indices)</code> <strong>excluding the peak's own m/z column</strong>
+— and drops the peak if its intensity falls below <code>peak_fraction</code> of
+that reference. Excluding the peak's own column is what guarantees the
+vertical streak is never used against it: a bright peak directly above or
+below sits in the same column and so can never raise the threshold; only a
+genuine left/right neighbour can. A peak with no off-column neighbours in
+its box is always kept. Set <code>scan_half_width=0</code> for strictly per-row
+(same ion-mobility scan) behaviour.</p>
+<p>Operates entirely in integer <code>(scan, TOF index)</code> space — no unit
+conversion. The box max is JIT-compiled with Numba, with a pure-Python
+fallback.</p>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="tdfpy.HorizontalHaloFilter.keep_mask" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-method"></code>            <span class="doc doc-object-name doc-function-name">keep_mask</span>
+
+
+</h3>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">keep_mask</span><span class="p">(</span>
+    <span class="n">scan_indices</span><span class="p">:</span> <span class="n"><span title="numpy">np</span></span><span class="o">.</span><span class="n"><span title="numpy.ndarray">ndarray</span></span><span class="p">,</span>
+    <span class="n">mz_indices</span><span class="p">:</span> <span class="n"><span title="numpy">np</span></span><span class="o">.</span><span class="n"><span title="numpy.ndarray">ndarray</span></span><span class="p">,</span>
+    <span class="n">intensities</span><span class="p">:</span> <span class="n"><span title="numpy">np</span></span><span class="o">.</span><span class="n"><span title="numpy.ndarray">ndarray</span></span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">num_scans</span><span class="p">:</span> <span class="n"><span title="int">int</span></span><span class="p">,</span>
+    <span class="n">td</span><span class="p">:</span> <span class="s2">&quot;TimsData&quot;</span><span class="p">,</span>
+    <span class="n">frame_id</span><span class="p">:</span> <span class="n"><span title="int">int</span></span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><span title="numpy">np</span></span><span class="o">.</span><span class="n"><span title="numpy.ndarray">ndarray</span></span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/tdfpy/noise/structural.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">594</span>
+<span class="normal">595</span>
+<span class="normal">596</span>
+<span class="normal">597</span>
+<span class="normal">598</span>
+<span class="normal">599</span>
+<span class="normal">600</span>
+<span class="normal">601</span>
+<span class="normal">602</span>
+<span class="normal">603</span>
+<span class="normal">604</span>
+<span class="normal">605</span>
+<span class="normal">606</span>
+<span class="normal">607</span>
+<span class="normal">608</span>
+<span class="normal">609</span>
+<span class="normal">610</span>
+<span class="normal">611</span>
+<span class="normal">612</span>
+<span class="normal">613</span>
+<span class="normal">614</span>
+<span class="normal">615</span>
+<span class="normal">616</span>
+<span class="normal">617</span>
+<span class="normal">618</span>
+<span class="normal">619</span>
+<span class="normal">620</span>
+<span class="normal">621</span>
+<span class="normal">622</span>
+<span class="normal">623</span>
+<span class="normal">624</span>
+<span class="normal">625</span>
+<span class="normal">626</span>
+<span class="normal">627</span>
+<span class="normal">628</span>
+<span class="normal">629</span>
+<span class="normal">630</span>
+<span class="normal">631</span>
+<span class="normal">632</span>
+<span class="normal">633</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">keep_mask</span><span class="p">(</span>
+    <span class="bp">self</span><span class="p">,</span>
+    <span class="n">scan_indices</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">mz_indices</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">intensities</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">num_scans</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+    <span class="n">td</span><span class="p">:</span> <span class="s2">&quot;TimsData&quot;</span><span class="p">,</span>
+    <span class="n">frame_id</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+    <span class="n">index_arrays</span><span class="p">(</span><span class="n">scan_indices</span><span class="p">,</span> <span class="n">mz_indices</span><span class="p">,</span> <span class="n">intensities</span><span class="p">,</span> <span class="n">num_scans</span><span class="p">)</span>
+    <span class="n">n</span> <span class="o">=</span> <span class="n">intensities</span><span class="o">.</span><span class="n">size</span>
+    <span class="k">if</span> <span class="n">n</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">bool</span><span class="p">)</span>
+    <span class="c1"># Sort by (scan, mz_idx) so each scan is a contiguous, m/z-sorted block.</span>
+    <span class="n">order</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">lexsort</span><span class="p">((</span><span class="n">mz_indices</span><span class="p">,</span> <span class="n">scan_indices</span><span class="p">))</span>
+    <span class="n">scan_s</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ascontiguousarray</span><span class="p">(</span><span class="n">scan_indices</span><span class="p">[</span><span class="n">order</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">)</span>
+    <span class="n">mz_s</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ascontiguousarray</span><span class="p">(</span><span class="n">mz_indices</span><span class="p">[</span><span class="n">order</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">)</span>
+    <span class="n">int_s</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ascontiguousarray</span><span class="p">(</span><span class="n">intensities</span><span class="p">[</span><span class="n">order</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
+
+    <span class="n">block_start</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">num_scans</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">)</span>
+    <span class="n">block_len</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">num_scans</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">)</span>
+    <span class="n">uniq</span><span class="p">,</span> <span class="n">starts</span><span class="p">,</span> <span class="n">counts</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">unique</span><span class="p">(</span><span class="n">scan_s</span><span class="p">,</span> <span class="n">return_index</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">return_counts</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">block_start</span><span class="p">[</span><span class="n">uniq</span><span class="p">]</span> <span class="o">=</span> <span class="n">starts</span>
+    <span class="n">block_len</span><span class="p">[</span><span class="n">uniq</span><span class="p">]</span> <span class="o">=</span> <span class="n">counts</span>
+
+    <span class="n">ref_sorted</span> <span class="o">=</span> <span class="n">_offcol_box_max</span><span class="p">(</span>
+        <span class="n">scan_s</span><span class="p">,</span>
+        <span class="n">mz_s</span><span class="p">,</span>
+        <span class="n">int_s</span><span class="p">,</span>
+        <span class="n">block_start</span><span class="p">,</span>
+        <span class="n">block_len</span><span class="p">,</span>
+        <span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">scan_half_width</span><span class="p">),</span>
+        <span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">mz_idx_half_width</span><span class="p">),</span>
+    <span class="p">)</span>
+    <span class="n">ref</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
+    <span class="n">ref</span><span class="p">[</span><span class="n">order</span><span class="p">]</span> <span class="o">=</span> <span class="n">ref_sorted</span>
+    <span class="c1"># Keep unless strictly below the fraction of the left/right max.</span>
+    <span class="c1"># Peaks with no off-column neighbours (ref == 0) are always kept.</span>
+    <span class="k">return</span> <span class="n">intensities</span> <span class="o">&gt;=</span> <span class="bp">self</span><span class="o">.</span><span class="n">peak_fraction</span> <span class="o">*</span> <span class="n">ref</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div><h2 id="precursor-space-gates">Precursor-space gates</h2>
+<p>Acquisition-aware <strong>MS1-only</strong> gates that drop signal the instrument never
+schedules for fragmentation (so it can never become an identification). Each
+reads the relevant region from <code>analysis.tdf</code>, converts it once to per-scan
+integer TOF-index intervals via the run calibration, and tests membership with a
+vectorised binary search. Both are no-ops (keep everything) when the run carries
+no region, so they are safe to include unconditionally.</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">tdfpy</span><span class="w"> </span><span class="kn">import</span> <span class="n">SelectionPolygonGate</span><span class="p">,</span> <span class="n">DiaMs1WindowGate</span><span class="p">,</span> <span class="n">MadThreshold</span><span class="p">,</span> <span class="n">get_raw_peaks</span>
+
+<span class="c1"># ddaPASEF: keep only MS1 inside the PASEF selection polygon, then denoise.</span>
+<span class="n">peaks</span> <span class="o">=</span> <span class="n">get_raw_peaks</span><span class="p">(</span><span class="n">td</span><span class="p">,</span> <span class="n">frame_id</span><span class="p">,</span> <span class="n">noise</span><span class="o">=</span><span class="p">[</span><span class="n">SelectionPolygonGate</span><span class="p">(),</span> <span class="n">MadThreshold</span><span class="p">(</span><span class="n">k</span><span class="o">=</span><span class="mi">3</span><span class="p">)])</span>
+
+<span class="c1"># diaPASEF: keep only MS1 inside the union of isolation windows.</span>
+<span class="n">peaks</span> <span class="o">=</span> <span class="n">get_raw_peaks</span><span class="p">(</span><span class="n">td</span><span class="p">,</span> <span class="n">frame_id</span><span class="p">,</span> <span class="n">noise</span><span class="o">=</span><span class="p">[</span><span class="n">DiaMs1WindowGate</span><span class="p">()])</span>
+</code></pre></div>
+
+
+<div class="doc doc-object doc-class">
+
+
+
+<h2 id="tdfpy.SelectionPolygonGate" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-class"></code>            <span class="doc doc-object-name doc-class-name">tdfpy.SelectionPolygonGate</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-dataclass"><code>dataclass</code></small>
+  </span>
+
+</h2>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">SelectionPolygonGate</span><span class="p">(</span>
+    <span class="n">mz_pad</span><span class="p">:</span> <span class="n"><span title="float">float</span></span> <span class="o">=</span> <span class="mf">5.0</span><span class="p">,</span> <span class="n">im_pad</span><span class="p">:</span> <span class="n"><span title="float">float</span></span> <span class="o">=</span> <span class="mf">0.05</span>
+<span class="p">)</span>
+</code></pre></div>
+
+    <div class="doc doc-contents first">
+            <p class="doc doc-class-bases">
+              Bases: <code><a class="autorefs autorefs-internal" title="            tdfpy.NoiseFilter (tdfpy.noise.NoiseFilter)" href="#tdfpy.NoiseFilter">NoiseFilter</a></code></p>
+
+
+
+        <p>Keep only MS1 points inside the ddaPASEF selection polygon.</p>
+<p>Reads the run's IMS PolygonFilter and drops MS1 signal outside it — data the
+instrument never schedules as a precursor. No-op (keeps everything) when the
+run stores no polygon, or when the run is diaPASEF (there the same property
+stores window-placement quads, not one selection ring, so it is not used).</p>
+<p>Parameters (both in physical units, widening the kept region per side so an
+edge precursor keeps its isotopic envelope / mobility spread rather than being
+clipped at a hard polygon boundary):
+    mz_pad: m/z padding in Da (default 5.0).
+    im_pad: 1/K0 padding (default 0.05).</p>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="tdfpy.SelectionPolygonGate.keep_mask" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-method"></code>            <span class="doc doc-object-name doc-function-name">keep_mask</span>
+
+
+</h3>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">keep_mask</span><span class="p">(</span>
+    <span class="n">scan_indices</span><span class="p">:</span> <span class="n"><span title="numpy">np</span></span><span class="o">.</span><span class="n"><span title="numpy.ndarray">ndarray</span></span><span class="p">,</span>
+    <span class="n">mz_indices</span><span class="p">:</span> <span class="n"><span title="numpy">np</span></span><span class="o">.</span><span class="n"><span title="numpy.ndarray">ndarray</span></span><span class="p">,</span>
+    <span class="n">intensities</span><span class="p">:</span> <span class="n"><span title="numpy">np</span></span><span class="o">.</span><span class="n"><span title="numpy.ndarray">ndarray</span></span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">num_scans</span><span class="p">:</span> <span class="n"><span title="int">int</span></span><span class="p">,</span>
+    <span class="n">td</span><span class="p">:</span> <span class="s2">&quot;TimsData&quot;</span><span class="p">,</span>
+    <span class="n">frame_id</span><span class="p">:</span> <span class="n"><span title="int">int</span></span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><span title="numpy">np</span></span><span class="o">.</span><span class="n"><span title="numpy.ndarray">ndarray</span></span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/tdfpy/noise/gates.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">396</span>
+<span class="normal">397</span>
+<span class="normal">398</span>
+<span class="normal">399</span>
+<span class="normal">400</span>
+<span class="normal">401</span>
+<span class="normal">402</span>
+<span class="normal">403</span>
+<span class="normal">404</span>
+<span class="normal">405</span>
+<span class="normal">406</span>
+<span class="normal">407</span>
+<span class="normal">408</span>
+<span class="normal">409</span>
+<span class="normal">410</span>
+<span class="normal">411</span>
+<span class="normal">412</span>
+<span class="normal">413</span>
+<span class="normal">414</span>
+<span class="normal">415</span>
+<span class="normal">416</span>
+<span class="normal">417</span>
+<span class="normal">418</span>
+<span class="normal">419</span>
+<span class="normal">420</span>
+<span class="normal">421</span>
+<span class="normal">422</span>
+<span class="normal">423</span>
+<span class="normal">424</span>
+<span class="normal">425</span>
+<span class="normal">426</span>
+<span class="normal">427</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">keep_mask</span><span class="p">(</span>
+    <span class="bp">self</span><span class="p">,</span>
+    <span class="n">scan_indices</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">mz_indices</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">intensities</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">num_scans</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+    <span class="n">td</span><span class="p">:</span> <span class="s2">&quot;TimsData&quot;</span><span class="p">,</span>
+    <span class="n">frame_id</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+    <span class="n">noop</span> <span class="o">=</span> <span class="n">_ms1_only_noop</span><span class="p">(</span><span class="n">td</span><span class="p">,</span> <span class="n">frame_id</span><span class="p">,</span> <span class="n">intensities</span><span class="p">,</span> <span class="s2">&quot;SelectionPolygonGate&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">noop</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">noop</span>
+    <span class="n">key</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="s2">&quot;polygon&quot;</span><span class="p">,</span>
+        <span class="n">num_scans</span><span class="p">,</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">mz_pad</span><span class="p">,</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">im_pad</span><span class="p">,</span>
+        <span class="n">td</span><span class="o">.</span><span class="n">calibration_key</span><span class="p">(</span><span class="n">frame_id</span><span class="p">),</span>
+        <span class="n">td</span><span class="o">.</span><span class="n">frame_metadata</span><span class="p">(</span><span class="n">frame_id</span><span class="p">)</span><span class="o">.</span><span class="n">property_group</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">gate</span> <span class="o">=</span> <span class="n">_cached</span><span class="p">(</span>
+        <span class="n">td</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="k">lambda</span><span class="p">:</span> <span class="n">_build_polygon_gate</span><span class="p">(</span><span class="n">td</span><span class="p">,</span> <span class="n">frame_id</span><span class="p">,</span> <span class="n">num_scans</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span>
+    <span class="p">)</span>
+    <span class="k">if</span> <span class="n">gate</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span>
+            <span class="s2">&quot;SelectionPolygonGate: no usable polygon for this run; keeping all &quot;</span>
+            <span class="s2">&quot;</span><span class="si">%d</span><span class="s2"> points.&quot;</span><span class="p">,</span>
+            <span class="n">intensities</span><span class="o">.</span><span class="n">size</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">intensities</span><span class="o">.</span><span class="n">size</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">bool</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">gate</span><span class="o">.</span><span class="n">keep_mask</span><span class="p">(</span><span class="n">scan_indices</span><span class="p">,</span> <span class="n">mz_indices</span><span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-class">
+
+
+
+<h2 id="tdfpy.DiaMs1WindowGate" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-class"></code>            <span class="doc doc-object-name doc-class-name">tdfpy.DiaMs1WindowGate</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-dataclass"><code>dataclass</code></small>
+  </span>
+
+</h2>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">DiaMs1WindowGate</span><span class="p">(</span><span class="n">mz_pad</span><span class="p">:</span> <span class="n"><span title="float">float</span></span> <span class="o">=</span> <span class="mf">5.0</span><span class="p">,</span> <span class="n">im_pad</span><span class="p">:</span> <span class="n"><span title="float">float</span></span> <span class="o">=</span> <span class="mf">0.05</span><span class="p">)</span>
+</code></pre></div>
+
+    <div class="doc doc-contents first">
+            <p class="doc doc-class-bases">
+              Bases: <code><a class="autorefs autorefs-internal" title="            tdfpy.NoiseFilter (tdfpy.noise.NoiseFilter)" href="#tdfpy.NoiseFilter">NoiseFilter</a></code></p>
+
+
+
+        <p>Keep only MS1 points inside the union of diaPASEF isolation windows.</p>
+<p>Drops MS1 signal in no isolation window — precursors the method never
+isolates. No-op (keeps everything) on ddaPASEF / when no windows are defined.</p>
+<p>Parameters (physical-unit padding per side, converted once via the run
+calibration, so an edge precursor keeps its isotopes / mobility spread):
+    mz_pad: m/z padding in Da (default 5.0).
+    im_pad: 1/K0 padding (default 0.05).</p>
+
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="tdfpy.DiaMs1WindowGate.keep_mask" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-method"></code>            <span class="doc doc-object-name doc-function-name">keep_mask</span>
+
+
+</h3>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">keep_mask</span><span class="p">(</span>
+    <span class="n">scan_indices</span><span class="p">:</span> <span class="n"><span title="numpy">np</span></span><span class="o">.</span><span class="n"><span title="numpy.ndarray">ndarray</span></span><span class="p">,</span>
+    <span class="n">mz_indices</span><span class="p">:</span> <span class="n"><span title="numpy">np</span></span><span class="o">.</span><span class="n"><span title="numpy.ndarray">ndarray</span></span><span class="p">,</span>
+    <span class="n">intensities</span><span class="p">:</span> <span class="n"><span title="numpy">np</span></span><span class="o">.</span><span class="n"><span title="numpy.ndarray">ndarray</span></span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">num_scans</span><span class="p">:</span> <span class="n"><span title="int">int</span></span><span class="p">,</span>
+    <span class="n">td</span><span class="p">:</span> <span class="s2">&quot;TimsData&quot;</span><span class="p">,</span>
+    <span class="n">frame_id</span><span class="p">:</span> <span class="n"><span title="int">int</span></span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><span title="numpy">np</span></span><span class="o">.</span><span class="n"><span title="numpy.ndarray">ndarray</span></span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>src/tdfpy/noise/gates.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">450</span>
+<span class="normal">451</span>
+<span class="normal">452</span>
+<span class="normal">453</span>
+<span class="normal">454</span>
+<span class="normal">455</span>
+<span class="normal">456</span>
+<span class="normal">457</span>
+<span class="normal">458</span>
+<span class="normal">459</span>
+<span class="normal">460</span>
+<span class="normal">461</span>
+<span class="normal">462</span>
+<span class="normal">463</span>
+<span class="normal">464</span>
+<span class="normal">465</span>
+<span class="normal">466</span>
+<span class="normal">467</span>
+<span class="normal">468</span>
+<span class="normal">469</span>
+<span class="normal">470</span>
+<span class="normal">471</span>
+<span class="normal">472</span>
+<span class="normal">473</span>
+<span class="normal">474</span>
+<span class="normal">475</span>
+<span class="normal">476</span>
+<span class="normal">477</span>
+<span class="normal">478</span>
+<span class="normal">479</span>
+<span class="normal">480</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">keep_mask</span><span class="p">(</span>
+    <span class="bp">self</span><span class="p">,</span>
+    <span class="n">scan_indices</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">mz_indices</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">intensities</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">num_scans</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+    <span class="n">td</span><span class="p">:</span> <span class="s2">&quot;TimsData&quot;</span><span class="p">,</span>
+    <span class="n">frame_id</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+    <span class="n">noop</span> <span class="o">=</span> <span class="n">_ms1_only_noop</span><span class="p">(</span><span class="n">td</span><span class="p">,</span> <span class="n">frame_id</span><span class="p">,</span> <span class="n">intensities</span><span class="p">,</span> <span class="s2">&quot;DiaMs1WindowGate&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">noop</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">noop</span>
+    <span class="n">key</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="s2">&quot;dia_ms1&quot;</span><span class="p">,</span>
+        <span class="n">num_scans</span><span class="p">,</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">mz_pad</span><span class="p">,</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">im_pad</span><span class="p">,</span>
+        <span class="n">td</span><span class="o">.</span><span class="n">calibration_key</span><span class="p">(</span><span class="n">frame_id</span><span class="p">),</span>
+    <span class="p">)</span>
+    <span class="n">gate</span> <span class="o">=</span> <span class="n">_cached</span><span class="p">(</span>
+        <span class="n">td</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="k">lambda</span><span class="p">:</span> <span class="n">_build_dia_ms1_gate</span><span class="p">(</span><span class="n">td</span><span class="p">,</span> <span class="n">frame_id</span><span class="p">,</span> <span class="n">num_scans</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span>
+    <span class="p">)</span>
+    <span class="k">if</span> <span class="n">gate</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span>
+            <span class="s2">&quot;DiaMs1WindowGate: no isolation windows for this run (ddaPASEF?); &quot;</span>
+            <span class="s2">&quot;keeping all </span><span class="si">%d</span><span class="s2"> points.&quot;</span><span class="p">,</span>
+            <span class="n">intensities</span><span class="o">.</span><span class="n">size</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">intensities</span><span class="o">.</span><span class="n">size</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">bool</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">gate</span><span class="o">.</span><span class="n">keep_mask</span><span class="p">(</span><span class="n">scan_indices</span><span class="p">,</span> <span class="n">mz_indices</span><span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.top", "content.code.copy", "search.highlight"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

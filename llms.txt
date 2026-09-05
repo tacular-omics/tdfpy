@@ -1,0 +1,44 @@
+# tdfpy
+
+> A Python package for parsing and centroiding Bruker timsTOF mass spectrometry data (`.tdf` / `.tdf_bin`). Provides a high-level API for DDA, DIA, and PRM acquisition modes (PASEF / diaPASEF), a composable peak-processing pipeline, and two Numba-accelerated centroiders that treat ion mobility as a first-class clustering dimension.
+
+tdfpy decodes `analysis.tdf_bin` directly in Python/NumPy -- no Bruker native library, no platform restriction -- and exposes acquisition-mode-aware reader classes (`DDA`, `DIA`, `PRM`) that yield frames, precursors, isolation windows, and PRM transitions as typed Python dataclasses. Every centroiding entry point orchestrates the same composable pipeline (`read_spectrum → exclude_region → apply_noise → centroider`); power users can compose the underlying ops directly. Peaks are returned as `(N, 3)` NumPy arrays of `[m/z, intensity, ion_mobility]`. Install with `pip install tdfpy`; requires Python 3.12+.
+
+## Documentation
+
+- [Home](https://tacular-omics.github.io/tdfpy/index.md): one-page overview with quick example for DDA, DIA, and PRM
+- [Getting Started](https://tacular-omics.github.io/tdfpy/getting-started.md): installation, acquisition-type detection, iterating frames / precursors / windows / transitions, lookups and queries, lazy spectral access contract
+
+## Core API
+
+- [Readers](https://tacular-omics.github.io/tdfpy/api/readers.md): `DDA`, `DIA`, `PRM`, `get_acquisition_type` — open a `.d` folder via context manager
+- [Frames](https://tacular-omics.github.io/tdfpy/api/frames.md): `Frame`, `DDAMs1Frame`, `DIAMs1Frame`, `PRMMs1Frame` — MS1 frame dataclasses with `.raw_peaks()` and `.centroid()` methods
+- [Precursor](https://tacular-omics.github.io/tdfpy/api/precursor.md): `Precursor` — DDA MS2 spectra (centroided by tdfpy: mobility collapse + 30 ppm merge), charge / m/z / ion mobility / CCS
+- [DIA Windows](https://tacular-omics.github.io/tdfpy/api/windows.md): `DiaWindow`, `DiaWindowGroup` — DIA isolation windows with scan-range-scoped centroiding
+- [PRM Data Elements](https://tacular-omics.github.io/tdfpy/api/prm.md): `PrmTarget`, `PrmTransition` — targeted acquisition primitives
+- [Metadata](https://tacular-omics.github.io/tdfpy/api/metadata.md): `MetaData`, `Calibration` — instrument and acquisition metadata
+- [Lookups](https://tacular-omics.github.io/tdfpy/api/lookup.md): `Ms1FrameLookup`, `PrecursorLookup`, `DiaWindowLookup`, `PrmTargetLookup`, `PrmTransitionLookup` — access by ID, query by m/z and retention time
+
+## Peak Processing
+
+- [Centroiding](https://tacular-omics.github.io/tdfpy/api/centroiding.md): `get_raw_peaks`, `get_centroided_spectrum`, `merge_peaks` — convenience entry points and parameter reference
+- [Pipeline](https://tacular-omics.github.io/tdfpy/api/pipeline.md): `RawSpectrum`, `read_spectrum`, `subset_scans`, `exclude_region`, `Smooth`, `smooth`, `box_smooth`, `apply_noise`, `convert`, `centroid_peaks`, `Centroider` ABC, `MergePeaksCentroider`, `WatershedCentroider` — composable ops and centroider implementations
+- [Noise filters](https://tacular-omics.github.io/tdfpy/api/noise.md): `NoiseFilter` ABC, `coerce_filters`, `IntensityThreshold`, `MadThreshold`, `PercentileThreshold`, `HistogramThreshold`, `BaselineThreshold`, `IterativeMedianThreshold`, `AbsoluteThreshold`, structural `VerticalNoiseFilter` and `HorizontalHaloFilter`, precursor-space gates `SelectionPolygonGate` (ddaPASEF) and `DiaMs1WindowGate` (diaPASEF) — chain via `noise=[…]`
+- [Region exclusion](https://tacular-omics.github.io/tdfpy/api/regions.md): `ChargeStateRegion` — drop the singly-charged contamination band in timsTOF MS1
+
+## Utilities
+
+- [Spectrum batches and file checks](https://tacular-omics.github.io/tdfpy/analysis/): window batches and acquisition validation
+- [Maintenance](https://tacular-omics.github.io/tdfpy/maintenance/): reference protection, artifact verification, and release checks
+
+- [Utilities](https://tacular-omics.github.io/tdfpy/utilities.md): `slice_d_folder` — extract a frame-range subset of a `.d` folder
+- [PandasTDF](https://tacular-omics.github.io/tdfpy/api/low-level.md): `PandasTdf` — pandas DataFrame wrapper around `analysis.tdf` SQLite; `TimsData` / `timsdata_connect` — pure-Python `analysis.tdf_bin` frame reader
+- `plot_centroiding`: 2×2 diagnostic panel — raw peaks, centroids, noise-rejected, 1D spectrum comparison
+
+## Optional
+
+- [MCP interface](https://tacular-omics.github.io/tdfpy/mcp/): optional local agent tools for metadata queries, spectrum extraction, exports, conversions, and file checks
+
+- [GitHub repository](https://github.com/tacular-omics/tdfpy): source, issue tracker
+- [PyPI](https://pypi.org/project/tdfpy/): release distribution
+- [Full-text dump for one-shot context](https://tacular-omics.github.io/tdfpy/llms-full.txt): all key docs concatenated
