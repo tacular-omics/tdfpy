@@ -19,7 +19,7 @@ abstract: >-
   ranges, and retention time. tdfpy is intended for proteomics workflows that
   need scriptable access to timsTOF measurements, mobility-resolved peaks, and
   PASEF acquisition metadata on Linux, macOS, or Windows.
-version: "4.0.0"
+version: "4.0.1"
 authors:
   - given-names: Patrick T.
     family-names: Garrett

@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.0.1] - 2026-09-04
+
+### Fixed
+
+- Include the removal of grant entries from `.zenodo.json` in the release tag.
+  The 4.0.0 release omitted that correction and failed Zenodo archival.
+- Align the package, citation, and Zenodo metadata at version 4.0.1.
+
+This release changes release metadata only. The extraction and MCP functionality
+from 4.0.0 is unchanged.
+
 ## [4.0.0] - 2026-09-04
 
 ### Compatibility

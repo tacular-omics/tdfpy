@@ -76,7 +76,7 @@ from .processing import iter_window_spectra
 from .timsdata import FrameMetadata
 from .validation import ValidationIssue, ValidationReport, validate_acquisition
 
-__version__ = "4.0.0"
+__version__ = "4.0.1"
 
 __all__ = [
     "FrameMetadata",
