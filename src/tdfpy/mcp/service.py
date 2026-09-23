@@ -1,16 +1,16 @@
 """Local acquisition operations behind the optional MCP transport."""
 
+import hashlib
+import json
+import sqlite3
+import zipfile
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import asdict, fields, is_dataclass
 from enum import Enum
-import hashlib
-import json
 from pathlib import Path
-import sqlite3
 from typing import Any
 from uuid import uuid4
-import zipfile
 
 import numpy as np
 from pydantic import TypeAdapter
@@ -22,14 +22,14 @@ from tdfpy import (
     TimsData,
     __version__,
     get_acquisition_type,
-    get_raw_peaks,
     get_centroided_spectrum,
+    get_raw_peaks,
     iter_window_spectra,
     validate_acquisition,
 )
 from tdfpy import noise as noise_module
-from tdfpy.calibration import one_over_k0_to_ccs, ccs_to_one_over_k0
-from tdfpy.pipeline import MergePeaksCentroider, WatershedCentroider, Smooth
+from tdfpy.calibration import ccs_to_one_over_k0, one_over_k0_to_ccs
+from tdfpy.pipeline import MergePeaksCentroider, Smooth, WatershedCentroider
 from tdfpy.regions import ChargeStateRegion
 
 from .models import Interval, Operation, Predicate, Processing, SpectrumSelection

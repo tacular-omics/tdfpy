@@ -1,7 +1,7 @@
 """Tests for tdfpy.noise.gates — selection-polygon and diaPASEF MS1 window gates."""
 
-from collections.abc import Generator
 import pathlib
+from collections.abc import Generator
 
 import numpy as np
 import pytest

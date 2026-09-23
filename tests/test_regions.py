@@ -1,7 +1,7 @@
 """Tests for tdfpy.regions.ChargeStateRegion and pipeline.exclude_region."""
 
-from collections.abc import Generator
 import pathlib
+from collections.abc import Generator
 
 import numpy as np
 import pytest

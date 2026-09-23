@@ -34,7 +34,6 @@ accumulation window, and this reader reproduces that.
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 import os
 import sqlite3
 import sys
@@ -44,6 +43,7 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 from typing import Any
 
 import numpy as np

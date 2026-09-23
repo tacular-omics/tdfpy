@@ -1,8 +1,8 @@
 """Command-line acquisition validation."""
 
 import argparse
-from dataclasses import asdict
 import json
+from dataclasses import asdict
 
 from .validation import validate_acquisition
 

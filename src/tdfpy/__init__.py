@@ -2,6 +2,7 @@
 Package for working with TDF (Bruker Data File) data.
 """
 
+from .calibration import UnsupportedCalibrationError
 from .centroiding import (
     get_centroided_spectrum,
     get_mobility_collapsed_spectrum,
@@ -16,9 +17,9 @@ from .elems import (
     DiaWindowGroup,
     Frame,
     MetaData,
-    PRMMs1Frame,
     PasefFrameMsmsInfo,
     Precursor,
+    PRMMs1Frame,
     PrmTarget,
     PrmTransition,
 )
@@ -49,8 +50,8 @@ from .pipeline import (
     Centroider,
     MergePeaksCentroider,
     RawSpectrum,
-    WatershedCentroider,
     Smooth,
+    WatershedCentroider,
     apply_noise,
     box_smooth,
     centroid_peaks,
@@ -60,6 +61,7 @@ from .pipeline import (
     smooth,
     subset_scans,
 )
+from .processing import iter_window_spectra
 from .reader import (
     DDA,
     DIA,
@@ -69,12 +71,9 @@ from .reader import (
 from .regions import ChargeStateRegion
 from .slicer import slice_d_folder
 from .tdf import PandasTdf
-from .calibration import UnsupportedCalibrationError
-from .timsdata import TimsData, UnsupportedTdfError, timsdata_connect
-from .viz import plot_centroiding
-from .processing import iter_window_spectra
-from .timsdata import FrameMetadata
+from .timsdata import FrameMetadata, TimsData, UnsupportedTdfError, timsdata_connect
 from .validation import ValidationIssue, ValidationReport, validate_acquisition
+from .viz import plot_centroiding
 
 __version__ = "4.0.1"
 

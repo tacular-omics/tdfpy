@@ -1,10 +1,10 @@
 """Scientific accounting and streaming behavior for analysis helpers."""
 
-from dataclasses import asdict
-from itertools import islice
 import json
 import subprocess
 import sys
+from dataclasses import asdict
+from itertools import islice
 
 import numpy as np
 import pytest

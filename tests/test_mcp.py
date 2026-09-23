@@ -3,9 +3,9 @@
 import asyncio
 import hashlib
 import json
-from pathlib import Path
 import subprocess
 import sys
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -15,7 +15,7 @@ pytest.importorskip("mcp")
 from mcp import Client, StdioServerParameters
 from pydantic import ValidationError
 
-from tdfpy import DDA, DIA, PRM, TimsData, MergePeaksCentroider
+from tdfpy import DDA, DIA, PRM, MergePeaksCentroider, TimsData
 from tdfpy.mcp.models import (
     Interval,
     Operation,

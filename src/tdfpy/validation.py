@@ -1,8 +1,8 @@
 """Read-only acquisition checks with structured, frame-specific issues."""
 
+import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
-import sqlite3
 from typing import Literal
 
 import numpy as np

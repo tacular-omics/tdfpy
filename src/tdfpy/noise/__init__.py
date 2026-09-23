@@ -52,12 +52,16 @@ class NoiseFilter(ABC):
         intensities: np.ndarray,
         *,
         num_scans: int,
-        td: "TimsData",
+        td: TimsData,
         frame_id: int,
     ) -> np.ndarray:
         """Return a boolean keep-mask of length ``len(intensities)``."""
 
 
+from .gates import (  # noqa: E402
+    DiaMs1WindowGate,
+    SelectionPolygonGate,
+)
 from .intensity import (  # noqa: E402
     AbsoluteThreshold,
     BaselineThreshold,
@@ -71,10 +75,6 @@ from .structural import (  # noqa: E402
     HorizontalHaloFilter,
     VerticalNoiseDiagnostics,
     VerticalNoiseFilter,
-)
-from .gates import (  # noqa: E402
-    DiaMs1WindowGate,
-    SelectionPolygonGate,
 )
 
 _STRING_ALIASES: dict[str, type[IntensityThreshold]] = {

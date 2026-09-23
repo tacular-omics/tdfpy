@@ -1,6 +1,6 @@
-from collections.abc import Generator
 import datetime
 import pathlib
+from collections.abc import Generator
 
 import pytest
 

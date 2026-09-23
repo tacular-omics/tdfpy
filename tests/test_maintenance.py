@@ -20,8 +20,7 @@ from tdfpy.timsdata import _zstd_decompress
 @pytest.mark.parametrize("mode", ["dda", "dia", "prm"])
 @pytest.mark.parametrize("pread", [True, False])
 def test_high_level_extraction_matches_concurrent_first_use(mode, pread, monkeypatch):
-    from tdfpy import get_raw_peaks, SelectionPolygonGate
-    from tdfpy import timsdata
+    from tdfpy import SelectionPolygonGate, get_raw_peaks, timsdata
 
     if pread and timsdata._PREAD is None:
         pytest.skip("pread is unavailable")

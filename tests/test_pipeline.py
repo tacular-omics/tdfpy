@@ -1,7 +1,7 @@
 """Tests for tdfpy.pipeline: subset_scans, convert, and error paths."""
 
-from collections.abc import Generator
 import pathlib
+from collections.abc import Generator
 
 import numpy as np
 import pytest

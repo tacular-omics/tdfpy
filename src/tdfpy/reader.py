@@ -14,10 +14,10 @@ from .elems import (
     Frame,
     MetaData,
     MsMsType,
-    PRMMs1Frame,
     PasefFrameMsmsInfo,
     Polarity,
     Precursor,
+    PRMMs1Frame,
     PrmTarget,
     PrmTransition,
 )

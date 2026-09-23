@@ -8,8 +8,8 @@ for reading centroided MS1 spectra with peak clustering/centroiding algorithms.
 import logging
 import warnings
 from collections.abc import Sequence
-from typing import Any, Literal, NamedTuple
 from pathlib import Path
+from typing import Any, Literal, NamedTuple
 
 import numpy as np
 import pandas as pd  # type: ignore
