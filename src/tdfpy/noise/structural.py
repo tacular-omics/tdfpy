@@ -355,7 +355,7 @@ class VerticalNoiseFilter(NoiseFilter):
         intensities: np.ndarray,
         *,
         num_scans: int,
-        td: "TimsData",
+        td: TimsData,
         frame_id: int,
     ) -> np.ndarray:
         return self.run(
@@ -386,7 +386,7 @@ class VerticalNoiseFilter(NoiseFilter):
         *,
         num_scans: int,
         diagnostics: Literal[True],
-    ) -> "VerticalNoiseDiagnostics": ...
+    ) -> VerticalNoiseDiagnostics: ...
 
     def run(
         self,
@@ -396,7 +396,7 @@ class VerticalNoiseFilter(NoiseFilter):
         *,
         num_scans: int,
         diagnostics: bool = False,
-    ) -> "np.ndarray | VerticalNoiseDiagnostics":
+    ) -> np.ndarray | VerticalNoiseDiagnostics:
         """Run the filter on raw arrays.
 
         When ``diagnostics`` is False (default) returns the keep-mask only.
@@ -589,7 +589,7 @@ class HorizontalHaloFilter(NoiseFilter):
         intensities: np.ndarray,
         *,
         num_scans: int,
-        td: "TimsData",
+        td: TimsData,
         frame_id: int,
     ) -> np.ndarray:
         index_arrays(scan_indices, mz_indices, intensities, num_scans)

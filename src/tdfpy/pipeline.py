@@ -83,7 +83,7 @@ class RawSpectrum:
     def empty(self) -> bool:
         return self.intensities.size == 0
 
-    def filter(self, mask: np.ndarray) -> "RawSpectrum":
+    def filter(self, mask: np.ndarray) -> RawSpectrum:
         """Return a new spectrum keeping only points where ``mask`` is True."""
         if mask.dtype != np.bool_ or mask.shape != self.intensities.shape:
             raise ValueError("A peak mask must be boolean with one entry per peak.")
@@ -95,7 +95,7 @@ class RawSpectrum:
         )
 
     @classmethod
-    def empty_like(cls, num_scans: int) -> "RawSpectrum":
+    def empty_like(cls, num_scans: int) -> RawSpectrum:
         return cls(
             scan_indices=np.empty(0, dtype=np.int64),
             mz_indices=np.empty(0, dtype=np.int64),

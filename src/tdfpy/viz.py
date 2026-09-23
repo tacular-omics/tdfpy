@@ -28,7 +28,7 @@ def plot_centroiding(
     im_tolerance_type: Literal["relative", "absolute"] = "relative",
     min_peaks: int = 3,
     max_peaks: int | None = None,
-    noise: "NoiseSpec" = None,
+    noise: NoiseSpec = None,
     mz_range: tuple[float, float] | None = None,
     im_range: tuple[float, float] | None = None,
 ) -> Figure:

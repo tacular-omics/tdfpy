@@ -42,7 +42,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def _is_ms1_frame(td: "TimsData", frame_id: int) -> bool:
+def _is_ms1_frame(td: TimsData, frame_id: int) -> bool:
     """Check immutable frame metadata without a per-call SQL query."""
     if td.handle is None:
         return False
@@ -52,7 +52,7 @@ def _is_ms1_frame(td: "TimsData", frame_id: int) -> bool:
         return False
 
 
-def _ms1_only_noop(td: "TimsData", frame_id: int, intensities: np.ndarray, gate_name: str) -> np.ndarray | None:
+def _ms1_only_noop(td: TimsData, frame_id: int, intensities: np.ndarray, gate_name: str) -> np.ndarray | None:
     """Keep-all mask (with a debug log) when ``gate_name`` must not gate this frame.
 
     Returns ``None`` when the frame is a confirmed MS1 frame and the gate should
@@ -289,7 +289,7 @@ def build_window_intervals(boxes: list[tuple[int, int, int, int]], num_scans: in
 # ---------------------------------------------------------------------------
 
 
-def read_selection_polygon(td: "TimsData", frame_id: int | None = None) -> tuple[np.ndarray, np.ndarray] | None:
+def read_selection_polygon(td: TimsData, frame_id: int | None = None) -> tuple[np.ndarray, np.ndarray] | None:
     """Read a selection polygon from the opening-time metadata snapshot.
 
     When frame_id is supplied, use that frame's property group. Both vertex
@@ -320,7 +320,7 @@ def read_selection_polygon(td: "TimsData", frame_id: int | None = None) -> tuple
     return None
 
 
-def read_dia_ms1_boxes(td: "TimsData") -> list[tuple[int, int, float, float]]:
+def read_dia_ms1_boxes(td: TimsData) -> list[tuple[int, int, float, float]]:
     """Read distinct half-open DIA scan windows from the metadata snapshot."""
     if td.handle is None:
         return []
@@ -338,7 +338,7 @@ def read_dia_ms1_boxes(td: "TimsData") -> list[tuple[int, int, float, float]]:
     return boxes
 
 
-def _cached(td: "TimsData", key: tuple, build: Callable[[], PerScanTofIntervals | None]) -> PerScanTofIntervals | None:
+def _cached(td: TimsData, key: tuple, build: Callable[[], PerScanTofIntervals | None]) -> PerScanTofIntervals | None:
     # Keep caches on their reader and serialize first construction. Bound the
     # cache because temperature changes may produce many effective calibrations.
     with td._gate_lock:
@@ -380,7 +380,7 @@ class SelectionPolygonGate(NoiseFilter):
         intensities: np.ndarray,
         *,
         num_scans: int,
-        td: "TimsData",
+        td: TimsData,
         frame_id: int,
     ) -> np.ndarray:
         noop = _ms1_only_noop(td, frame_id, intensities, "SelectionPolygonGate")
@@ -431,7 +431,7 @@ class DiaMs1WindowGate(NoiseFilter):
         intensities: np.ndarray,
         *,
         num_scans: int,
-        td: "TimsData",
+        td: TimsData,
         frame_id: int,
     ) -> np.ndarray:
         noop = _ms1_only_noop(td, frame_id, intensities, "DiaMs1WindowGate")
@@ -454,7 +454,7 @@ class DiaMs1WindowGate(NoiseFilter):
         return gate.keep_mask(scan_indices, mz_indices)
 
 
-def _build_polygon_gate(td: "TimsData", frame_id: int, num_scans: int, params: SelectionPolygonGate) -> PerScanTofIntervals | None:
+def _build_polygon_gate(td: TimsData, frame_id: int, num_scans: int, params: SelectionPolygonGate) -> PerScanTofIntervals | None:
     # diaPASEF stores multiple window quads under the same property, not one
     # selection ring — skip the polygon gate there (dia_ms1 handles diaPASEF MS1).
     if read_dia_ms1_boxes(td):
@@ -476,7 +476,7 @@ def _build_polygon_gate(td: "TimsData", frame_id: int, num_scans: int, params: S
     )
 
 
-def _build_dia_ms1_gate(td: "TimsData", frame_id: int, num_scans: int, params: DiaMs1WindowGate) -> PerScanTofIntervals | None:
+def _build_dia_ms1_gate(td: TimsData, frame_id: int, num_scans: int, params: DiaMs1WindowGate) -> PerScanTofIntervals | None:
     boxes = read_dia_ms1_boxes(td)
     if not boxes or num_scans == 0:
         return None

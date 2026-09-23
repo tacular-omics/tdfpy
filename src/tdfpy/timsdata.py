@@ -440,7 +440,7 @@ class TimsData:
 
     # -- lifecycle --------------------------------------------------------
 
-    def __enter__(self) -> "TimsData":
+    def __enter__(self) -> TimsData:
         return self
 
     def __exit__(self, exit_type: Any, value: Any, traceback: Any) -> None:

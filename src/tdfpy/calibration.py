@@ -103,7 +103,7 @@ class MzCalibration:
             )
 
     @classmethod
-    def from_row(cls, row: dict) -> "MzCalibration":
+    def from_row(cls, row: dict) -> MzCalibration:
         """Build from a ``MzCalibration`` row (``sqlite3.Row`` or mapping)."""
         return cls(
             model_type=int(row["ModelType"]),
@@ -203,7 +203,7 @@ class TimsCalibration:
             )
 
     @classmethod
-    def from_row(cls, row: dict) -> "TimsCalibration":
+    def from_row(cls, row: dict) -> TimsCalibration:
         """Build from a ``TimsCalibration`` row (``sqlite3.Row`` or mapping)."""
         return cls(
             model_type=int(row["ModelType"]),
