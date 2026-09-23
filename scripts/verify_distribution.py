@@ -5,12 +5,12 @@ Requires uv and access to runtime dependency wheels, either cached or online.
 """
 
 import argparse
-from pathlib import Path
 import subprocess
 import sys
 import tarfile
 import tempfile
 import zipfile
+from pathlib import Path
 
 
 def main() -> None:
@@ -42,15 +42,9 @@ def main() -> None:
     with tempfile.TemporaryDirectory(prefix="tdfpy-wheel-") as tmp:
         root = Path(tmp)
         venv = root / "env"
-        subprocess.run(
-            ["uv", "venv", "--python", sys.executable, str(venv)], check=True
-        )
-        python = venv / (
-            "Scripts/python.exe" if sys.platform == "win32" else "bin/python"
-        )
-        subprocess.run(
-            ["uv", "pip", "install", "--python", str(python), str(wheel)], check=True
-        )
+        subprocess.run(["uv", "venv", "--python", sys.executable, str(venv)], check=True)
+        python = venv / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
+        subprocess.run(["uv", "pip", "install", "--python", str(python), str(wheel)], check=True)
         smoke = root / "smoke.py"
         smoke.write_text(
             """from pathlib import Path
@@ -80,9 +74,7 @@ print("Installed-wheel checks passed for DDA, DIA, and PRM")
                 ["uv", "pip", "install", "--python", str(python), f"{wheel}[mcp]"],
                 check=True,
             )
-            server_command = venv / (
-                "Scripts/tdfpy-mcp.exe" if sys.platform == "win32" else "bin/tdfpy-mcp"
-            )
+            server_command = venv / ("Scripts/tdfpy-mcp.exe" if sys.platform == "win32" else "bin/tdfpy-mcp")
             smoke.write_text(
                 """import asyncio
 from pathlib import Path

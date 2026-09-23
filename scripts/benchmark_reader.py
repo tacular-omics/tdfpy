@@ -7,13 +7,13 @@ RSS is the process high-water mark, including imports and all benchmark stages.
 
 import argparse
 import hashlib
+import json
+import platform
+import sys
 from importlib.metadata import version
 from itertools import islice
-import json
 from pathlib import Path
-import platform
 from statistics import median
-import sys
 from time import perf_counter
 
 import tdfpy
@@ -59,10 +59,7 @@ def main() -> None:
         "python": sys.version,
         "platform": platform.platform(),
         "dependencies": {name: version(name) for name in ("numpy", "pandas", "numba")},
-        "input_checksums": {
-            name: checksum(args.analysis_directory / name)
-            for name in ("analysis.tdf", "analysis.tdf_bin")
-        },
+        "input_checksums": {name: checksum(args.analysis_directory / name) for name in ("analysis.tdf", "analysis.tdf_bin")},
         "opening": measure(opening, args.repeats),
         "max_peaks": args.max_peaks,
     }
@@ -81,15 +78,11 @@ def main() -> None:
 
         result["first_centroid_call"] = measure(run, 1)
         result["warm_centroid"] = measure(run, args.repeats)
-        result["raw_peaks_per_second"] = (
-            result["raw_peak_count"] / result["decode"]["median_seconds"]
-        )
+        result["raw_peaks_per_second"] = result["raw_peak_count"] / result["decode"]["median_seconds"]
         windows = list(islice(reader.windows, 20)) if mode == "DIA" else []
         if windows:
             result["window_count"] = len(windows)
-            result["individual_windows"] = measure(
-                lambda: [w.centroid(centroid=cfg) for w in windows], args.repeats
-            )
+            result["individual_windows"] = measure(lambda: [w.centroid(centroid=cfg) for w in windows], args.repeats)
             if hasattr(tdfpy, "iter_window_spectra"):
                 result["batched_windows"] = measure(
                     lambda: list(tdfpy.iter_window_spectra(windows, centroid=cfg)),
@@ -99,9 +92,7 @@ def main() -> None:
         import resource
 
         rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-        result["process_peak_rss_bytes"] = rss * (
-            1 if sys.platform == "darwin" else 1024
-        )
+        result["process_peak_rss_bytes"] = rss * (1 if sys.platform == "darwin" else 1024)
     except ImportError:
         result["process_peak_rss_bytes"] = None
     print(json.dumps(result, indent=2))

@@ -748,7 +748,7 @@ High-level entry points for opening timsTOF `.d` acquisitions.
   - `.metadata` -> `MetaData`: Global metadata about the acquisition.
   - `.ms1` -> `Ms1FrameLookup[DIAMs1Frame]`: Lookup for MS1 frames. Supports indexing by frame ID.
   - `.pandas_tdf` -> `PandasTdf`
-  - `.window_groups` -> `collections.abc.Generator[DiaWindowGroup, None, None]`: Iterate over all DiaWindowGroup objects across all window groups.
+  - `.window_groups` -> `Generator[DiaWindowGroup, None, None]`: Iterate over all DiaWindowGroup objects across all window groups.
   - `.windows` -> `DiaWindowLookup`: Lookup for all DIA windows. Supports indexing by window *group* ID and `.query()`.
 
 **class `PRM(analysis_dir: str | Path)`**
@@ -822,7 +822,7 @@ the targeted transitions acquired in the same run.
   - `.mz_range` -> `tuple[float, float] | None`
   - `.ook0` -> `float`
   - `.ook0_range` -> `tuple[float, float] | None`
-  - `.pasef_peaks` -> `list[numpy.ndarray]`
+  - `.pasef_peaks` -> `list[np.ndarray]`
   - `.peaks` -> `NDArray[numpy.float64]`: **Centroided** PASEF MS/MS peaks for this precursor.
   - `.polarity` -> `Polarity`
   - `.scan_num_range` -> `tuple[int, int] | None`
@@ -1741,7 +1741,7 @@ the `viz` extra:
 pip install 'tdfpy[viz]'
 ```
 
-**`plot_centroiding(td: 'TimsData', frame_id: 'int', ion_mobility_type: "Literal['ook0', 'ccs', 'voltage']" = 'ook0', mz_tolerance: 'float' = 8.0, mz_tolerance_type: "Literal['ppm', 'da']" = 'ppm', im_tolerance: 'float' = 0.01, im_tolerance_type: "Literal['relative', 'absolute']" = 'relative', min_peaks: 'int' = 3, max_peaks: 'int | None' = None, noise: 'NoiseSpec' = None, mz_range: 'tuple[float, float] | None' = None, im_range: 'tuple[float, float] | None' = None) -> 'Figure'`**
+**`plot_centroiding(td: 'TimsData', frame_id: 'int', ion_mobility_type: "Literal['ook0', 'ccs', 'voltage']" = 'ook0', mz_tolerance: 'float | None' = None, mz_tolerance_type: "Literal['ppm', 'da'] | None" = None, im_tolerance: 'float | None' = None, im_tolerance_type: "Literal['relative', 'absolute'] | None" = None, min_peaks: 'int | None' = None, max_peaks: 'int | None' = None, noise: 'NoiseSpec' = None, mz_range: 'tuple[float, float] | None' = None, im_range: 'tuple[float, float] | None' = None, *, centroid: 'Centroider | None' = None) -> 'Figure'`**
   Visualize centroiding quality for a single frame.
 
 ==============================================================================
@@ -1757,7 +1757,7 @@ SQLite metadata into pandas DataFrames, and `TimsData` decodes frames from
 
 **dataclass `PandasTdf`**
   A class for working with TDF (Bruker Data File) using pandas DataFrames.
-  - fields: `db_path: str | pathlib._local.Path`
+  - fields: `db_path: str | Path`
   - `.calibration_info` -> `DataFrame`: The 'CalibrationInfo' table as a pandas DataFrame. :return: table as a pandas DataFrame
   - `.dia_frame_msms_info` -> `DataFrame`: The 'DiaFrameMsMsInfo' table as a pandas DataFrame. :return: table as a pandas DataFrame
   - `.dia_frame_msms_window_groups` -> `DataFrame`: The 'DiaFrameMsMsWindowGroups' table as a pandas DataFrame. :return: table as a pandas DataFrame

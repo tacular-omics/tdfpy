@@ -40,7 +40,7 @@ just ty             # uv run --extra mcp ty check src/
 just check          # lint + format-check + ty + test
 just docs           # mkdocs serve on localhost:8002 (docs dependency group)
 just docs-build     # mkdocs build to site/
-just llms-full      # regenerate docs/llms-full.txt (scripts/build_llms_full.py), see Gotchas
+just llms-full      # regenerate llms-full.txt + docs/llms-full.txt (scripts/build_llms_full.py)
 just build          # uv build -> dist/
 just check-version  # version metadata agrees across __init__/CITATION.cff/.zenodo.json
 ```
@@ -52,8 +52,8 @@ also `python -m tdfpy.mcp`).
 Distribution check (see `docs/maintenance.md`): `uv build --out-dir dist` then
 `uv run python scripts/verify_distribution.py dist`.
 
-No pre-commit hooks. CI (`.github/workflows/ci.yml`) runs ruff on `src tests`
-only; `just lint` / `just format-check` also cover `scripts/`.
+No pre-commit hooks. CI (`.github/workflows/ci.yml`) runs ruff on `src tests scripts`,
+the same paths as `just lint` / `just format-check`.
 
 ## Architecture
 
@@ -191,15 +191,11 @@ per-scan `(N, 2)` arrays.
   filters; that is where filters can suppress satellites before the centroider.
 - **DIA/PRM MS2 ion mobility is the precursor's**, because TIMS sits before the
   collision cell. Do not document it as a fragment property.
-- **`just llms-full` only concatenates the docs pages** and leaves mkdocstrings
-  `::: tdfpy.X` directives unexpanded. The committed `llms-full.txt` (root and
-  `docs/`) is a richer, self-contained version with an orientation section and
-  expanded signatures; running the recipe overwrites `docs/llms-full.txt` with the
-  thinner form. Update both copies together until the script is upgraded.
-- As of 4.0.2, `just lint` and `just format-check` (so `just check`) fail on
-  `scripts/` (unsorted imports, `zip()` without `strict=`, formatting) while CI
-  passes, because CI runs ruff on `src tests` only. Check `src tests` results
-  before assuming you broke something.
+- **`llms-full.txt` is generated.** `just llms-full` writes the root and `docs/`
+  copies: the orientation text in `HEADER` of `scripts/build_llms_full.py`, then
+  the docs pages with each `::: tdfpy.X` directive expanded from the installed
+  package. Edit the header or the docs, not the output, and re-run it after
+  changing a public signature or docstring.
 
 ## Releasing
 
@@ -209,7 +205,7 @@ Version source: `__version__` in `src/tdfpy/__init__.py` (`[tool.hatch.version]`
 mirrored in `CITATION.cff` and `.zenodo.json` by `scripts/release_version.py`.
 `CHANGELOG.md` keeps an `[Unreleased]` section. Publishing runs from
 `.github/workflows/publish.yml` when a GitHub release is published (PyPI trusted
-publishing); Zenodo archives the release. Do not use `just publish`.
+publishing); Zenodo archives the release. There is no local publish recipe.
 
 ## Workspace note
 

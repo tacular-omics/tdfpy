@@ -90,13 +90,7 @@ def main() -> None:
 
     # -- per-frame benchmark ------------------------------------------------
     col_w = (8, 12, 14, 14, 10)  # column widths
-    header = (
-        f"{'frame_id':>{col_w[0]}} "
-        f"{'raw_peaks':>{col_w[1]}} "
-        f"{'python_ms':>{col_w[2]}} "
-        f"{'numba_ms':>{col_w[3]}} "
-        f"{'speedup':>{col_w[4]}}"
-    )
+    header = f"{'frame_id':>{col_w[0]}} {'raw_peaks':>{col_w[1]}} {'python_ms':>{col_w[2]}} {'numba_ms':>{col_w[3]}} {'speedup':>{col_w[4]}}"
     sep = "-" * len(header)
     print(header)
     print(sep)
@@ -126,9 +120,7 @@ def main() -> None:
                     rtol=1e-5,
                     atol=1e-8,
                 ):
-                    print(
-                        f"  [OK] Python and Numba outputs match on frame {frame_id}\n"
-                    )
+                    print(f"  [OK] Python and Numba outputs match on frame {frame_id}\n")
                 else:
                     print(f"  [WARN] Outputs differ on frame {frame_id}\n")
                 validated = True
@@ -137,13 +129,7 @@ def main() -> None:
             py_times.append(py_t)
             nb_times.append(nb_t)
 
-            print(
-                f"{frame_id:>{col_w[0]}} "
-                f"{len(raw):>{col_w[1]},} "
-                f"{py_t * 1000:>{col_w[2]}.3f} "
-                f"{nb_t * 1000:>{col_w[3]}.3f} "
-                f"{speedup:>{col_w[4]}.2f}x"
-            )
+            print(f"{frame_id:>{col_w[0]}} {len(raw):>{col_w[1]},} {py_t * 1000:>{col_w[2]}.3f} {nb_t * 1000:>{col_w[3]}.3f} {speedup:>{col_w[4]}.2f}x")
 
     if not py_times:
         print("No frames with peaks found.")
@@ -155,11 +141,7 @@ def main() -> None:
     mean_speedup = np.mean(py_times) / np.mean(nb_times)
 
     print(sep)
-    print(
-        f"\nMean over {len(py_times)} frame(s): "
-        f"Python {mean_py:.3f} ms | Numba {mean_nb:.3f} ms | "
-        f"Speedup {mean_speedup:.2f}x"
-    )
+    print(f"\nMean over {len(py_times)} frame(s): Python {mean_py:.3f} ms | Numba {mean_nb:.3f} ms | Speedup {mean_speedup:.2f}x")
 
 
 if __name__ == "__main__":
