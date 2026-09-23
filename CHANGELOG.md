@@ -7,7 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [4.0.1] - 2026-09-04
+## [4.0.2] (2026-09-23)
+
+### Fixed
+
+- The `mcp` extra now requires `mcp>=2.1`, the oldest release the MCP tests pass against.
+- `TimsData.close()` closes the handle and the SQLite connection independently, so one failing does not leak the other.
+
+### Changed
+
+- Releases publish to PyPI by trusted publishing; `.zenodo.json` no longer hard-codes the version.
+
+## [4.0.1] (2026-09-04)
 
 ### Fixed
 
@@ -18,7 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 This release changes release metadata only. The extraction and MCP functionality
 from 4.0.0 is unchanged.
 
-## [4.0.0] - 2026-09-04
+## [4.0.0] (2026-09-04)
 
 ### Compatibility
 
@@ -78,7 +89,7 @@ from 4.0.0 is unchanged.
   Prepare optional Trusted Publishing while retaining token authentication until
   the matching PyPI publisher is configured.
 
-## [3.0.0] - 2026-08-15
+## [3.0.0] (2026-08-15)
 
 Bruker's `libtimsdata` is gone. tdfpy now reads `analysis.tdf_bin` itself, which
 removes 16 MB of proprietary binaries from the wheel, drops the redistribution
@@ -228,7 +239,7 @@ question, and lifts the Linux/Windows-x86-64 restriction — macOS and ARM work.
 Frame decoding remains bit-exact against Bruker over all 1710 fixture frames and
 29,399,513 peaks.
 
-## [2.2.0] - 2026-07-07
+## [2.2.0] (2026-07-07)
 
 ### Added
 
@@ -238,7 +249,7 @@ Frame decoding remains bit-exact against Bruker over all 1710 fixture frames and
   - Both gates now **no-op (keep everything) on non-MS1 frames** rather than testing fragment peaks against the MS1 precursor region (which would empty an MS2 spectrum), so they are safe to leave in a `noise=[...]` list applied across frame types.
   - `build_window_intervals` **clamps a negative `scan_lo` to 0 and skips boxes lying wholly outside the scan range** instead of letting a negative bound wrap around via Python indexing.
 
-## [2.1.0] - 2026-07-02
+## [2.1.0] (2026-07-02)
 
 ### Fixed
 
@@ -263,7 +274,7 @@ Frame decoding remains bit-exact against Bruker over all 1710 fixture frames and
 - **`slice_d_folder` now closes its SQLite connections** (via `contextlib.closing`).
 - Corrected docstrings that contradicted the code: `scan_num_end` is exclusive (`[begin, end)`), `DIA.windows` indexes by window *group*, and `Precursor.peaks` / `PasefFrameMsmsInfo.peaks` are documented as native-centroided 2-D arrays (vs the raw per-scan lists returned by `Frame`/`DiaWindow`).
 
-## [2.0.0] - 2026-06-08
+## [2.0.0] (2026-06-08)
 
 ### Added
 
