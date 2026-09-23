@@ -165,7 +165,7 @@ def _write_slice(source_dir: Path, dest_dir: Path, frame_start: int, frame_end: 
         # Step 4: Update offsets in Frames table.
         conn.executemany(
             "UPDATE Frames SET TimsId = ? WHERE Id = ?",
-            list(zip(new_offsets, frame_ids)),
+            list(zip(new_offsets, frame_ids, strict=True)),
         )
 
     # VACUUM must run outside a transaction.

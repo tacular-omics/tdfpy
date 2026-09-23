@@ -410,7 +410,7 @@ class TestSpectra(unittest.TestCase):
         sat_mz = []
         sat_int = []
         sat_im = []
-        for a_mz, a_im in zip(anchors_mz, anchors_im):
+        for a_mz, a_im in zip(anchors_mz, anchors_im, strict=True):
             offsets = rng.uniform(-0.09, 0.09, size=30)
             sat_mz.extend((a_mz + offsets).tolist())
             sat_int.extend(rng.uniform(50.0, 500.0, size=30).tolist())

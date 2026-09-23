@@ -185,7 +185,7 @@ class PerScanTofIntervals:
         # Group the sorted points by scan and test each group in one searchsorted.
         starts = np.concatenate(([0], np.flatnonzero(group_diffs) + 1))
         ends = np.concatenate((starts[1:], [n]))
-        for st, en in zip(starts, ends):
+        for st, en in zip(starts, ends, strict=True):
             s = int(ss[st])
             if s < 0 or s >= self.num_scans:
                 continue
@@ -251,7 +251,7 @@ def build_polygon_intervals(
         if t_hi[k] >= t_lo[k]:
             rows[s].append((int(t_lo[k]), int(t_hi[k])))
 
-    los, his = zip(*(_coalesce_intervals(r) for r in rows))
+    los, his = zip(*(_coalesce_intervals(r) for r in rows), strict=True)
     gate = PerScanTofIntervals(lo=tuple(los), hi=tuple(his))
     return None if gate.is_empty else gate
 

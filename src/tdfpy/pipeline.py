@@ -261,7 +261,7 @@ def convert(
 
     if ion_mobility_type == "ccs":
         ion_mobility_array = np.array(
-            [oneOverK0ToCCSforMz(ook0, 1, mz) for ook0, mz in zip(ion_mobility_array, mz_array)],
+            [oneOverK0ToCCSforMz(ook0, 1, mz) for ook0, mz in zip(ion_mobility_array, mz_array, strict=True)],
             dtype=np.float64,
         )
     elif ion_mobility_type == "voltage":
@@ -409,7 +409,7 @@ def box_smooth(
 
     queries: dict[int, tuple[np.ndarray, np.ndarray]] = {}
     sources: dict[int, tuple[np.ndarray, np.ndarray, np.ndarray]] = {}
-    for sv, s0, s1 in zip(uniq.tolist(), starts.tolist(), ends.tolist()):
+    for sv, s0, s1 in zip(uniq.tolist(), starts.tolist(), ends.tolist(), strict=True):
         idx = order[s0:s1]
         m = mz[idx]
         msort = np.argsort(m, kind="stable")

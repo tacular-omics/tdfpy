@@ -33,7 +33,7 @@ def test_high_level_extraction_matches_concurrent_first_use(mode, pread, monkeyp
     with TimsData(path) as parallel:
         with ThreadPoolExecutor(4) as pool:
             results = list(pool.map(lambda fid: get_raw_peaks(parallel, fid, noise=filters), ids * 2))
-    for fid, result in zip(ids * 2, results):
+    for fid, result in zip(ids * 2, results, strict=True):
         np.testing.assert_array_equal(result, expected[fid])
 
 

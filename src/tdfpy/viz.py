@@ -117,9 +117,15 @@ def plot_centroiding(
     # Since both come from the same RawSpectrum in the same order, the kept
     # rows are a strict subset — compute the rejected rows via a row-mask.
     if filters and len(raw) < len(raw_all):
-        kept_keys = set(zip(kept_spectrum.scan_indices.tolist(), kept_spectrum.mz_indices.tolist()))
+        kept_keys = set(
+            zip(
+                kept_spectrum.scan_indices.tolist(),
+                kept_spectrum.mz_indices.tolist(),
+                strict=True,
+            )
+        )
         rejected_mask = np.array(
-            [(int(s), int(m)) not in kept_keys for s, m in zip(spectrum.scan_indices, spectrum.mz_indices)],
+            [(int(s), int(m)) not in kept_keys for s, m in zip(spectrum.scan_indices, spectrum.mz_indices, strict=True)],
             dtype=bool,
         )
         rejected_raw = raw_all[rejected_mask]

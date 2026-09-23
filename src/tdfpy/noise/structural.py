@@ -215,7 +215,7 @@ def _single_pass_filter_python(
 
         kept_scans = np.zeros(num_scans, dtype=bool)
         any_run_kept = False
-        for run_start, run_end in zip(run_starts, run_ends):
+        for run_start, run_end in zip(run_starts, run_ends, strict=True):
             first_scan = int(occ_scans[run_start])
             last_scan = int(occ_scans[run_end - 1])
             span = last_scan - first_scan + 1

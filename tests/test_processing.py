@@ -66,7 +66,7 @@ def test_batch_matches_windows_and_decodes_each_frame_once(reader_cls, mode, att
         config = MergePeaksCentroider(min_peaks=1, max_peaks=10)
         results = list(iter_window_spectra(windows, centroid=config))
         assert calls == list(dict.fromkeys(w.frame_id for w in windows))
-        for window, result in zip(windows, results):
+        for window, result in zip(windows, results, strict=True):
             assert result[0] is window
             np.testing.assert_array_equal(result[1], window.centroid(centroid=config))
 
