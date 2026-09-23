@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `plot_centroiding` accepts `centroid=` (any `Centroider`), like `Frame.centroid()` and `get_centroided_spectrum()`. With no arguments it now plots the default `MergePeaksCentroider()`, so the figure matches `frame.centroid()` (the old default used `im_tolerance=0.01`, not 0.1).
+- `just check` passes: ruff errors and formatting fixed in `scripts/`, and CI now lints `scripts/` too.
+- `just llms-full` expands the mkdocstrings `:::` directives into signatures and docstring summaries and writes both `llms-full.txt` and `docs/llms-full.txt`.
+- `tests/test_docs.py` runs from any working directory.
+
+### Deprecated
+
+- `plot_centroiding` arguments `mz_tolerance`, `mz_tolerance_type`, `im_tolerance`, `im_tolerance_type`, `min_peaks` and `max_peaks`. They still work, with their old defaults, and emit a `DeprecationWarning`; pass `centroid=MergePeaksCentroider(...)` instead.
+
+### Removed
+
+- The `just publish` recipe. Releases publish from GitHub releases by trusted publishing.
+
 ## [4.0.2] (2026-09-23)
 
 ### Fixed

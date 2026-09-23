@@ -21,8 +21,9 @@ dependencies = [
     # interpreters. A 3.14 build made without libzstd will raise an ImportError
     # naming this package.
     "zstandard>=0.22; python_version < '3.14'",
-    # Numba is a hard dependency: every JIT kernel has a pure-Python fallback,
-    # but the documented performance of the centroiding stack assumes the JIT.
+    # Required so the centroiding stack runs JIT-compiled, which its documented
+    # performance assumes. The code does not need it to import: every kernel has
+    # a pure-Python fallback, used if numba cannot be imported.
     "numba>=0.59",
 ]
 classifiers = [
@@ -108,3 +109,7 @@ select = [
     "B",   # flake8-bugbear
     "UP",  # pyupgrade
 ]
+
+[tool.ruff.lint.per-file-ignores]
+# HEADER holds Markdown table rows, which cannot be wrapped.
+"scripts/build_llms_full.py" = ["E501"]

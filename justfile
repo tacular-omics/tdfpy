@@ -6,7 +6,7 @@ default:
 install:
   uv sync
 
-# Alias for install — the name CONTRIBUTING.md and AGENTS.md point contributors at
+# Alias for install — the name CONTRIBUTING.md and docs/getting-started.md use
 install-dev:
   uv sync
 
@@ -22,25 +22,25 @@ sync:
 test:
   uv run pytest tests/ -v
 
-# Run linter
+# Lint src, tests and scripts (CI runs the same)
 lint:
     uv run ruff check src/ tests/ scripts/
 
-# Format code
+# Sort imports, drop unused imports, then format src, tests and scripts
 format:
-    uv run ruff check --select I --fix src/ tests/
-    uv run ruff check --select F401 --fix src/ tests/
+    uv run ruff check --select I --fix src/ tests/ scripts/
+    uv run ruff check --select F401 --fix src/ tests/ scripts/
     uv run ruff format src/ tests/ scripts/
 
 # Verify formatting without changing files
 format-check:
     uv run ruff format --check src/ tests/ scripts/
 
-# Type check the core and optional interface
+# Type check src, including the optional MCP interface
 ty:
     uv run --extra mcp ty check src/
 
-# Run lint and tests
+# Lint, format check, type check, then tests
 check:
     just lint
     just format-check
@@ -61,7 +61,7 @@ sync-version:
 check-version:
     python scripts/release_version.py check
 
-# Build the package
+# Build the sdist and wheel into dist/
 build:
   uv build
 
@@ -86,8 +86,8 @@ docs:
 docs-build:
     uv run --group docs mkdocs build
 
-# Regenerate docs/llms-full.txt from the markdown docs (committed to repo;
-# shipped at /llms-full.txt on the deployed docs site)
+# The docs copy ships at /llms-full.txt on the docs site; both copies are committed.
+# Regenerate llms-full.txt and docs/llms-full.txt, expanding ::: API directives
 llms-full:
     uv run python scripts/build_llms_full.py
 
@@ -97,11 +97,7 @@ paper:
         --env JOURNAL=joss openjournals/inara -o pdf papers/paper.md
     @echo "Wrote papers/paper.pdf"
 
-# Publish to PyPI (requires UV_PUBLISH_TOKEN or interactive auth)
-publish: build
-  uv publish
-
-# Upgrade Python syntax to 3.11+
+# Upgrade Python syntax to 3.12+ (pyupgrade)
 upgrade:
   @echo "Upgrading Python syntax to 3.12+..."
   @find src/tdfpy tests -name "*.py" -type f -exec uv run pyupgrade --py312-plus {} +
@@ -111,6 +107,7 @@ upgrade:
 test-cov:
     uv run pytest tests --cov=src/tdfpy --cov-branch --cov-report=term-missing --cov-report=html --cov-report=xml --junitxml=junit.xml
 
+# Tests with coverage and a legacy-format junit.xml, for Codecov
 codecov-tests:
     uv run pytest tests --cov --junitxml=junit.xml -o junit_family=legacy
 

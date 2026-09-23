@@ -79,25 +79,19 @@ class Native:
             out[pid] = (list(mzs[0:n]), list(areas[0:n]))
 
         arr = np.array([precursor], dtype=np.int64)
-        rc = self.dll.tims_read_pasef_msms(
-            self.handle, arr.ctypes.data_as(POINTER(c_int64)), 1, cb
-        )
+        rc = self.dll.tims_read_pasef_msms(self.handle, arr.ctypes.data_as(POINTER(c_int64)), 1, cb)
         if rc == 0:
             raise RuntimeError("tims_read_pasef_msms failed")
         return out.get(precursor)
 
-    def centroided_frame(
-        self, frame: int, begin: int, end: int
-    ) -> tuple[list[float], list[float]] | None:
+    def centroided_frame(self, frame: int, begin: int, end: int) -> tuple[list[float], list[float]] | None:
         out: list[tuple[list[float], list[float]]] = []
 
         @FUNCTOR
         def cb(_pid: int, n: int, mzs: Any, areas: Any) -> None:
             out.append((list(mzs[0:n]), list(areas[0:n])))
 
-        rc = self.dll.tims_extract_centroided_spectrum_for_frame_v2(
-            self.handle, frame, begin, end, cb, None
-        )
+        rc = self.dll.tims_extract_centroided_spectrum_for_frame_v2(self.handle, frame, begin, end, cb, None)
         if rc == 0:
             raise RuntimeError("tims_extract_centroided_spectrum_for_frame_v2 failed")
         return out[0] if out else None
@@ -127,8 +121,7 @@ def main() -> None:
     native = Native(dda)
     for precursor in DDA_PRECURSORS:
         rows = conn.execute(
-            "SELECT Frame, ScanNumBegin, ScanNumEnd FROM PasefFrameMsMsInfo "
-            "WHERE Precursor = ? ORDER BY Frame",
+            "SELECT Frame, ScanNumBegin, ScanNumEnd FROM PasefFrameMsMsInfo WHERE Precursor = ? ORDER BY Frame",
             (precursor,),
         ).fetchall()
         peaks = native.pasef_msms(precursor)
@@ -173,11 +166,7 @@ def main() -> None:
     conn.close()
 
     OUT.write_text(json.dumps(golden) + "\n")
-    print(
-        f"wrote {OUT}: {len(golden['dda_precursors'])} precursors, "
-        f"{len(golden['dia_windows'])} DIA windows "
-        f"({OUT.stat().st_size / 1024:.0f} KiB)"
-    )
+    print(f"wrote {OUT}: {len(golden['dda_precursors'])} precursors, {len(golden['dia_windows'])} DIA windows ({OUT.stat().st_size / 1024:.0f} KiB)")
 
 
 if __name__ == "__main__":

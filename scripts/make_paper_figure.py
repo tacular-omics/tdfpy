@@ -36,21 +36,14 @@ FILTERS = (VerticalNoiseFilter(), HorizontalHaloFilter())
 
 def _busiest_ms1_frame(td) -> int:
     cur = td.conn.cursor()
-    cur.execute(
-        "SELECT Id FROM Frames WHERE MsMsType = 0 ORDER BY NumPeaks DESC, Id LIMIT 1"
-    )
+    cur.execute("SELECT Id FROM Frames WHERE MsMsType = 0 ORDER BY NumPeaks DESC, Id LIMIT 1")
     return int(cur.fetchone()[0])
 
 
 def _zoom(arr: np.ndarray) -> np.ndarray:
     if arr.size == 0:
         return arr
-    m = (
-        (arr[:, 0] >= MZ_RANGE[0])
-        & (arr[:, 0] <= MZ_RANGE[1])
-        & (arr[:, 2] >= OOK0_RANGE[0])
-        & (arr[:, 2] <= OOK0_RANGE[1])
-    )
+    m = (arr[:, 0] >= MZ_RANGE[0]) & (arr[:, 0] <= MZ_RANGE[1]) & (arr[:, 2] >= OOK0_RANGE[0]) & (arr[:, 2] <= OOK0_RANGE[1])
     return arr[m]
 
 
@@ -66,14 +59,9 @@ def main() -> None:
         kept_spec = apply_noise(spectrum, FILTERS, td=td, frame_id=frame_id)
         kept = convert(kept_spec, td, frame_id)
 
-        kept_keys = set(
-            zip(kept_spec.scan_indices.tolist(), kept_spec.mz_indices.tolist())
-        )
+        kept_keys = set(zip(kept_spec.scan_indices.tolist(), kept_spec.mz_indices.tolist(), strict=True))
         rej_mask = np.array(
-            [
-                (int(s), int(m)) not in kept_keys
-                for s, m in zip(spectrum.scan_indices, spectrum.mz_indices)
-            ],
+            [(int(s), int(m)) not in kept_keys for s, m in zip(spectrum.scan_indices, spectrum.mz_indices, strict=True)],
             dtype=bool,
         )
         rejected = raw_all[rej_mask]
@@ -121,9 +109,7 @@ def main() -> None:
     )
     fig.colorbar(sc, ax=ax_raw, pad=0.02).set_label("log(intensity + 1)", fontsize=8)
     ax_raw.set_ylabel("1/K₀ (V·s/cm²)")
-    ax_raw.set_title(
-        f"Raw peaks (n={len(kept) + len(rejected):,}) — retained over rejected (grey)"
-    )
+    ax_raw.set_title(f"Raw peaks (n={len(kept) + len(rejected):,}) — retained over rejected (grey)")
 
     # 2 — centroids over the faded retained cloud
     ax_cent.scatter(
@@ -137,9 +123,7 @@ def main() -> None:
         zorder=1,
     )
     if len(centroids):
-        s_c = 20 + 180 * (centroids[:, 1] - centroids[:, 1].min()) / (
-            np.ptp(centroids[:, 1]) or 1.0
-        )
+        s_c = 20 + 180 * (centroids[:, 1] - centroids[:, 1].min()) / (np.ptp(centroids[:, 1]) or 1.0)
         ax_cent.scatter(
             centroids[:, 0],
             centroids[:, 2],
@@ -157,12 +141,8 @@ def main() -> None:
     edges = np.linspace(*MZ_RANGE, int((MZ_RANGE[1] - MZ_RANGE[0]) / 0.05) + 1)
     centres = 0.5 * (edges[:-1] + edges[1:])
     profile, _ = np.histogram(kept[:, 0], bins=edges, weights=kept[:, 1])
-    ax_spec.fill_between(
-        centres, profile, color="0.8", lw=0, label="retained raw (summed)"
-    )
-    ax_spec.vlines(
-        centroids[:, 0], 0, centroids[:, 1], color="tomato", lw=0.8, label="centroids"
-    )
+    ax_spec.fill_between(centres, profile, color="0.8", lw=0, label="retained raw (summed)")
+    ax_spec.vlines(centroids[:, 0], 0, centroids[:, 1], color="tomato", lw=0.8, label="centroids")
     ax_spec.set_xlim(MZ_RANGE)
     ax_spec.set_ylim(bottom=0)
     ax_spec.set_xlabel("m/z")

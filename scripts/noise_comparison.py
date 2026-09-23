@@ -58,9 +58,7 @@ def main():
             kept_count = len(kept)
             rejected_count = len(rejected)
             kept_intensity = float(kept[:, 1].sum()) if kept_count > 0 else 0.0
-            rejected_intensity = (
-                float(rejected[:, 1].sum()) if rejected_count > 0 else 0.0
-            )
+            rejected_intensity = float(rejected[:, 1].sum()) if rejected_count > 0 else 0.0
 
             stats_rows.append(
                 {
@@ -72,16 +70,8 @@ def main():
                     "raw_intensity": raw_intensity,
                     "kept_intensity": kept_intensity,
                     "rejected_intensity": rejected_intensity,
-                    "pct_intensity_kept": round(
-                        100.0 * kept_intensity / raw_intensity, 2
-                    )
-                    if raw_intensity > 0
-                    else 0.0,
-                    "pct_intensity_rejected": round(
-                        100.0 * rejected_intensity / raw_intensity, 2
-                    )
-                    if raw_intensity > 0
-                    else 0.0,
+                    "pct_intensity_kept": round(100.0 * kept_intensity / raw_intensity, 2) if raw_intensity > 0 else 0.0,
+                    "pct_intensity_rejected": round(100.0 * rejected_intensity / raw_intensity, 2) if raw_intensity > 0 else 0.0,
                 }
             )
 
@@ -91,8 +81,7 @@ def main():
             fig = plot_centroiding(
                 td,
                 frame_id=frame_id,
-                im_tolerance=0.1,
-                noise_filter=method,
+                noise=method,
                 mz_range=(400, 1200),
             )
             fig.savefig(out, dpi=150)
