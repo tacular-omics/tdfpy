@@ -4,33 +4,26 @@ applyTo: "**"
 
 # tdfpy — Copilot instructions
 
-See [AGENTS.md](../AGENTS.md) — the single source of truth for agent
-instructions in this repo. It covers the repository layout, commands, testing,
-code style, and the full list of design decisions. Read it before changing
-anything; the rules below are the ones most often violated, copied verbatim.
+Read [CLAUDE.md](../CLAUDE.md) first: it is the single source of truth for
+commands, layout, public API, conventions and design rules. The rules most
+often broken:
 
-- **No native library.** `analysis.tdf_bin` is decoded directly in
-  Python/NumPy (v3.0.0); Bruker's `libtimsdata` is gone. Do not reintroduce
-  it or any ctypes binding. Build backend is hatchling; wheels are
-  `py3-none-any` and CI fails if one contains a `.so`/`.dll`.
-- **Unvalidated formats must raise, never approximate.** A wrong calibration
-  produces plausible numbers that nothing downstream can detect. Legacy
-  `TimsCompressionType` 1, unknown calibration `ModelType`s, recalibrated
-  state and pressure compensation all raise. If you add support for one,
-  validate it against Bruker's library first and extend
-  `tests/test_calibration_golden.py`.
-- **Numba is a hard dependency.** Every JIT-compiled kernel has a
-  pure-Python NumPy fallback gated on `_HAS_NUMBA`. When adding a new
-  kernel, write both paths and add a Numba/Python equivalence test.
-- **Composable pipeline.** Every centroiding entry point orchestrates the
-  same ordered ops: `read_spectrum → subset_scans → exclude_region →
-  apply_noise → centroider`. Each op consumes and produces a `RawSpectrum`
-  in integer-index space; conversion to float (m/z, 1/K0) happens once at
-  the end via `convert`. Power users compose the ops directly.
+- **No native library, no build step.** `analysis.tdf_bin` is decoded in
+  Python/NumPy. Do not reintroduce Bruker's `libtimsdata`, ctypes, Rust or any
+  compiled extension; the wheel must stay `py3-none-any`.
+- **Unvalidated formats must raise, never approximate.** Do not loosen
+  compression-type or calibration `ModelType` guards, and never regenerate
+  `tests/data/*_golden.json` to make a test pass.
+- **Every Numba kernel has a pure-Python fallback** gated on `_HAS_NUMBA`; add
+  both paths and an equivalence test. Import numba only inside that try/except.
+- **Fixed pipeline order:** `read_spectrum → subset_scans → exclude_region →
+  smooth → apply_noise → centroider`, in integer index space, `convert` once at
+  the end. Noise filters are pre-centroid only.
+- **Lazy access:** spectral data after the reader's `with` block must raise
+  `RuntimeError`. Test against `tests/data/example_*.d`, do not mock `TimsData`.
 
-## Updating README / Documentation / Changelog
+Run `just check` before pushing. Only the tacular-omics overseer bumps versions
+or publishes.
 
-When updating these files use neutral language. Avoid over the top adjectives,
-since most of the time the code is very mundane and not 'extraordinary'. Be
-straight to the point and factual. Documentation should be clear and concise,
-not flowery or embellished. Only explain further if necessary for clarity.
+When editing README, docs or the changelog, use neutral, factual language
+without superlatives.
