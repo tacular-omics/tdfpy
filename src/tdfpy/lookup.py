@@ -1,10 +1,8 @@
 from collections.abc import Iterable, Iterator
-from typing import Generic, Literal, TypeVar
+from typing import Literal
 
 from ._validation import choice, nonnegative
 from .elems import DiaWindow, DiaWindowGroup, Frame, Precursor, PrmTarget, PrmTransition
-
-T = TypeVar("T", bound=Frame)
 
 
 def _missing_id_error(label: str, requested: int, available: Iterable[int]) -> KeyError:
@@ -23,7 +21,7 @@ def _missing_id_error(label: str, requested: int, available: Iterable[int]) -> K
     return KeyError(f"{label} {requested} not found ({detail}). Use .get(id, default) to avoid raising, or iterate this lookup to list what is available.")
 
 
-class Ms1FrameLookup(Generic[T]):
+class Ms1FrameLookup[T: Frame]:
     """
     A class to perform lookups on MS1 frames.
     Can be iterated over to yield all frames.
