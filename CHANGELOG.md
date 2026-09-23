@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- The `mcp` extra now requires `mcp>=2.1`; 2.0 cannot start the stdio client the server tests and tools use.
+- The `mcp` extra now requires `mcp>=2.1`, the oldest release the MCP tests pass against.
 - `TimsData.close()` closes the handle and the SQLite connection independently, so one failing does not leak the other.
 
 ### Changed
