@@ -211,16 +211,16 @@ def _rebuild_binary(src_bin: Path, dst_bin: Path, original_offsets: list[int]) -
             # Read byte_count (total blob size including this 4-byte field).
             header = src.read(4)
             if len(header) < 4:
-                raise IOError(f"Failed to read blob header at offset {offset}")
+                raise OSError(f"Failed to read blob header at offset {offset}")
             (byte_count,) = struct.unpack("<I", header)
 
             # Read remaining bytes (scan_count + compressed data).
             remaining = byte_count - 4
             if remaining < 0:
-                raise IOError(f"Invalid byte_count {byte_count} at offset {offset}")
+                raise OSError(f"Invalid byte_count {byte_count} at offset {offset}")
             blob_rest = src.read(remaining)
             if len(blob_rest) < remaining:
-                raise IOError(f"Truncated blob at offset {offset}: expected {remaining} bytes, got {len(blob_rest)}")
+                raise OSError(f"Truncated blob at offset {offset}: expected {remaining} bytes, got {len(blob_rest)}")
 
             new_offsets.append(dst.tell())
             dst.write(header)
