@@ -1,56 +1,26 @@
 # tdfpy
 
-[![Python package](https://github.com/tacular-omics/tdfpy/actions/workflows/python-package.yml/badge.svg)](https://github.com/tacular-omics/tdfpy/actions/workflows/python-package.yml)
-[![codecov](https://codecov.io/gh/tacular-omics/tdfpy/graph/badge.svg?token=RMUiW11IR2)](https://codecov.io/gh/tacular-omics/tdfpy)
-[![PyPI version](https://badge.fury.io/py/tdfpy.svg)](https://badge.fury.io/py/tdfpy)
+[![Python package](https://github.com/tacular-omics/tdfpy/actions/workflows/ci.yml/badge.svg)](https://github.com/tacular-omics/tdfpy/actions/workflows/ci.yml)
+[![PyPI version](https://img.shields.io/pypi/v/tdfpy.svg)](https://pypi.org/project/tdfpy/)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.19100532.svg)](https://doi.org/10.5281/zenodo.19100532)
 [![License: MIT](https://img.shields.io/badge/License-MIT-g.svg)](https://opensource.org/licenses/MIT)
 
-A Python package for extracting data from Bruker timsTOF data files (`.tdf` and `.tdf_bin`). Includes a Numba-accelerated centroiding algorithm for efficient extraction of ion mobility data.
+tdfpy reads Bruker timsTOF `.d` folders (`analysis.tdf` and `analysis.tdf_bin`) in pure
+Python, with no Bruker native library. DDA, DIA and PRM acquisitions (PASEF and diaPASEF)
+come back as familiar objects: MS1 frames, precursors, isolation windows, PRM targets and
+transitions.
 
-## Overview
-
-tdfpy provides an API that works with familiar objects — no need to think about PASEF frames.
-
-- **DDA** — MS1 spectra and precursors (MS2 spectra)
-- **DIA** — MS1 spectra and DIA windows
-- **PRM** — MS1 spectra, targets, and transitions
-- **MALDI** — Work in progress
-
-**MS1 Spectra** — MS1 objects include a Numba-accelerated centroiding function that returns a 3D NumPy array containing m/z, intensity, and 1/K0 values.
-
-**Precursors (DDA)** — `precursor.peaks` returns an MS2 peak list centroided by tdfpy itself: intensities are summed per TOF index across the precursor's scan range (collapsing ion mobility) and merged at 30 ppm.
-
-**Windows (DIA)** — DIA windows also have access to the centroiding function. Note that the ion mobility dimension in DIA frames corresponds to precursor ions from the MS1 frame, not fragment ions (TIMS components are positioned before the fragmentation cell).
-
-## Quick Example
+Spectra are read lazily and centroided by a Numba-accelerated pipeline that keeps ion
+mobility: region exclusion, smoothing, noise filters, and a choice of two centroiders.
+Peaks are NumPy arrays of `[m/z, intensity, 1/K0]`.
 
 ```python
-from tdfpy import DDA, DIA, PRM
+from tdfpy import DDA
 
-# DDA acquisition
-with DDA('data.d') as dda:
+with DDA("sample.d") as dda:
     for frame in dda.ms1:
         peaks = frame.centroid()  # shape (N, 3): m/z, intensity, 1/K0
-
-    for precursor in dda.precursors:
-        print(precursor.largest_peak_mz, precursor.peaks)
-
-# DIA acquisition
-with DIA('data.d') as dia:
-    for frame in dia.ms1:
-        peaks = frame.centroid()
-
-    for window in dia.windows:
-        peaks = window.centroid()
-
-# PRM acquisition
-with PRM('data.d') as prm:
-    for target in prm.targets:
-        print(target.monoisotopic_mz, target.charge)
-
-    for transition in prm.transitions:
-        peaks = transition.peaks  # shape (N, 2): m/z, intensity
 ```
 
 ## Installation
@@ -59,4 +29,19 @@ with PRM('data.d') as prm:
 pip install tdfpy
 ```
 
-See [Getting Started](getting-started.md) for a full walkthrough.
+Requires Python 3.12+. Extras: `tdfpy[viz]` (plots), `tdfpy[mcp]` (MCP server).
+
+## Where next
+
+- [Getting started](getting-started.md): DDA, DIA and PRM walkthroughs on real data.
+- [Spectrum batches and file checks](analysis.md): batch window extraction and `.d` validation.
+- [MCP interface](mcp.md): let an AI agent query and extract timsTOF data.
+- [API reference](api/readers.md): every public class and function.
+
+## Related packages
+
+The tacular-omics mass spectrometry stack:
+
+- **tdfpy** (this package) reads Bruker timsTOF `.d` data.
+- [mzmlpy](https://tacular-omics.github.io/mzmlpy/) reads mzML files.
+- [spxtacular](https://tacular-omics.github.io/spxtacular/) processes the spectra from both: centroiding, deconvolution, matching, scoring and plotting.

@@ -1,4 +1,4 @@
-# Utilities
+# Slicing .d folders
 
 ## `slice_d_folder` — Extracting a time range from a `.d` folder
 
@@ -48,7 +48,7 @@ out = slice_d_folder(
     frame_start=100,
     frame_end=300,
 )
-print(out)  # PosixPath('experiment_slice.d')
+print(out)  # experiment_slice.d (a pathlib.Path)
 ```
 
 The destination directory is created automatically. If it already exists it is overwritten.

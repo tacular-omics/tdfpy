@@ -1,12 +1,12 @@
-Optional MCP interface
+# MCP interface
 
 The MCP server lets an AI agent inspect and extract timsTOF data through the
 same reader and centroiding code used by Python callers. It is a local stdio
 server. An MCP client launches it as a subprocess. Source acquisitions remain
 read-only, and complete spectrum exports go into a separate output directory.
 
-The server is available starting in tdfpy 4.0.0. Install it with
-`pip install 'tdfpy[mcp]'`. From a checkout, install and launch it with:
+The server is an optional extra. Install it with `pip install 'tdfpy[mcp]'`
+or `uv add 'tdfpy[mcp]'`. From a checkout, install and launch it with:
 
 ```bash
 uv sync --extra mcp
@@ -46,7 +46,7 @@ same data and output arguments. The client may require a different surrounding
 configuration format, but the command and arguments are the same. This package
 does not change client settings automatically.
 
-What the agent can do
+## What the agent can do
 
 | Tools | Purpose |
 | --- | --- |
@@ -71,7 +71,7 @@ The `tdfpy://guide` resource explains units and tool sequencing. The
 prompts, `inspect_timstof` and `extract_timstof`, guide common workflows. Clients
 that do not expose resources or prompts can use the equivalent tools.
 
-A typical extraction
+## A typical extraction
 
 1. Discover the acquisition and inspect its mode.
 2. Query frames, precursors, or windows. Keep the returned selection object.
@@ -128,7 +128,7 @@ ranges select the output after processing. They do not change the ions seen by
 the centroider. Mobility bounds use the requested output units. For changes to
 pre-centroid processing, use the existing exclusion, smoothing, and noise options.
 
-Numerical contracts
+## Numerical contracts
 
 - RT is in seconds. Selection intervals and scan bounds are half-open.
 - Raw mode returns digitizer peaks normalized to a 100 ms accumulation window.
@@ -154,7 +154,7 @@ processing requests, columns, package version, and source file identity. Source
 identity uses file sizes and modification times, not acquisition content hashes.
 The returned SHA256 identifies the exported artifact itself.
 
-Limits and operation
+## Limits and operation
 
 Metadata pages contain at most 200 rows, previews at most 100 peaks, and window
 batches at most 32 windows. Discovery examines at most 20,000 directories and
@@ -177,7 +177,7 @@ network transport, or automatic format repair. File checks exercise tdfpy's
 supported-format guards and decoder. They do not replace independently captured
 vendor references or establish the scientific quality of an experiment.
 
-Maintenance
+## Testing the server
 
 Run `just test-mcp` for direct numerical comparisons and MCP protocol tests,
 including a real stdio subprocess. The normal installed-wheel check verifies

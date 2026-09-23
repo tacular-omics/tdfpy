@@ -13,10 +13,10 @@ want to skip a step.
 from tdfpy import (
     read_spectrum, subset_scans, exclude_region,
     apply_noise, convert, centroid_peaks,
-    ChargeStateRegion, MadThreshold, WatershedCentroider,
+    ChargeStateRegion, MadThreshold, WatershedCentroider, timsdata_connect,
 )
 
-with tdfpy.timsdata_connect("data.d") as td:
+with timsdata_connect("data.d") as td:
     s = read_spectrum(td, frame_id=1)
     s = subset_scans(s, scan_num_begin=0, scan_num_end=400)
     s = exclude_region(s, ChargeStateRegion(), td=td, frame_id=1)
@@ -52,6 +52,8 @@ and `3`; set either to `0` to disable).
 
 ```python
 from tdfpy import read_spectrum, smooth, apply_noise, VerticalNoiseFilter
+
+# td: an open TimsData, e.g. from `with timsdata_connect("data.d") as td:`
 
 s = read_spectrum(td, frame_id=1)
 s = smooth(s, scan_half_width=5, mz_idx_half_width=2)   # box sum, amplify streaks
@@ -108,7 +110,7 @@ argument; `smooth` / `box_smooth` are the underlying composable ops.
 
 ## Centroiders
 
-The two centroiders share an [`Centroider`](#tdfpy.Centroider) ABC.
+The two centroiders share a [`Centroider`](#tdfpy.Centroider) ABC.
 `MergePeaksCentroider` (default) operates on float m/z values via a greedy
 tolerance-based merge; `WatershedCentroider` works in integer index space
 via intensity-ordered region growing.

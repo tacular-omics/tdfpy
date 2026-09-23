@@ -1,8 +1,12 @@
-Maintenance and release verification
+# Maintenance and release verification
+
+## Checks
 
 Run `just check` for lint, formatting verification, type checking, and tests.
 Run `uv run --group docs mkdocs build --strict` for documentation validation.
 The test suite executes examples from the getting-started and analysis pages.
+
+## Distributions and CI
 
 Build distributions with `uv build --out-dir dist`, then run
 `uv run python scripts/verify_distribution.py dist`. Use a clean output
@@ -12,10 +16,13 @@ and installs the wheel into a temporary environment outside the checkout.
 It exercises DDA, DIA, and PRM extraction with the bundled fixtures. Runtime
 dependencies must be available in the uv cache or from the package index.
 
-CI tests Linux and Windows on Python 3.12, 3.13, and 3.14, plus a representative
-macOS job. Coverage and JUnit output come from one pytest invocation. The release
+CI tests Linux on Python 3.12, 3.13, and 3.14, plus macOS and Windows on 3.13,
+a lowest-dependency job, a strict docs build, and the MCP extra on all three
+platforms. A separate job uploads coverage and JUnit output. The release
 workflow checks the tagged revision and its installed artifacts before upload.
 Numba's compiled code is not fully represented by ordinary coverage tracing.
+
+## Reference data
 
 Independent reference values must remain independent. The calibration generator
 is disabled because its former import path now resolves to tdfpy's own reader.
@@ -30,14 +37,15 @@ external validation work. Prioritize calibration changes, negative polarity,
 empty frames, and acquisition boundaries. Cross-version agreement between two
 tdfpy builds is useful regression evidence, but is not vendor validation.
 
-The publishing workflow supports PyPI Trusted Publishing behind the repository
-variable `PYPI_TRUSTED_PUBLISHING=true`. First configure the existing PyPI
-project's GitHub publisher for owner `tacular-omics`, repository `tdfpy`, and
-workflow `python-publish.yml`. This workflow does not specify a GitHub
-environment. Verify the publisher configuration, then enable the variable.
-The OIDC path needs no API token. Until enabled, the existing token-based step
-continues to run. After successful migration, revoke and remove the old token.
-See the [PyPI setup documentation](https://docs.pypi.org/trusted-publishers/adding-a-publisher/).
+## Publishing
+
+Releases publish to PyPI with Trusted Publishing (OIDC, no API token). Publishing a
+GitHub release runs `.github/workflows/publish.yml`, which checks that the tag, version
+and changelog agree, runs the tests, builds and verifies the distributions, and uploads
+them from the `pypi` environment. See the
+[PyPI trusted publisher documentation](https://docs.pypi.org/trusted-publishers/adding-a-publisher/).
+
+## Benchmarks
 
 Benchmark a fixed acquisition with
 `uv run python scripts/benchmark_reader.py tests/data/example_dia.d`.
@@ -48,10 +56,9 @@ fresh compilation if it runs in a fresh process with an empty `NUMBA_CACHE_DIR`.
 RSS includes imports and all benchmark stages. Timings are measurements, not
 portable CI pass/fail thresholds.
 
-Version 4.0.0 preserves array-returning APIs. The public
-`Precursor.scan_number` now contains a float. Downstream callers that index a
-scan array with that metadata value must choose an explicit rounding rule.
-Corrected mobility and CCS values can differ from earlier releases. Invalid
-parameters that were silently accepted now raise. Metadata database connections
-are read-only. These compatibility changes are documented in the 4.0.0 release
-notes. Local checks and benchmark commands do not publish releases.
+## Compatibility
+
+Changes that affect downstream callers (types, corrected values, newly rejected
+parameters) are listed per release in the
+[changelog](https://github.com/tacular-omics/tdfpy/blob/main/CHANGELOG.md).
+Local checks and benchmark commands do not publish releases.

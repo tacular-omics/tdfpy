@@ -8,6 +8,7 @@ and returns a boolean keep-mask. Frozen dataclasses make them hashable
 ```python
 from tdfpy import MadThreshold, VerticalNoiseFilter, get_raw_peaks
 
+# td: an open TimsData (see timsdata_connect); frame_id: an MS1 frame ID
 peaks = get_raw_peaks(
     td, frame_id,
     noise=[
@@ -29,6 +30,8 @@ User-facing APIs (`get_raw_peaks`, `get_centroided_spectrum`,
 ::: tdfpy.NoiseFilter
 
 ::: tdfpy.coerce_filters
+
+::: tdfpy.NoiseSpec
 
 ---
 

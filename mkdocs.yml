@@ -1,35 +1,66 @@
 site_name: tdfpy
-site_description: A Python library for parsing Bruker timsTOF data with centroiding and noise filtering.
+site_description: Read Bruker timsTOF .d data in Python, with centroiding and noise filtering.
+site_url: https://tacular-omics.github.io/tdfpy/
 repo_url: https://github.com/tacular-omics/tdfpy
 repo_name: tacular-omics/tdfpy
+edit_uri: edit/main/docs/
+copyright: Copyright &copy; the tdfpy authors. MIT licence.
+
 theme:
   name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
   features:
     - navigation.sections
     - navigation.top
+    - navigation.footer
     - content.code.copy
     - search.highlight
+    - search.suggest
+
+validation:
+  omitted_files: warn
+  absolute_links: warn
+  unrecognized_links: warn
+  anchors: warn
 
 nav:
   - Home: index.md
-  - Getting Started: getting-started.md
-  - Utilities: utilities.md
-  - Spectrum batches and file checks: analysis.md
-  - MCP interface: mcp.md
-  - Maintenance: maintenance.md
-  - API Reference:
+  - Getting started: getting-started.md
+  - Guides:
+    - Slicing .d folders: utilities.md
+    - Spectrum batches and file checks: analysis.md
+    - MCP interface: mcp.md
+    - Maintenance: maintenance.md
+  - API reference:
     - Readers: api/readers.md
     - Frames: api/frames.md
     - Precursor: api/precursor.md
-    - DIA Windows: api/windows.md
-    - PRM Data Elements: api/prm.md
+    - DIA windows: api/windows.md
+    - PRM data elements: api/prm.md
     - Metadata: api/metadata.md
     - Lookups: api/lookup.md
     - Centroiding: api/centroiding.md
     - Pipeline: api/pipeline.md
     - Noise filters: api/noise.md
     - Region exclusion: api/regions.md
-    - PandasTDF: api/low-level.md
+    - Visualization: api/viz.md
+    - Low-level access: api/low-level.md
+  - Changelog: https://github.com/tacular-omics/tdfpy/blob/main/CHANGELOG.md
+  - Citation: citation.md
 
 plugins:
   - search
@@ -40,7 +71,7 @@ plugins:
           options:
             docstring_style: google
             show_source: true
-            show_root_heading: True
+            show_root_heading: true
             show_symbol_type_heading: true
             members_order: source
             inherited_members: true
@@ -52,6 +83,12 @@ plugins:
             signature_crossrefs: true
 
 markdown_extensions:
-  - pymdownx.highlight
-  - pymdownx.superfences
   - admonition
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.superfences
+  - md_in_html
+  - toc:
+      permalink: true

@@ -12,6 +12,7 @@ while noise filtering answers *"of what's left, what's real signal?"*.
 ```python
 from tdfpy import ChargeStateRegion, get_raw_peaks
 
+# td: an open TimsData (see timsdata_connect); frame_id: an MS1 frame ID
 # Drop the typical singly-charged region
 peaks = get_raw_peaks(td, frame_id, exclude=ChargeStateRegion())
 

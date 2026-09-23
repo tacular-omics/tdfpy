@@ -41,7 +41,7 @@ with DIA("experiment.d") as dia:
     # All windows belonging to window group 3 (one per frame)
     group3 = dia.windows[3]
 
-    # Query by retention time (±30 s default)
+    # Query by retention time (rt_tolerance defaults to 30 s)
     for window in dia.windows.query(rt=600.0, rt_tolerance=15.0):
         print(window.window_group, window.isolation_mz)
 

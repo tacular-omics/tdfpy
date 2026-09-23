@@ -1,8 +1,9 @@
-Spectrum batches and file checks
+# Spectrum batches and file checks
 
-These helpers support reading and centroiding timsTOF data. Existing extraction
-methods continue to return arrays. Processing diagnostics are an internal
-development tool, and chromatogram extraction is deferred.
+These helpers support reading and centroiding timsTOF data. Extraction methods
+return NumPy arrays.
+
+## Window batches
 
 To process DIA or PRM windows with bounded reuse, pass windows in their existing
 order to `iter_window_spectra`. Adjacent windows of the same frame share one
@@ -28,6 +29,8 @@ decode a frame again. Consume the iterator inside the reader's context. It
 retains the current frame and uses no global spectrum cache or worker pool.
 Returned numerical arrays remain usable after the reader closes.
 
+## File checks
+
 For acquisition checks, run `tdfpy validate sample.d` or
 `python -m tdfpy validate sample.d`. Add `--full` to decode every binary frame.
 The command writes JSON and exits with status 0 on success or 1 for a failed
@@ -46,6 +49,8 @@ not validate compressed payloads. Full mode additionally runs the decoder's
 integrity checks for every frame, collecting frame-specific failures. Neither
 mode repairs data or proves numerical equivalence to vendor software.
 
+## Threads and CCS
+
 The built-in extraction and gate paths can share an open reader across worker
 threads. Metadata needed by those paths is snapshotted when the reader opens.
 Direct access to `td.conn` retains SQLite's thread rules. User-written filters
@@ -60,6 +65,12 @@ For AI agents, an [optional MCP server](mcp.md) exposes acquisition queries,
 spectrum extraction, conversions, and file checks without changing the core
 Python installation.
 
+## API
+
 ::: tdfpy.iter_window_spectra
 
 ::: tdfpy.validate_acquisition
+
+::: tdfpy.ValidationReport
+
+::: tdfpy.ValidationIssue

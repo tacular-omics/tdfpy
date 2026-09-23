@@ -14,57 +14,27 @@ For a curated index instead of the full text, see /llms.txt.
 
 # tdfpy
 
-[![Python package](https://github.com/tacular-omics/tdfpy/actions/workflows/python-package.yml/badge.svg)](https://github.com/tacular-omics/tdfpy/actions/workflows/python-package.yml)
-[![codecov](https://codecov.io/gh/tacular-omics/tdfpy/graph/badge.svg?token=RMUiW11IR2)](https://codecov.io/gh/tacular-omics/tdfpy)
-[![PyPI version](https://badge.fury.io/py/tdfpy.svg)](https://badge.fury.io/py/tdfpy)
+[![Python package](https://github.com/tacular-omics/tdfpy/actions/workflows/ci.yml/badge.svg)](https://github.com/tacular-omics/tdfpy/actions/workflows/ci.yml)
+[![PyPI version](https://img.shields.io/pypi/v/tdfpy.svg)](https://pypi.org/project/tdfpy/)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.19100532.svg)](https://doi.org/10.5281/zenodo.19100532)
 [![License: MIT](https://img.shields.io/badge/License-MIT-g.svg)](https://opensource.org/licenses/MIT)
 
-A Python package for extracting data from Bruker timsTOF data files (`.tdf` and `.tdf_bin`). Includes a Numba-accelerated centroiding algorithm for efficient extraction of ion mobility data.
+tdfpy reads Bruker timsTOF `.d` folders (`analysis.tdf` and `analysis.tdf_bin`) in pure
+Python, with no Bruker native library. DDA, DIA and PRM acquisitions (PASEF and diaPASEF)
+come back as familiar objects: MS1 frames, precursors, isolation windows, PRM targets and
+transitions.
 
-## Overview
-
-tdfpy provides an API that works with familiar objects — no need to think about PASEF frames.
-
-- **DDA** — MS1 spectra and precursors (MS2 spectra)
-- **DIA** — MS1 spectra and DIA windows
-- **PRM** — MS1 spectra, targets, and transitions
-- **MALDI** — Work in progress
-
-**MS1 Spectra** — MS1 objects include a Numba-accelerated centroiding function that returns a 3D NumPy array containing m/z, intensity, and 1/K0 values.
-
-**Precursors (DDA)** — `precursor.peaks` returns an MS2 peak list centroided by tdfpy itself: intensities are summed per TOF index across the precursor's scan range (collapsing ion mobility) and merged at 30 ppm.
-
-**Windows (DIA)** — DIA windows also have access to the centroiding function. Note that the ion mobility dimension in DIA frames corresponds to precursor ions from the MS1 frame, not fragment ions (TIMS components are positioned before the fragmentation cell).
-
-## Quick Example
+Spectra are read lazily and centroided by a Numba-accelerated pipeline that keeps ion
+mobility: region exclusion, smoothing, noise filters, and a choice of two centroiders.
+Peaks are NumPy arrays of `[m/z, intensity, 1/K0]`.
 
 ```python
-from tdfpy import DDA, DIA, PRM
+from tdfpy import DDA
 
-# DDA acquisition
-with DDA('data.d') as dda:
+with DDA("sample.d") as dda:
     for frame in dda.ms1:
         peaks = frame.centroid()  # shape (N, 3): m/z, intensity, 1/K0
-
-    for precursor in dda.precursors:
-        print(precursor.largest_peak_mz, precursor.peaks)
-
-# DIA acquisition
-with DIA('data.d') as dia:
-    for frame in dia.ms1:
-        peaks = frame.centroid()
-
-    for window in dia.windows:
-        peaks = window.centroid()
-
-# PRM acquisition
-with PRM('data.d') as prm:
-    for target in prm.targets:
-        print(target.monoisotopic_mz, target.charge)
-
-    for transition in prm.transitions:
-        peaks = transition.peaks  # shape (N, 2): m/z, intensity
 ```
 
 ## Installation
@@ -73,24 +43,47 @@ with PRM('data.d') as prm:
 pip install tdfpy
 ```
 
-See [Getting Started](getting-started.md) for a full walkthrough.
+Requires Python 3.12+. Extras: `tdfpy[viz]` (plots), `tdfpy[mcp]` (MCP server).
+
+## Where next
+
+- [Getting started](getting-started.md): DDA, DIA and PRM walkthroughs on real data.
+- [Spectrum batches and file checks](analysis.md): batch window extraction and `.d` validation.
+- [MCP interface](mcp.md): let an AI agent query and extract timsTOF data.
+- [API reference](api/readers.md): every public class and function.
+
+## Related packages
+
+The tacular-omics mass spectrometry stack:
+
+- **tdfpy** (this package) reads Bruker timsTOF `.d` data.
+- [mzmlpy](https://tacular-omics.github.io/mzmlpy/) reads mzML files.
+- [spxtacular](https://tacular-omics.github.io/spxtacular/) processes the spectra from both: centroiding, deconvolution, matching, scoring and plotting.
 
 
 ==============================================================================
 # getting-started.md
 ==============================================================================
 
-# Getting Started
+# Getting started
 
 ## Installation
 
 ```bash
 pip install tdfpy
+# or
+uv add tdfpy
 ```
 
-Requires Python 3.12+.
+Requires Python 3.12+. Optional extras:
 
-## Detecting Acquisition Type
+- `pip install 'tdfpy[viz]'` adds matplotlib for [`plot_centroiding`](api/viz.md).
+- `pip install 'tdfpy[mcp]'` adds the [MCP server](mcp.md) for AI agents.
+
+The examples below use `D_PATH`, the path to a `.d` folder. The repository's test data
+(`tests/data/example_dda.d`, `example_dia.d`, `example_prm.d`) works with every example.
+
+## Detecting acquisition type
 
 Before loading data, you can inspect the acquisition type of a `.d` folder:
 
@@ -102,7 +95,7 @@ acq_type = get_acquisition_type(D_PATH)
 print(acq_type)
 ```
 
-## DDA Acquisitions
+## DDA acquisitions
 
 ```python
 from tdfpy import DDA
@@ -124,7 +117,7 @@ with DDA(D_PATH) as dda:
         break
 ```
 
-## DIA Acquisitions
+## DIA acquisitions
 
 ```python
 from tdfpy import DIA
@@ -142,7 +135,7 @@ with DIA(D_PATH) as dia:
         break
 ```
 
-## PRM Acquisitions
+## PRM acquisitions
 
 ```python
 from tdfpy import PRM
@@ -161,11 +154,12 @@ with PRM(D_PATH) as prm:
     # PRM transitions (MS2 spectra linked to a target)
     for transition in prm.transitions:
         print(f"Transition frame {transition.frame_id}: isolation {transition.isolation_mz} m/z")
-        peaks = transition.peaks  # shape (N, 2): [m/z, intensity]
+        raw = transition.peaks  # list of per-scan (mz, intensity) arrays
+        peaks = transition.centroid()  # shape (N, 3): [m/z, intensity, 1/K0]
         break
 ```
 
-## Lookups and Queries
+## Lookups and queries
 
 Access frames, precursors, or windows directly by ID or query by properties.
 
@@ -201,12 +195,12 @@ with DIA(D_PATH) as dia:
         print(w.window_group, w.isolation_mz)
 ```
 
-## How Data Access Works
+## How data access works
 
 A `.d` folder contains two files: `analysis.tdf` (a SQLite database with metadata) and
 `analysis.tdf_bin` (a binary file with the raw spectral data).
 
-When you open a `DDA` or `DIA` reader, it immediately:
+When you open a `DDA`, `DIA` or `PRM` reader, it immediately:
 
 1. Opens a connection to the binary file
 2. Reads all frame and precursor metadata from the SQLite database into memory
@@ -225,7 +219,7 @@ with DDA(D_PATH) as dda:
     frame = dda.ms1[1]
     peaks = frame.centroid()  # The connection is open
 
-# peaks = frame.centroid()  # RuntimeError: connection is closed
+# peaks = frame.centroid()  # RuntimeError: TimsData connection is closed.
 ```
 
 ## Development
@@ -250,7 +244,7 @@ uv run --group docs mkdocs serve
 # utilities.md
 ==============================================================================
 
-# Utilities
+# Slicing .d folders
 
 ## `slice_d_folder` — Extracting a time range from a `.d` folder
 
@@ -300,7 +294,7 @@ out = slice_d_folder(
     frame_start=100,
     frame_end=300,
 )
-print(out)  # PosixPath('experiment_slice.d')
+print(out)  # experiment_slice.d (a pathlib.Path)
 ```
 
 The destination directory is created automatically. If it already exists it is overwritten.
@@ -354,11 +348,12 @@ with DDA("experiment_slice.d") as dda:
 # analysis.md
 ==============================================================================
 
-Spectrum batches and file checks
+# Spectrum batches and file checks
 
-These helpers support reading and centroiding timsTOF data. Existing extraction
-methods continue to return arrays. Processing diagnostics are an internal
-development tool, and chromatogram extraction is deferred.
+These helpers support reading and centroiding timsTOF data. Extraction methods
+return NumPy arrays.
+
+## Window batches
 
 To process DIA or PRM windows with bounded reuse, pass windows in their existing
 order to `iter_window_spectra`. Adjacent windows of the same frame share one
@@ -384,6 +379,8 @@ decode a frame again. Consume the iterator inside the reader's context. It
 retains the current frame and uses no global spectrum cache or worker pool.
 Returned numerical arrays remain usable after the reader closes.
 
+## File checks
+
 For acquisition checks, run `tdfpy validate sample.d` or
 `python -m tdfpy validate sample.d`. Add `--full` to decode every binary frame.
 The command writes JSON and exits with status 0 on success or 1 for a failed
@@ -402,6 +399,8 @@ not validate compressed payloads. Full mode additionally runs the decoder's
 integrity checks for every frame, collecting frame-specific failures. Neither
 mode repairs data or proves numerical equivalence to vendor software.
 
+## Threads and CCS
+
 The built-in extraction and gate paths can share an open reader across worker
 threads. Metadata needed by those paths is snapshotted when the reader opens.
 Direct access to `td.conn` retains SQLite's thread rules. User-written filters
@@ -416,24 +415,30 @@ For AI agents, an [optional MCP server](mcp.md) exposes acquisition queries,
 spectrum extraction, conversions, and file checks without changing the core
 Python installation.
 
+## API
+
 ::: tdfpy.iter_window_spectra
 
 ::: tdfpy.validate_acquisition
+
+::: tdfpy.ValidationReport
+
+::: tdfpy.ValidationIssue
 
 
 ==============================================================================
 # mcp.md
 ==============================================================================
 
-Optional MCP interface
+# MCP interface
 
 The MCP server lets an AI agent inspect and extract timsTOF data through the
 same reader and centroiding code used by Python callers. It is a local stdio
 server. An MCP client launches it as a subprocess. Source acquisitions remain
 read-only, and complete spectrum exports go into a separate output directory.
 
-The server is available starting in tdfpy 4.0.0. Install it with
-`pip install 'tdfpy[mcp]'`. From a checkout, install and launch it with:
+The server is an optional extra. Install it with `pip install 'tdfpy[mcp]'`
+or `uv add 'tdfpy[mcp]'`. From a checkout, install and launch it with:
 
 ```bash
 uv sync --extra mcp
@@ -473,7 +478,7 @@ same data and output arguments. The client may require a different surrounding
 configuration format, but the command and arguments are the same. This package
 does not change client settings automatically.
 
-What the agent can do
+## What the agent can do
 
 | Tools | Purpose |
 | --- | --- |
@@ -498,7 +503,7 @@ The `tdfpy://guide` resource explains units and tool sequencing. The
 prompts, `inspect_timstof` and `extract_timstof`, guide common workflows. Clients
 that do not expose resources or prompts can use the equivalent tools.
 
-A typical extraction
+## A typical extraction
 
 1. Discover the acquisition and inspect its mode.
 2. Query frames, precursors, or windows. Keep the returned selection object.
@@ -555,7 +560,7 @@ ranges select the output after processing. They do not change the ions seen by
 the centroider. Mobility bounds use the requested output units. For changes to
 pre-centroid processing, use the existing exclusion, smoothing, and noise options.
 
-Numerical contracts
+## Numerical contracts
 
 - RT is in seconds. Selection intervals and scan bounds are half-open.
 - Raw mode returns digitizer peaks normalized to a 100 ms accumulation window.
@@ -581,7 +586,7 @@ processing requests, columns, package version, and source file identity. Source
 identity uses file sizes and modification times, not acquisition content hashes.
 The returned SHA256 identifies the exported artifact itself.
 
-Limits and operation
+## Limits and operation
 
 Metadata pages contain at most 200 rows, previews at most 100 peaks, and window
 batches at most 32 windows. Discovery examines at most 20,000 directories and
@@ -604,7 +609,7 @@ network transport, or automatic format repair. File checks exercise tdfpy's
 supported-format guards and decoder. They do not replace independently captured
 vendor references or establish the scientific quality of an experiment.
 
-Maintenance
+## Testing the server
 
 Run `just test-mcp` for direct numerical comparisons and MCP protocol tests,
 including a real stdio subprocess. The normal installed-wheel check verifies
@@ -619,11 +624,15 @@ The implementation uses the [official MCP Python SDK](https://github.com/modelco
 # maintenance.md
 ==============================================================================
 
-Maintenance and release verification
+# Maintenance and release verification
+
+## Checks
 
 Run `just check` for lint, formatting verification, type checking, and tests.
 Run `uv run --group docs mkdocs build --strict` for documentation validation.
 The test suite executes examples from the getting-started and analysis pages.
+
+## Distributions and CI
 
 Build distributions with `uv build --out-dir dist`, then run
 `uv run python scripts/verify_distribution.py dist`. Use a clean output
@@ -633,10 +642,13 @@ and installs the wheel into a temporary environment outside the checkout.
 It exercises DDA, DIA, and PRM extraction with the bundled fixtures. Runtime
 dependencies must be available in the uv cache or from the package index.
 
-CI tests Linux and Windows on Python 3.12, 3.13, and 3.14, plus a representative
-macOS job. Coverage and JUnit output come from one pytest invocation. The release
+CI tests Linux on Python 3.12, 3.13, and 3.14, plus macOS and Windows on 3.13,
+a lowest-dependency job, a strict docs build, and the MCP extra on all three
+platforms. A separate job uploads coverage and JUnit output. The release
 workflow checks the tagged revision and its installed artifacts before upload.
 Numba's compiled code is not fully represented by ordinary coverage tracing.
+
+## Reference data
 
 Independent reference values must remain independent. The calibration generator
 is disabled because its former import path now resolves to tdfpy's own reader.
@@ -651,14 +663,15 @@ external validation work. Prioritize calibration changes, negative polarity,
 empty frames, and acquisition boundaries. Cross-version agreement between two
 tdfpy builds is useful regression evidence, but is not vendor validation.
 
-The publishing workflow supports PyPI Trusted Publishing behind the repository
-variable `PYPI_TRUSTED_PUBLISHING=true`. First configure the existing PyPI
-project's GitHub publisher for owner `tacular-omics`, repository `tdfpy`, and
-workflow `python-publish.yml`. This workflow does not specify a GitHub
-environment. Verify the publisher configuration, then enable the variable.
-The OIDC path needs no API token. Until enabled, the existing token-based step
-continues to run. After successful migration, revoke and remove the old token.
-See the [PyPI setup documentation](https://docs.pypi.org/trusted-publishers/adding-a-publisher/).
+## Publishing
+
+Releases publish to PyPI with Trusted Publishing (OIDC, no API token). Publishing a
+GitHub release runs `.github/workflows/publish.yml`, which checks that the tag, version
+and changelog agree, runs the tests, builds and verifies the distributions, and uploads
+them from the `pypi` environment. See the
+[PyPI trusted publisher documentation](https://docs.pypi.org/trusted-publishers/adding-a-publisher/).
+
+## Benchmarks
 
 Benchmark a fixed acquisition with
 `uv run python scripts/benchmark_reader.py tests/data/example_dia.d`.
@@ -669,13 +682,12 @@ fresh compilation if it runs in a fresh process with an empty `NUMBA_CACHE_DIR`.
 RSS includes imports and all benchmark stages. Timings are measurements, not
 portable CI pass/fail thresholds.
 
-Version 4.0.0 preserves array-returning APIs. The public
-`Precursor.scan_number` now contains a float. Downstream callers that index a
-scan array with that metadata value must choose an explicit rounding rule.
-Corrected mobility and CCS values can differ from earlier releases. Invalid
-parameters that were silently accepted now raise. Metadata database connections
-are read-only. These compatibility changes are documented in the 4.0.0 release
-notes. Local checks and benchmark commands do not publish releases.
+## Compatibility
+
+Changes that affect downstream callers (types, corrected values, newly rejected
+parameters) are listed per release in the
+[changelog](https://github.com/tacular-omics/tdfpy/blob/main/CHANGELOG.md).
+Local checks and benchmark commands do not publish releases.
 
 
 ==============================================================================
@@ -880,7 +892,7 @@ with DIA("experiment.d") as dia:
     # All windows belonging to window group 3 (one per frame)
     group3 = dia.windows[3]
 
-    # Query by retention time (±30 s default)
+    # Query by retention time (rt_tolerance defaults to 30 s)
     for window in dia.windows.query(rt=600.0, rt_tolerance=15.0):
         print(window.window_group, window.isolation_mz)
 
@@ -975,11 +987,15 @@ m/z index, spread across hundreds of mobility bins. Centroiding collapses that c
 measurements into a compact list of peaks — each with a single m/z, intensity, and ion
 mobility value.
 
-tdfpy provides two centroiding functions:
+tdfpy provides these convenience functions:
 
-- **`get_centroided_spectrum`** — high-level: reads a full frame from disk, applies optional
-  noise filtering, and returns centroided peaks in one call.
-- **`merge_peaks`** — low-level: centroids pre-assembled NumPy arrays of m/z, intensity, and
+- **`get_centroided_spectrum`**: high-level. Reads a full frame from disk, applies optional
+  region exclusion, smoothing and noise filtering, and returns centroided peaks in one call.
+- **`get_raw_peaks`**: the same pipeline without the centroider. Returns every raw peak.
+- **`get_mobility_collapsed_spectrum`**: sums intensities per TOF index across one or more
+  scan ranges (collapsing ion mobility) and merges them by m/z. This is how DDA
+  precursor MS2 spectra (`Precursor.peaks`) are built.
+- **`merge_peaks`**: low-level. Centroids pre-assembled NumPy arrays of m/z, intensity, and
   ion mobility values. Use this when you already have the raw arrays or need fine-grained
   control.
 
@@ -994,6 +1010,8 @@ When [Numba](https://numba.pydata.org/) is installed (it is included in the defa
 fallback for large frames. The backend is selected automatically:
 
 ```python
+from tdfpy import merge_peaks
+
 # Numba used if available (default)
 peaks = merge_peaks(mz, intensity, im)
 
@@ -1012,20 +1030,19 @@ Reads frame `frame_id` from the open `TimsData` connection, converts m/z indices
 m/z values, assembles the raw peak arrays, optionally filters noise, and runs centroiding.
 
 ```python
-from tdfpy import timsdata_connect, get_centroided_spectrum
+from tdfpy import timsdata_connect, get_centroided_spectrum, MergePeaksCentroider
 
 with timsdata_connect("experiment.d") as td:
-    # Default: 1/K0 ion mobility, 8 ppm m/z tolerance
+    # Default: 1/K0 ion mobility, MergePeaksCentroider with 8 ppm m/z tolerance
     peaks = get_centroided_spectrum(td, frame_id=1)
     print(peaks.shape)   # (N, 3) — columns: [m/z, intensity, 1/K0]
 
-    # Tighter tolerances, CCS instead of 1/K0
+    # Tighter tolerances (set on the centroider), CCS instead of 1/K0
     peaks = get_centroided_spectrum(
         td,
         frame_id=1,
         ion_mobility_type="ccs",
-        mz_tolerance=5.0,
-        im_tolerance=0.03,
+        centroid=MergePeaksCentroider(mz_tolerance=5.0, im_tolerance=0.03),
     )
 
     # Noise filtering before centroiding (string shorthand)
@@ -1062,6 +1079,21 @@ swaps the centroiding algorithm — see
 
 ---
 
+## `get_raw_peaks`
+
+Runs the same read, exclusion, smoothing and noise steps as `get_centroided_spectrum` but
+returns the raw peaks without centroiding.
+
+::: tdfpy.get_raw_peaks
+
+---
+
+## `get_mobility_collapsed_spectrum`
+
+::: tdfpy.get_mobility_collapsed_spectrum
+
+---
+
 ## `merge_peaks`
 
 Centroids pre-assembled arrays. The algorithm is a greedy intensity-ordered scan: starting
@@ -1077,6 +1109,9 @@ are marked as used and skipped in subsequent iterations.
 | `im_tolerance_type` | `"relative"` | `"relative"` (fraction of 1/K0) or `"absolute"` |
 | `min_peaks` | `3` | Raw peaks required to form a centroid; set to `0` or `1` to keep all |
 | `max_peaks` | `None` | Cap on output peaks by raw seed intensity, not final summed intensity |
+| `peak_noise_filter` | `False` | Suppress weak satellite points around each centroid so they cannot seed their own centroids |
+| `peak_noise_window` | `0.1` | Half-width in Da of the satellite window |
+| `peak_noise_end_fraction` | `0.1` | Ramp end, as a fraction of the anchor intensity, at the window edge |
 | `use_numba` | `True` | Set to `False` to force the Python fallback |
 
 ```python
@@ -1107,6 +1142,8 @@ threshold can rise above legitimate low-abundance peaks.
 A more reliable strategy is to increase `min_peaks` instead:
 
 ```python
+from tdfpy import merge_peaks
+
 # Prefer: raise min_peaks to filter noise without discarding low-abundance signal
 peaks = merge_peaks(mz, intensity, im, min_peaks=5)
 
@@ -1150,10 +1187,10 @@ want to skip a step.
 from tdfpy import (
     read_spectrum, subset_scans, exclude_region,
     apply_noise, convert, centroid_peaks,
-    ChargeStateRegion, MadThreshold, WatershedCentroider,
+    ChargeStateRegion, MadThreshold, WatershedCentroider, timsdata_connect,
 )
 
-with tdfpy.timsdata_connect("data.d") as td:
+with timsdata_connect("data.d") as td:
     s = read_spectrum(td, frame_id=1)
     s = subset_scans(s, scan_num_begin=0, scan_num_end=400)
     s = exclude_region(s, ChargeStateRegion(), td=td, frame_id=1)
@@ -1189,6 +1226,8 @@ and `3`; set either to `0` to disable).
 
 ```python
 from tdfpy import read_spectrum, smooth, apply_noise, VerticalNoiseFilter
+
+# td: an open TimsData, e.g. from `with timsdata_connect("data.d") as td:`
 
 s = read_spectrum(td, frame_id=1)
 s = smooth(s, scan_half_width=5, mz_idx_half_width=2)   # box sum, amplify streaks
@@ -1245,7 +1284,7 @@ argument; `smooth` / `box_smooth` are the underlying composable ops.
 
 ## Centroiders
 
-The two centroiders share an [`Centroider`](#tdfpy.Centroider) ABC.
+The two centroiders share a [`Centroider`](#tdfpy.Centroider) ABC.
 `MergePeaksCentroider` (default) operates on float m/z values via a greedy
 tolerance-based merge; `WatershedCentroider` works in integer index space
 via intensity-ordered region growing.
@@ -1273,6 +1312,7 @@ and returns a boolean keep-mask. Frozen dataclasses make them hashable
 ```python
 from tdfpy import MadThreshold, VerticalNoiseFilter, get_raw_peaks
 
+# td: an open TimsData (see timsdata_connect); frame_id: an MS1 frame ID
 peaks = get_raw_peaks(
     td, frame_id,
     noise=[
@@ -1294,6 +1334,8 @@ User-facing APIs (`get_raw_peaks`, `get_centroided_spectrum`,
 ::: tdfpy.NoiseFilter
 
 ::: tdfpy.coerce_filters
+
+::: tdfpy.NoiseSpec
 
 ---
 
@@ -1380,6 +1422,7 @@ while noise filtering answers *"of what's left, what's real signal?"*.
 ```python
 from tdfpy import ChargeStateRegion, get_raw_peaks
 
+# td: an open TimsData (see timsdata_connect); frame_id: an MS1 frame ID
 # Drop the typical singly-charged region
 peaks = get_raw_peaks(td, frame_id, exclude=ChargeStateRegion())
 
@@ -1402,18 +1445,76 @@ exclusion happens via a single vectorized integer comparison.
 
 
 ==============================================================================
+# api/viz.md
+==============================================================================
+
+# Visualization
+
+`plot_centroiding` draws a 2x2 diagnostic panel for one frame: raw peaks, centroids,
+noise-rejected peaks, and a 1D spectrum comparison. It needs matplotlib, installed with
+the `viz` extra:
+
+```bash
+pip install 'tdfpy[viz]'
+```
+
+::: tdfpy.plot_centroiding
+
+
+==============================================================================
 # api/low-level.md
 ==============================================================================
 
-# PandasTDF
+# Low-level access
 
-Low-level classes for direct access to the `.tdf` SQLite database and the Bruker
-TimsData C library. Prefer the high-level `DDA`/`DIA` API unless you need raw
-frame or scan data.
+Direct access to the two files inside a `.d` folder: `PandasTdf` reads the `analysis.tdf`
+SQLite metadata into pandas DataFrames, and `TimsData` decodes frames from
+`analysis.tdf_bin` in pure Python (no Bruker native library). Prefer the high-level
+`DDA`/`DIA`/`PRM` readers unless you need raw frame or scan data.
 
 ::: tdfpy.PandasTdf
 
 ::: tdfpy.TimsData
 
 ::: tdfpy.timsdata_connect
+
+::: tdfpy.FrameMetadata
+
+## Errors
+
+Unsupported or unvalidated formats raise instead of returning approximate values.
+
+::: tdfpy.UnsupportedTdfError
+
+::: tdfpy.UnsupportedCalibrationError
+
+
+==============================================================================
+# citation.md
+==============================================================================
+
+# Citation
+
+If you use tdfpy in published work, please cite it.
+
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.19100532.svg)](https://doi.org/10.5281/zenodo.19100532)
+
+The DOI [10.5281/zenodo.19100532](https://doi.org/10.5281/zenodo.19100532) is the Zenodo
+concept DOI: it always resolves to the latest release. Each release also has its own
+version DOI, listed on the Zenodo record, if you need to cite an exact version.
+
+```bibtex
+@software{tdfpy,
+  author  = {Garrett, Patrick T. and Yates III, John R.},
+  title   = {tdfpy: A Python package for parsing and centroiding Bruker timsTOF mass spectrometry data},
+  doi     = {10.5281/zenodo.19100532},
+  url     = {https://github.com/tacular-omics/tdfpy},
+  license = {MIT}
+}
+```
+
+The citation metadata lives in
+[`CITATION.cff`](https://github.com/tacular-omics/tdfpy/blob/main/CITATION.cff). GitHub's
+"Cite this repository" button on the
+[repository page](https://github.com/tacular-omics/tdfpy) reads it and exports APA or BibTeX.
 

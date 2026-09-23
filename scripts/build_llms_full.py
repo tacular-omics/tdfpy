@@ -32,7 +32,9 @@ DOCS_ORDER = [
     "api/pipeline.md",
     "api/noise.md",
     "api/regions.md",
+    "api/viz.md",
     "api/low-level.md",
+    "citation.md",
 ]
 
 HEADER = """\

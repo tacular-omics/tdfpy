@@ -1,14 +1,22 @@
-# Getting Started
+# Getting started
 
 ## Installation
 
 ```bash
 pip install tdfpy
+# or
+uv add tdfpy
 ```
 
-Requires Python 3.12+.
+Requires Python 3.12+. Optional extras:
 
-## Detecting Acquisition Type
+- `pip install 'tdfpy[viz]'` adds matplotlib for [`plot_centroiding`](api/viz.md).
+- `pip install 'tdfpy[mcp]'` adds the [MCP server](mcp.md) for AI agents.
+
+The examples below use `D_PATH`, the path to a `.d` folder. The repository's test data
+(`tests/data/example_dda.d`, `example_dia.d`, `example_prm.d`) works with every example.
+
+## Detecting acquisition type
 
 Before loading data, you can inspect the acquisition type of a `.d` folder:
 
@@ -20,7 +28,7 @@ acq_type = get_acquisition_type(D_PATH)
 print(acq_type)
 ```
 
-## DDA Acquisitions
+## DDA acquisitions
 
 ```python
 from tdfpy import DDA
@@ -42,7 +50,7 @@ with DDA(D_PATH) as dda:
         break
 ```
 
-## DIA Acquisitions
+## DIA acquisitions
 
 ```python
 from tdfpy import DIA
@@ -60,7 +68,7 @@ with DIA(D_PATH) as dia:
         break
 ```
 
-## PRM Acquisitions
+## PRM acquisitions
 
 ```python
 from tdfpy import PRM
@@ -79,11 +87,12 @@ with PRM(D_PATH) as prm:
     # PRM transitions (MS2 spectra linked to a target)
     for transition in prm.transitions:
         print(f"Transition frame {transition.frame_id}: isolation {transition.isolation_mz} m/z")
-        peaks = transition.peaks  # shape (N, 2): [m/z, intensity]
+        raw = transition.peaks  # list of per-scan (mz, intensity) arrays
+        peaks = transition.centroid()  # shape (N, 3): [m/z, intensity, 1/K0]
         break
 ```
 
-## Lookups and Queries
+## Lookups and queries
 
 Access frames, precursors, or windows directly by ID or query by properties.
 
@@ -119,12 +128,12 @@ with DIA(D_PATH) as dia:
         print(w.window_group, w.isolation_mz)
 ```
 
-## How Data Access Works
+## How data access works
 
 A `.d` folder contains two files: `analysis.tdf` (a SQLite database with metadata) and
 `analysis.tdf_bin` (a binary file with the raw spectral data).
 
-When you open a `DDA` or `DIA` reader, it immediately:
+When you open a `DDA`, `DIA` or `PRM` reader, it immediately:
 
 1. Opens a connection to the binary file
 2. Reads all frame and precursor metadata from the SQLite database into memory
@@ -143,7 +152,7 @@ with DDA(D_PATH) as dda:
     frame = dda.ms1[1]
     peaks = frame.centroid()  # The connection is open
 
-# peaks = frame.centroid()  # RuntimeError: connection is closed
+# peaks = frame.centroid()  # RuntimeError: TimsData connection is closed.
 ```
 
 ## Development

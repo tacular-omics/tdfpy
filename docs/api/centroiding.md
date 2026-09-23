@@ -5,11 +5,15 @@ m/z index, spread across hundreds of mobility bins. Centroiding collapses that c
 measurements into a compact list of peaks — each with a single m/z, intensity, and ion
 mobility value.
 
-tdfpy provides two centroiding functions:
+tdfpy provides these convenience functions:
 
-- **`get_centroided_spectrum`** — high-level: reads a full frame from disk, applies optional
-  noise filtering, and returns centroided peaks in one call.
-- **`merge_peaks`** — low-level: centroids pre-assembled NumPy arrays of m/z, intensity, and
+- **`get_centroided_spectrum`**: high-level. Reads a full frame from disk, applies optional
+  region exclusion, smoothing and noise filtering, and returns centroided peaks in one call.
+- **`get_raw_peaks`**: the same pipeline without the centroider. Returns every raw peak.
+- **`get_mobility_collapsed_spectrum`**: sums intensities per TOF index across one or more
+  scan ranges (collapsing ion mobility) and merges them by m/z. This is how DDA
+  precursor MS2 spectra (`Precursor.peaks`) are built.
+- **`merge_peaks`**: low-level. Centroids pre-assembled NumPy arrays of m/z, intensity, and
   ion mobility values. Use this when you already have the raw arrays or need fine-grained
   control.
 
@@ -24,6 +28,8 @@ When [Numba](https://numba.pydata.org/) is installed (it is included in the defa
 fallback for large frames. The backend is selected automatically:
 
 ```python
+from tdfpy import merge_peaks
+
 # Numba used if available (default)
 peaks = merge_peaks(mz, intensity, im)
 
@@ -42,20 +48,19 @@ Reads frame `frame_id` from the open `TimsData` connection, converts m/z indices
 m/z values, assembles the raw peak arrays, optionally filters noise, and runs centroiding.
 
 ```python
-from tdfpy import timsdata_connect, get_centroided_spectrum
+from tdfpy import timsdata_connect, get_centroided_spectrum, MergePeaksCentroider
 
 with timsdata_connect("experiment.d") as td:
-    # Default: 1/K0 ion mobility, 8 ppm m/z tolerance
+    # Default: 1/K0 ion mobility, MergePeaksCentroider with 8 ppm m/z tolerance
     peaks = get_centroided_spectrum(td, frame_id=1)
     print(peaks.shape)   # (N, 3) — columns: [m/z, intensity, 1/K0]
 
-    # Tighter tolerances, CCS instead of 1/K0
+    # Tighter tolerances (set on the centroider), CCS instead of 1/K0
     peaks = get_centroided_spectrum(
         td,
         frame_id=1,
         ion_mobility_type="ccs",
-        mz_tolerance=5.0,
-        im_tolerance=0.03,
+        centroid=MergePeaksCentroider(mz_tolerance=5.0, im_tolerance=0.03),
     )
 
     # Noise filtering before centroiding (string shorthand)
@@ -92,6 +97,21 @@ swaps the centroiding algorithm — see
 
 ---
 
+## `get_raw_peaks`
+
+Runs the same read, exclusion, smoothing and noise steps as `get_centroided_spectrum` but
+returns the raw peaks without centroiding.
+
+::: tdfpy.get_raw_peaks
+
+---
+
+## `get_mobility_collapsed_spectrum`
+
+::: tdfpy.get_mobility_collapsed_spectrum
+
+---
+
 ## `merge_peaks`
 
 Centroids pre-assembled arrays. The algorithm is a greedy intensity-ordered scan: starting
@@ -107,6 +127,9 @@ are marked as used and skipped in subsequent iterations.
 | `im_tolerance_type` | `"relative"` | `"relative"` (fraction of 1/K0) or `"absolute"` |
 | `min_peaks` | `3` | Raw peaks required to form a centroid; set to `0` or `1` to keep all |
 | `max_peaks` | `None` | Cap on output peaks by raw seed intensity, not final summed intensity |
+| `peak_noise_filter` | `False` | Suppress weak satellite points around each centroid so they cannot seed their own centroids |
+| `peak_noise_window` | `0.1` | Half-width in Da of the satellite window |
+| `peak_noise_end_fraction` | `0.1` | Ramp end, as a fraction of the anchor intensity, at the window edge |
 | `use_numba` | `True` | Set to `False` to force the Python fallback |
 
 ```python
@@ -137,6 +160,8 @@ threshold can rise above legitimate low-abundance peaks.
 A more reliable strategy is to increase `min_peaks` instead:
 
 ```python
+from tdfpy import merge_peaks
+
 # Prefer: raise min_peaks to filter noise without discarding low-abundance signal
 peaks = merge_peaks(mz, intensity, im, min_peaks=5)
 
