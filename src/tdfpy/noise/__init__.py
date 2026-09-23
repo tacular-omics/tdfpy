@@ -86,9 +86,7 @@ _STRING_ALIASES: dict[str, type[IntensityThreshold]] = {
 }
 
 
-NoiseSpec = (
-    NoiseFilter | str | float | int | list["NoiseSpec"] | tuple["NoiseSpec", ...] | None
-)
+NoiseSpec = NoiseFilter | str | float | int | list["NoiseSpec"] | tuple["NoiseSpec", ...] | None
 
 
 def coerce_filters(spec: NoiseSpec) -> tuple[NoiseFilter, ...]:
@@ -115,10 +113,7 @@ def coerce_filters(spec: NoiseSpec) -> tuple[NoiseFilter, ...]:
         try:
             cls = _STRING_ALIASES[spec]
         except KeyError as exc:
-            raise ValueError(
-                f"Unknown noise filter name {spec!r}. "
-                f"Valid names: {sorted(_STRING_ALIASES)}"
-            ) from exc
+            raise ValueError(f"Unknown noise filter name {spec!r}. Valid names: {sorted(_STRING_ALIASES)}") from exc
         return (cls(),)
     if isinstance(spec, (int, float)) and not isinstance(spec, bool):
         return (AbsoluteThreshold(value=float(spec)),)
@@ -127,10 +122,7 @@ def coerce_filters(spec: NoiseSpec) -> tuple[NoiseFilter, ...]:
         for item in spec:
             out.extend(coerce_filters(item))
         return tuple(out)
-    raise TypeError(
-        f"Cannot coerce {type(spec).__name__} to a noise filter. "
-        "Expected NoiseFilter, str, float, list/tuple, or None."
-    )
+    raise TypeError(f"Cannot coerce {type(spec).__name__} to a noise filter. Expected NoiseFilter, str, float, list/tuple, or None.")
 
 
 __all__ = [

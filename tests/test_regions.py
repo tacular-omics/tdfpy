@@ -80,57 +80,37 @@ def ms1_spectrum(td: timsdata.TimsData, ms1_frame_id: int) -> RawSpectrum:
     return spectrum
 
 
-def test_index_cutoff_shape(
-    td: timsdata.TimsData, ms1_frame_id: int, ms1_spectrum: RawSpectrum
-) -> None:
-    cutoff = ChargeStateRegion().index_cutoff_per_scan(
-        td, ms1_frame_id, ms1_spectrum.num_scans
-    )
+def test_index_cutoff_shape(td: timsdata.TimsData, ms1_frame_id: int, ms1_spectrum: RawSpectrum) -> None:
+    cutoff = ChargeStateRegion().index_cutoff_per_scan(td, ms1_frame_id, ms1_spectrum.num_scans)
     assert cutoff.shape == (ms1_spectrum.num_scans,)
 
 
-def test_index_cutoff_monotonic_in_scan(
-    td: timsdata.TimsData, ms1_frame_id: int, ms1_spectrum: RawSpectrum
-) -> None:
+def test_index_cutoff_monotonic_in_scan(td: timsdata.TimsData, ms1_frame_id: int, ms1_spectrum: RawSpectrum) -> None:
     # 1/K0 is monotonic in scan number, so the m/z cutoff — and hence the index
     # cutoff — must be monotonic (one consistent direction) across scans.
-    cutoff = ChargeStateRegion().index_cutoff_per_scan(
-        td, ms1_frame_id, ms1_spectrum.num_scans
-    )
+    cutoff = ChargeStateRegion().index_cutoff_per_scan(td, ms1_frame_id, ms1_spectrum.num_scans)
     finite = cutoff[np.isfinite(cutoff)]
     diffs = np.diff(finite)
     assert np.all(diffs >= -1e-6) or np.all(diffs <= 1e-6)
 
 
-def test_cap_at_upper_endpoint_produces_inf(
-    td: timsdata.TimsData, ms1_frame_id: int, ms1_spectrum: RawSpectrum
-) -> None:
+def test_cap_at_upper_endpoint_produces_inf(td: timsdata.TimsData, ms1_frame_id: int, ms1_spectrum: RawSpectrum) -> None:
     # A low cap (upper endpoint at 1/K0=0.9) forces high-mobility scans to +inf
     # when capping is enabled, and never when it is disabled.
     line = ((350.0, 0.7), (1200.0, 0.9))
-    capped = ChargeStateRegion(line=line).index_cutoff_per_scan(
-        td, ms1_frame_id, ms1_spectrum.num_scans
-    )
-    uncapped = ChargeStateRegion(
-        line=line, cap_at_upper_endpoint=False
-    ).index_cutoff_per_scan(td, ms1_frame_id, ms1_spectrum.num_scans)
+    capped = ChargeStateRegion(line=line).index_cutoff_per_scan(td, ms1_frame_id, ms1_spectrum.num_scans)
+    uncapped = ChargeStateRegion(line=line, cap_at_upper_endpoint=False).index_cutoff_per_scan(td, ms1_frame_id, ms1_spectrum.num_scans)
     assert np.isinf(capped).any()
     assert not np.isinf(uncapped).any()
 
 
-def test_exclude_region_returns_subset(
-    td: timsdata.TimsData, ms1_frame_id: int, ms1_spectrum: RawSpectrum
-) -> None:
-    filtered = exclude_region(
-        ms1_spectrum, ChargeStateRegion(), td=td, frame_id=ms1_frame_id
-    )
+def test_exclude_region_returns_subset(td: timsdata.TimsData, ms1_frame_id: int, ms1_spectrum: RawSpectrum) -> None:
+    filtered = exclude_region(ms1_spectrum, ChargeStateRegion(), td=td, frame_id=ms1_frame_id)
     assert filtered.mz_indices.size <= ms1_spectrum.mz_indices.size
     assert filtered.num_scans == ms1_spectrum.num_scans
 
 
-def test_exclude_region_drops_peaks_inside_band(
-    td: timsdata.TimsData, ms1_frame_id: int, ms1_spectrum: RawSpectrum
-) -> None:
+def test_exclude_region_drops_peaks_inside_band(td: timsdata.TimsData, ms1_frame_id: int, ms1_spectrum: RawSpectrum) -> None:
     # An aggressive region (steep, high cap) should drop strictly more than the
     # default and never add peaks.
     aggressive = ChargeStateRegion(line=((100.0, 0.6), (1700.0, 1.5)))

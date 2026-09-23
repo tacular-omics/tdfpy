@@ -48,10 +48,7 @@ class ChargeStateRegion:
                 "line=((350.0, 0.7), (1200.0, 1.4))."
             )
         if ook0_1 == ook0_2:
-            raise ValueError(
-                "ChargeStateRegion line endpoints must differ in 1/K0; got both at "
-                f"1/K0={ook0_1}. Provide two points with distinct 1/K0."
-            )
+            raise ValueError(f"ChargeStateRegion line endpoints must differ in 1/K0; got both at 1/K0={ook0_1}. Provide two points with distinct 1/K0.")
         # The exclusion mask assumes 1/K0 increases with m/z (positive slope),
         # as real timsTOF charge-state bands do. A negative slope would silently
         # exclude the opposite half-plane, so reject it rather than mislead.
@@ -63,9 +60,7 @@ class ChargeStateRegion:
                 "endpoint also has the higher 1/K0."
             )
 
-    def index_cutoff_per_scan(
-        self, td: TimsData, frame_id: int, num_scans: int
-    ) -> np.ndarray:
+    def index_cutoff_per_scan(self, td: TimsData, frame_id: int, num_scans: int) -> np.ndarray:
         """Per-scan TOF-index cutoff implementing this region exclusion.
 
         For each scan, ``mz_indices < cutoff[scan]`` lies above the line
@@ -84,9 +79,7 @@ class ChargeStateRegion:
         )
         mz_cutoff = mz_1 + (ook0_per_scan - ook0_1) * mz_per_ook0
         mz_cutoff_clipped = np.clip(mz_cutoff, a_min=1e-6, a_max=None)
-        index_cutoff = np.asarray(td.mzToIndex(frame_id, mz_cutoff_clipped)).astype(
-            np.float64, copy=True
-        )
+        index_cutoff = np.asarray(td.mzToIndex(frame_id, mz_cutoff_clipped)).astype(np.float64, copy=True)
         index_cutoff = np.where(mz_cutoff > 0, index_cutoff, 0.0)
         if self.cap_at_upper_endpoint:
             index_cutoff[ook0_per_scan > ook0_cap] = np.inf

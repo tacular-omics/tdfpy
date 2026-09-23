@@ -76,8 +76,7 @@ def get_acquisition_type(
         return "PRM"
 
     logger.warning(
-        "get_acquisition_type(%s): no known MS2 MsMsType found (present: %s); "
-        "returning 'Unknown'. Expected one of DDA_MS2=8, DIA_MS2=9, PRM_MS2=10.",
+        "get_acquisition_type(%s): no known MS2 MsMsType found (present: %s); returning 'Unknown'. Expected one of DDA_MS2=8, DIA_MS2=9, PRM_MS2=10.",
         analysis_dir,
         sorted(msms_types),
     )
@@ -92,17 +91,11 @@ class _DFolder:
 
         # assert paths exist
         if not self.analysis_tdf_path.exists():
-            raise FileNotFoundError(
-                f"analysis.tdf not found at {self.analysis_tdf_path}"
-            )
+            raise FileNotFoundError(f"analysis.tdf not found at {self.analysis_tdf_path}")
         if not self.analysis_tdf_bin_path.exists():
-            raise FileNotFoundError(
-                f"analysis.tdf_bin not found at {self.analysis_tdf_bin_path}"
-            )
+            raise FileNotFoundError(f"analysis.tdf_bin not found at {self.analysis_tdf_bin_path}")
         if not self.analysis_path.exists():
-            raise FileNotFoundError(
-                f"Analysis directory not found at {self.analysis_path}"
-            )
+            raise FileNotFoundError(f"Analysis directory not found at {self.analysis_path}")
 
         # Lazily load
         self._timsdata = None
@@ -123,18 +116,14 @@ class _DFolder:
     def metadata(self) -> MetaData:
         """Global metadata about the acquisition."""
         if self._metadata is None:
-            self._metadata = MetaData(
-                df=self.pandas_tdf.global_metadata.set_index("Key")["Value"]
-            )
+            self._metadata = MetaData(df=self.pandas_tdf.global_metadata.set_index("Key")["Value"])
         return self._metadata
 
     @property
     def calibration(self) -> Calibration:
         """Calibration information."""
         if self._calibration is None:
-            self._calibration = Calibration(
-                df=self.pandas_tdf.calibration_info.set_index("KeyName")["Value"]
-            )
+            self._calibration = Calibration(df=self.pandas_tdf.calibration_info.set_index("KeyName")["Value"])
         return self._calibration
 
     @property
@@ -152,9 +141,7 @@ class _DFolder:
     def _check_open(self) -> None:
         """Ensure connection is still open."""
         if self._closed:
-            raise RuntimeError(
-                "DFolder has been closed. Create a new DFolder instance or use a context manager."
-            )
+            raise RuntimeError("DFolder has been closed. Create a new DFolder instance or use a context manager.")
         if self.timsdata.handle is None:
             raise RuntimeError("TimsData connection has been unexpectedly closed.")
 
@@ -210,9 +197,7 @@ class DDA(_DFolder):
 
         self._precursor_df = PandasTdf(str(self.analysis_tdf_path)).precursors
         self._frames_df = PandasTdf(str(self.analysis_tdf_path)).frames
-        self._pasef_frame_msms_info_df = PandasTdf(
-            str(self.analysis_tdf_path)
-        ).pasef_frame_msms_info
+        self._pasef_frame_msms_info_df = PandasTdf(str(self.analysis_tdf_path)).pasef_frame_msms_info
 
         frame_id_to_rt = {}
         for _, row in self._frames_df.iterrows():
@@ -241,9 +226,7 @@ class DDA(_DFolder):
                 isolation_mz=float(row["IsolationMz"]),
                 isolation_width=float(row["IsolationWidth"]),
                 collision_energy=float(row["CollisionEnergy"]),
-                precursor=int(row["Precursor"])
-                if not pd.isna(row["Precursor"])
-                else None,
+                precursor=int(row["Precursor"]) if not pd.isna(row["Precursor"]) else None,
                 rt=frame_id_to_rt[frame_id],
                 polarity=Polarity.from_str(polarity),
             )
@@ -277,16 +260,12 @@ class DDA(_DFolder):
                 precursor_id=precursor_id,
                 largest_peak_mz=float(row["LargestPeakMz"]),
                 average_mz=float(row["AverageMz"]),
-                monoisotopic_mz=float(row["MonoisotopicMz"])
-                if not pd.isna(row["MonoisotopicMz"])
-                else None,
+                monoisotopic_mz=float(row["MonoisotopicMz"]) if not pd.isna(row["MonoisotopicMz"]) else None,
                 charge=int(row["Charge"]) if not pd.isna(row["Charge"]) else None,
                 scan_number=float(row["ScanNumber"]),
                 intensity=float(row["Intensity"]),
                 parent_frame=int(row["Parent"]),
-                pasef_frame_msms_infos=tuple(
-                    self._pasef_msms_infos.get(precursor_id, [])
-                ),
+                pasef_frame_msms_infos=tuple(self._pasef_msms_infos.get(precursor_id, [])),
                 rt=frame_id_to_rt[frame_id],
             )
             self._precursors[precursor_id] = precursor
@@ -302,9 +281,7 @@ class DDA(_DFolder):
             frame_id = int(row["Id"])
             msms_type = int(row["MsMsType"])
             if msms_type == MsMsType.MS1.value:
-                precursors_for_frame: list[Precursor] = self._frame_to_precursors.get(
-                    frame_id, []
-                )
+                precursors_for_frame: list[Precursor] = self._frame_to_precursors.get(frame_id, [])
                 frame = DDAMs1Frame(
                     _timsdata=self.timsdata,
                     frame_id=frame_id,
@@ -321,9 +298,7 @@ class DDA(_DFolder):
                     t1=float(row["T1"]),
                     t2=float(row["T2"]),
                     tims_calibration=int(row["TimsCalibration"]),
-                    property_group=int(row["PropertyGroup"])
-                    if not pd.isna(row["PropertyGroup"])
-                    else None,
+                    property_group=int(row["PropertyGroup"]) if not pd.isna(row["PropertyGroup"]) else None,
                     accumulation_time=float(row["AccumulationTime"]),
                     ramp_time=float(row["RampTime"]),
                     precursors=tuple(precursors_for_frame),
@@ -410,14 +385,10 @@ class DIA(_DFolder):
             frame_id_to_polarity[frame_id] = polarity
 
         # window groups
-        self._dia_frame_msms_windows_df = PandasTdf(
-            str(self.analysis_tdf_path)
-        ).dia_frame_msms_windows
+        self._dia_frame_msms_windows_df = PandasTdf(str(self.analysis_tdf_path)).dia_frame_msms_windows
 
         # frame to window groups
-        self._dia_frame_msms_info = PandasTdf(
-            str(self.analysis_tdf_path)
-        ).dia_frame_msms_info
+        self._dia_frame_msms_info = PandasTdf(str(self.analysis_tdf_path)).dia_frame_msms_info
 
         self._dia_window_groups: dict[int, list[DiaWindowGroup]] = {}
         for key, row in self._dia_frame_msms_windows_df.iterrows():
@@ -487,9 +458,7 @@ class DIA(_DFolder):
                     t1=float(row["T1"]),
                     t2=float(row["T2"]),
                     tims_calibration=int(row["TimsCalibration"]),
-                    property_group=int(row["PropertyGroup"])
-                    if not pd.isna(row["PropertyGroup"])
-                    else None,
+                    property_group=int(row["PropertyGroup"]) if not pd.isna(row["PropertyGroup"]) else None,
                     accumulation_time=float(row["AccumulationTime"]),
                     ramp_time=float(row["RampTime"]),
                     dia_windows=tuple(self._dia_windows.get(frame_id, [])),
@@ -589,25 +558,19 @@ class PRM(_DFolder):
             target_id = int(row["Id"])
             target = PrmTarget(
                 target_id=target_id,
-                external_id=str(row["ExternalId"])
-                if not pd.isna(row["ExternalId"])
-                else None,
+                external_id=str(row["ExternalId"]) if not pd.isna(row["ExternalId"]) else None,
                 time=float(row["Time"]),
                 one_over_k0=float(row["OneOverK0"]),
                 monoisotopic_mz=float(row["MonoisotopicMz"]),
                 charge=int(row["Charge"]),
-                description=str(row["Description"])
-                if not pd.isna(row["Description"])
-                else "",
+                description=str(row["Description"]) if not pd.isna(row["Description"]) else "",
             )
             self._prm_targets[target_id] = target
 
         self._prm_target_lookup = PrmTargetLookup(self._prm_targets)
 
         # transitions (PrmFrameMsMsInfo)
-        self._prm_frame_msms_info_df = PandasTdf(
-            str(self.analysis_tdf_path)
-        ).prm_frame_msms_info
+        self._prm_frame_msms_info_df = PandasTdf(str(self.analysis_tdf_path)).prm_frame_msms_info
 
         self._all_prm_transitions: list[PrmTransition] = []
         self._frame_to_transitions: dict[int, list[PrmTransition]] = {}
@@ -665,9 +628,7 @@ class PRM(_DFolder):
                     t1=float(row["T1"]),
                     t2=float(row["T2"]),
                     tims_calibration=int(row["TimsCalibration"]),
-                    property_group=int(row["PropertyGroup"])
-                    if not pd.isna(row["PropertyGroup"])
-                    else None,
+                    property_group=int(row["PropertyGroup"]) if not pd.isna(row["PropertyGroup"]) else None,
                     accumulation_time=float(row["AccumulationTime"]),
                     ramp_time=float(row["RampTime"]),
                     prm_transitions=tuple(self._frame_to_transitions.get(frame_id, [])),

@@ -63,12 +63,7 @@ def processing_options() -> dict:
         "exclusion": {"ChargeStateRegion": ChargeStateRegion},
     }
     return {
-        "groups": {
-            group: {
-                name: TypeAdapter(cls).json_schema() for name, cls in registry.items()
-            }
-            for group, registry in groups.items()
-        },
+        "groups": {group: {name: TypeAdapter(cls).json_schema() for name, cls in registry.items()} for group, registry in groups.items()},
         "order": [
             "read",
             "subset_scans",
@@ -87,25 +82,19 @@ def _operation(spec: Operation | None, registry: dict) -> Any:
     if spec is None:
         return None
     if spec.name not in registry:
-        raise ValueError(
-            f"Unknown operation {spec.name!r}. Choose from {sorted(registry)}"
-        )
+        raise ValueError(f"Unknown operation {spec.name!r}. Choose from {sorted(registry)}")
     cls = registry[spec.name]
     unknown = set(spec.parameters) - {f.name for f in fields(cls)}
     if unknown:
         raise ValueError(f"Unknown parameters for {spec.name}: {sorted(unknown)}")
     # JSON strict mode accepts JSON arrays for tuples, while rejecting string
     # numbers and booleans where the algorithm expects a numeric parameter.
-    return TypeAdapter(cls).validate_json(
-        json.dumps(spec.parameters, allow_nan=False), strict=True
-    )
+    return TypeAdapter(cls).validate_json(json.dumps(spec.parameters, allow_nan=False), strict=True)
 
 
 def _options(config: Processing) -> dict:
     options = {
-        "exclude": _operation(
-            config.exclusion, {"ChargeStateRegion": ChargeStateRegion}
-        ),
+        "exclude": _operation(config.exclusion, {"ChargeStateRegion": ChargeStateRegion}),
         "smooth": _operation(config.smoothing, {"Smooth": Smooth}),
         "noise": tuple(_operation(spec, FILTERS) for spec in config.noise),
         "ion_mobility_type": config.ion_mobility_type,
@@ -161,9 +150,7 @@ def _quote(identifier: str) -> str:
 class AcquisitionService:
     """Each operation owns and closes its readers. No global open-file cache."""
 
-    def __init__(
-        self, roots: list[Path], output_dir: Path, max_frame_peaks: int = 5_000_000
-    ):
+    def __init__(self, roots: list[Path], output_dir: Path, max_frame_peaks: int = 5_000_000):
         if not roots or max_frame_peaks < 1:
             raise ValueError("Provide data roots and a positive max_frame_peaks")
         self.roots = tuple(root.expanduser().resolve(strict=True) for root in roots)
@@ -180,9 +167,7 @@ class AcquisitionService:
         candidate = Path(path).expanduser()
         if not candidate.is_absolute():
             if len(self.roots) != 1:
-                raise ValueError(
-                    "Use an absolute acquisition path when multiple roots are configured"
-                )
+                raise ValueError("Use an absolute acquisition path when multiple roots are configured")
             candidate = self.roots[0] / candidate
         candidate = candidate.resolve(strict=True)
         if not any(candidate.is_relative_to(root) for root in self.roots):
@@ -192,16 +177,12 @@ class AcquisitionService:
         for name in ("analysis.tdf", "analysis.tdf_bin"):
             source = (candidate / name).resolve(strict=True)
             if not source.is_file() or not source.is_relative_to(candidate):
-                raise ValueError(
-                    f"{name} must be a file within the acquisition directory"
-                )
+                raise ValueError(f"{name} must be a file within the acquisition directory")
         return candidate
 
     @contextmanager
     def connection(self, path: Path) -> Iterator[sqlite3.Connection]:
-        connection = sqlite3.connect(
-            (path / "analysis.tdf").as_uri() + "?mode=ro", uri=True
-        )
+        connection = sqlite3.connect((path / "analysis.tdf").as_uri() + "?mode=ro", uri=True)
         connection.row_factory = sqlite3.Row
         try:
             connection.execute("PRAGMA query_only = ON")
@@ -245,9 +226,7 @@ class AcquisitionService:
             seen.add(path)
             visited += 1
             if visited > 20_000:
-                raise ValueError(
-                    "Discovery exceeded 20,000 directories. Configure a narrower data root"
-                )
+                raise ValueError("Discovery exceeded 20,000 directories. Configure a narrower data root")
             if (path / "analysis.tdf").is_file():
                 found.append(
                     {
@@ -257,32 +236,18 @@ class AcquisitionService:
                 )
                 continue
             if level < depth:
-                pending.extend(
-                    (p, level + 1)
-                    for p in sorted(path.iterdir(), reverse=True)
-                    if p.is_dir() and not p.is_symlink() and p != self.output_dir
-                )
+                pending.extend((p, level + 1) for p in sorted(path.iterdir(), reverse=True) if p.is_dir() and not p.is_symlink() and p != self.output_dir)
         return _page(found, offset, limit)
 
     def tables(self, acquisition: str) -> dict:
         path = self.acquisition(acquisition)
         with self.connection(path) as conn:
-            names = [
-                r[0]
-                for r in conn.execute(
-                    "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
-                )
-            ]
+            names = [r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name")]
             return {
                 "tables": [
                     {
                         "name": name,
-                        "columns": [
-                            dict(row)
-                            for row in conn.execute(
-                                f"PRAGMA table_info({_quote(name)})"
-                            )
-                        ],
+                        "columns": [dict(row) for row in conn.execute(f"PRAGMA table_info({_quote(name)})")],
                     }
                     for name in names
                 ]
@@ -322,14 +287,10 @@ class AcquisitionService:
             else:
                 if predicate.value is None:
                     raise ValueError("Use is_null to query NULL values")
-                clauses.append(
-                    f"{_quote(predicate.column)} {operators[predicate.operator]} ?"
-                )
+                clauses.append(f"{_quote(predicate.column)} {operators[predicate.operator]} ?")
                 args.append(predicate.value)
         where = " WHERE " + " AND ".join(clauses) if clauses else ""
-        keys = [
-            c["name"] for c in sorted(schema[table], key=lambda c: c["pk"]) if c["pk"]
-        ]
+        keys = [c["name"] for c in sorted(schema[table], key=lambda c: c["pk"]) if c["pk"]]
         order = ", ".join(_quote(k) for k in keys) if keys else "rowid"
         with self.connection(path) as conn:
             query = f"SELECT {', '.join(_quote(c) for c in columns)} FROM {_quote(table)}{where} ORDER BY {order} LIMIT ? OFFSET ?"
@@ -351,11 +312,7 @@ class AcquisitionService:
                     "SELECT MsMsType AS msms_type, COUNT(*) AS frames, SUM(NumPeaks) AS stored_peaks FROM Frames GROUP BY MsMsType ORDER BY MsMsType"
                 )
             ]
-            span = dict(
-                conn.execute(
-                    "SELECT MIN(Time) AS rt_begin, MAX(Time) AS rt_end, COUNT(*) AS frames FROM Frames"
-                ).fetchone()
-            )
+            span = dict(conn.execute("SELECT MIN(Time) AS rt_begin, MAX(Time) AS rt_end, COUNT(*) AS frames FROM Frames").fetchone())
         return {
             "acquisition": str(path),
             "acquisition_type": get_acquisition_type(path),
@@ -394,9 +351,7 @@ class AcquisitionService:
             "prm_transition": "PRM",
         }[kind]
         if mode != required:
-            raise ValueError(
-                f"{kind} queries require {required}, but this acquisition is {mode}"
-            )
+            raise ValueError(f"{kind} queries require {required}, but this acquisition is {mode}")
         attribute = {
             "precursor": "precursors",
             "dia_window": "windows",
@@ -408,32 +363,16 @@ class AcquisitionService:
             for index, obj in enumerate(getattr(reader, attribute)):
                 time = obj.time if kind == "prm_target" else obj.rt
                 mass = (
-                    (
-                        obj.monoisotopic_mz
-                        if obj.monoisotopic_mz is not None
-                        else obj.largest_peak_mz
-                    )
+                    (obj.monoisotopic_mz if obj.monoisotopic_mz is not None else obj.largest_peak_mz)
                     if kind == "precursor"
-                    else (
-                        obj.monoisotopic_mz
-                        if kind == "prm_target"
-                        else obj.isolation_mz
-                    )
+                    else (obj.monoisotopic_mz if kind == "prm_target" else obj.isolation_mz)
                 )
                 if rt and not rt.contains(time):
                     continue
                 if mz and not mz.contains(mass):
                     continue
                 if group_or_target is not None:
-                    actual = (
-                        obj.window_group
-                        if kind == "dia_window"
-                        else (
-                            obj.target_id
-                            if kind == "prm_target"
-                            else obj.target.target_id
-                        )
-                    )
+                    actual = obj.window_group if kind == "dia_window" else (obj.target_id if kind == "prm_target" else obj.target.target_id)
                     if actual != group_or_target:
                         continue
                 item = _metadata(obj)
@@ -450,13 +389,9 @@ class AcquisitionService:
             raise ValueError("A spectrum selection may reference at most 128 frames")
         for fid in set(ids):
             if td.frame_metadata(fid).num_peaks > self.max_frame_peaks:
-                raise ValueError(
-                    f"Frame {fid} exceeds max-frame-peaks. Raise the server startup limit deliberately for this dataset"
-                )
+                raise ValueError(f"Frame {fid} exceeds max-frame-peaks. Raise the server startup limit deliberately for this dataset")
 
-    def spectrum(
-        self, acquisition: str, selection: SpectrumSelection, processing: Processing
-    ) -> tuple[np.ndarray, dict]:
+    def spectrum(self, acquisition: str, selection: SpectrumSelection, processing: Processing) -> tuple[np.ndarray, dict]:
         path = self.acquisition(acquisition)
         options = _options(processing)
         if selection.kind == "frame":
@@ -467,11 +402,7 @@ class AcquisitionService:
                     if selection.scan_end > td.frame_metadata(selection.id).num_scans:
                         raise ValueError("scan_end exceeds the frame's scan count")
                     scan_range = (selection.scan_begin, selection.scan_end)
-                extract = (
-                    get_raw_peaks
-                    if processing.mode == "raw"
-                    else get_centroided_spectrum
-                )
+                extract = get_raw_peaks if processing.mode == "raw" else get_centroided_spectrum
                 peaks = extract(td, selection.id, scan_range=scan_range, **options)
                 frames = [asdict(td.frame_metadata(selection.id))]
         else:
@@ -490,46 +421,26 @@ class AcquisitionService:
                         )
                     assert isinstance(reader, DDA)
                     obj = reader.precursors[selection.id]
-                    ids = list(
-                        dict.fromkeys(
-                            info.frame_id for info in obj.pasef_frame_msms_infos
-                        )
-                    )
+                    ids = list(dict.fromkeys(info.frame_id for info in obj.pasef_frame_msms_infos))
                     self.frame_budget(reader.timsdata, ids)
                     peaks = obj.peaks
                 else:
-                    windows = list(
-                        getattr(
-                            reader, "windows" if required == "DIA" else "transitions"
-                        )
-                    )
+                    windows = list(getattr(reader, "windows" if required == "DIA" else "transitions"))
                     if selection.id >= len(windows):
-                        raise ValueError(
-                            f"Selection index {selection.id} is out of range. Query the acquisition's windows first"
-                        )
+                        raise ValueError(f"Selection index {selection.id} is out of range. Query the acquisition's windows first")
                     obj = windows[selection.id]
                     ids = [obj.frame_id]
                     self.frame_budget(reader.timsdata, ids)
-                    peaks = (
-                        obj.raw_peaks(**options)
-                        if processing.mode == "raw"
-                        else obj.centroid(**options)
-                    )
+                    peaks = obj.raw_peaks(**options) if processing.mode == "raw" else obj.centroid(**options)
                 frames = [asdict(reader.timsdata.frame_metadata(fid)) for fid in ids]
-        columns = (
-            ["mz", "intensity"]
-            if selection.kind == "precursor"
-            else ["mz", "intensity", processing.ion_mobility_type]
-        )
+        columns = ["mz", "intensity"] if selection.kind == "precursor" else ["mz", "intensity", processing.ion_mobility_type]
         keep = np.ones(len(peaks), dtype=bool)
         for column, interval in (
             (0, selection.mz_range),
             (2, selection.mobility_range),
         ):
             if interval is not None:
-                keep &= (peaks[:, column] >= interval.lower) & (
-                    peaks[:, column] < interval.upper
-                )
+                keep &= (peaks[:, column] >= interval.lower) & (peaks[:, column] < interval.upper)
         peaks = peaks[keep]
         metadata = {
             "tdfpy_version": __version__,
@@ -551,9 +462,7 @@ class AcquisitionService:
             "metadata": metadata,
             "peak_count": len(peaks),
             "intensity_sum": float(peaks[:, 1].sum(dtype=np.float64)),
-            "mz_range": [float(peaks[:, 0].min()), float(peaks[:, 0].max())]
-            if len(peaks)
-            else None,
+            "mz_range": [float(peaks[:, 0].min()), float(peaks[:, 0].max())] if len(peaks) else None,
             "preview": peaks[indices].tolist(),
             "preview_order": "descending intensity",
             "preview_truncated": len(peaks) > limit,
@@ -572,16 +481,12 @@ class AcquisitionService:
             created = True
             with (
                 output,
-                zipfile.ZipFile(
-                    output, "w", compression=zipfile.ZIP_DEFLATED
-                ) as archive,
+                zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive,
             ):
                 for name, peaks, metadata in arrays:
                     size += peaks.nbytes
                     if size > MAX_ARTIFACT_BYTES:
-                        raise ValueError(
-                            "Export exceeds 512 MiB of numerical arrays. Request a smaller batch"
-                        )
+                        raise ValueError("Export exceeds 512 MiB of numerical arrays. Request a smaller batch")
                     with archive.open(name + ".npy", "w", force_zip64=True) as stream:
                         np.lib.format.write_array(stream, peaks, allow_pickle=False)
                     entries.append(
@@ -593,9 +498,7 @@ class AcquisitionService:
                     )
                 text = json.dumps({"spectra": entries}, allow_nan=False)
                 with archive.open("metadata.npy", "w", force_zip64=True) as stream:
-                    np.lib.format.write_array(
-                        stream, np.asarray(text), allow_pickle=False
-                    )
+                    np.lib.format.write_array(stream, np.asarray(text), allow_pickle=False)
         except BaseException:
             if created:
                 path.unlink(missing_ok=True)
@@ -612,9 +515,7 @@ class AcquisitionService:
             "load": "numpy.load(path, allow_pickle=False). Read metadata with json.loads(str(data['metadata']))",
         }
 
-    def export_batch(
-        self, acquisition: str, indices: list[int], processing: Processing
-    ) -> dict:
+    def export_batch(self, acquisition: str, indices: list[int], processing: Processing) -> dict:
         if processing.mode != "centroid":
             raise ValueError("Window batches currently support centroided output only")
         path = self.acquisition(acquisition)
@@ -623,20 +524,14 @@ class AcquisitionService:
             raise ValueError("Window batches require DIA or PRM")
         options = _options(processing)
         with READERS[mode](path) as reader:
-            windows = list(
-                getattr(reader, "windows" if mode == "DIA" else "transitions")
-            )
+            windows = list(getattr(reader, "windows" if mode == "DIA" else "transitions"))
             if any(i < 0 or i >= len(windows) for i in indices):
-                raise ValueError(
-                    "A window index is out of range. Query the windows first"
-                )
+                raise ValueError("A window index is out of range. Query the windows first")
             selected = [windows[i] for i in indices]
             self.frame_budget(reader.timsdata, [w.frame_id for w in selected])
 
             def arrays() -> Iterator[tuple[str, np.ndarray, dict]]:
-                for number, (window, peaks) in enumerate(
-                    iter_window_spectra(selected, **options)
-                ):
+                for number, (window, peaks) in enumerate(iter_window_spectra(selected, **options)):
                     yield (
                         f"spectrum_{number:05d}",
                         peaks,
@@ -645,9 +540,7 @@ class AcquisitionService:
                             "input_files": self.identity(path),
                             "tdfpy_version": __version__,
                             "selection": {
-                                "kind": "dia_window"
-                                if mode == "DIA"
-                                else "prm_transition",
+                                "kind": "dia_window" if mode == "DIA" else "prm_transition",
                                 "id": indices[number],
                             },
                             "window": _metadata(window),
@@ -663,12 +556,8 @@ class AcquisitionService:
 
             return self.write_artifact(arrays())
 
-    def artifact(
-        self, artifact_id: str, array: str | None, offset: int, limit: int
-    ) -> dict:
-        if len(artifact_id) != 32 or any(
-            c not in "0123456789abcdef" for c in artifact_id
-        ):
+    def artifact(self, artifact_id: str, array: str | None, offset: int, limit: int) -> dict:
+        if len(artifact_id) != 32 or any(c not in "0123456789abcdef" for c in artifact_id):
             raise ValueError("Use an artifact_id returned by an export tool")
         path = self.output_dir / f"{artifact_id}.npz"
         if path.is_symlink() or path.resolve(strict=True).parent != self.output_dir:
@@ -722,9 +611,7 @@ class AcquisitionService:
                 "frames_checked": list(ids),
                 "issues": issues,
                 "total_frames": len(td.frame_ids),
-                "next_offset": offset + limit
-                if offset + limit < len(td.frame_ids)
-                else None,
+                "next_offset": offset + limit if offset + limit < len(td.frame_ids) else None,
                 "scope": "Binary decoder checks for this page only. This is not vendor validation",
             }
 
@@ -751,14 +638,8 @@ class AcquisitionService:
                 result = getattr(td, methods[conversion])(frame_id, values)
             else:
                 if mz is None or charge is None or mz <= 0 or charge <= 0:
-                    raise ValueError(
-                        "CCS conversions require a positive m/z and explicit positive charge magnitude"
-                    )
-                convert = (
-                    one_over_k0_to_ccs
-                    if conversion == "ook0_to_ccs"
-                    else ccs_to_one_over_k0
-                )
+                    raise ValueError("CCS conversions require a positive m/z and explicit positive charge magnitude")
+                convert = one_over_k0_to_ccs if conversion == "ook0_to_ccs" else ccs_to_one_over_k0
                 result = np.asarray([convert(v, charge, mz) for v in values])
             if not np.all(np.isfinite(result)):
                 raise ValueError("Conversion produced non-finite values")

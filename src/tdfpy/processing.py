@@ -36,9 +36,7 @@ def iter_window_spectra(
     the iterator. Results contain no diagnostic or provenance wrappers.
     """
     cfg = centroid if centroid is not None else MergePeaksCentroider()
-    for (td, frame_id), group in groupby(
-        windows, key=lambda w: (w.timsdata, w.frame_id)
-    ):
+    for (td, frame_id), group in groupby(windows, key=lambda w: (w.timsdata, w.frame_id)):
         spectrum = read_spectrum(td, frame_id)
         for window in group:
             td._require_open()
@@ -52,9 +50,5 @@ def iter_window_spectra(
                 noise=noise,
                 ion_mobility_type=ion_mobility_type,
             )
-            peaks = (
-                cfg(prepared, td, frame_id, ion_mobility_type=ion_mobility_type)
-                if not prepared.empty
-                else np.empty((0, 3), dtype=np.float64)
-            )
+            peaks = cfg(prepared, td, frame_id, ion_mobility_type=ion_mobility_type) if not prepared.empty else np.empty((0, 3), dtype=np.float64)
             yield window, peaks

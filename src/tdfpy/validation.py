@@ -33,9 +33,7 @@ class ValidationReport:
         return not self.issues
 
 
-def validate_acquisition(
-    analysis_dir: str | Path, *, full: bool = False
-) -> ValidationReport:
+def validate_acquisition(analysis_dir: str | Path, *, full: bool = False) -> ValidationReport:
     """Check supported metadata, optionally decoding every frame.
 
     Uses the same strict format and calibration guards as extraction. Collects
@@ -59,11 +57,7 @@ def validate_acquisition(
                 checked += 1
                 try:
                     frame = td.frame_metadata(fid)
-                    if (
-                        frame.num_scans < 0
-                        or frame.num_peaks < 0
-                        or not np.isfinite(frame.time)
-                    ):
+                    if frame.num_scans < 0 or frame.num_peaks < 0 or not np.isfinite(frame.time):
                         raise ValueError("Invalid frame counts or retention time.")
                     td.calibration_key(fid)
                     # Exercise calibration references and finite conversion values.
@@ -77,6 +71,4 @@ def validate_acquisition(
                     issues.append(ValidationIssue(fid, str(exc)))
     except failures as exc:
         issues.append(ValidationIssue(None, str(exc)))
-    return ValidationReport(
-        str(analysis_dir), "full" if full else "metadata", checked, tuple(issues)
-    )
+    return ValidationReport(str(analysis_dir), "full" if full else "metadata", checked, tuple(issues))

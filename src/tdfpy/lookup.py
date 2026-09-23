@@ -20,10 +20,7 @@ def _missing_id_error(label: str, requested: int, available: Iterable[int]) -> K
         detail = f"only {ids[0]} is loaded"
     else:
         detail = f"loaded range is {ids[0]}..{ids[-1]}, count={len(ids)}"
-    return KeyError(
-        f"{label} {requested} not found ({detail}). Use .get(id, default) to avoid "
-        "raising, or iterate this lookup to list what is available."
-    )
+    return KeyError(f"{label} {requested} not found ({detail}). Use .get(id, default) to avoid raising, or iterate this lookup to list what is available.")
 
 
 class Ms1FrameLookup(Generic[T]):
@@ -77,9 +74,7 @@ class DiaWindowLookup:
     def __getitem__(self, window_group_id: int) -> list[DiaWindow]:
         """Get windows by window_group ID. Returns a list as multiple frames can share a window group."""
         if window_group_id not in self._window_map:
-            raise _missing_id_error(
-                "DIA window group ID", window_group_id, self._window_map
-            )
+            raise _missing_id_error("DIA window group ID", window_group_id, self._window_map)
         return self._window_map[window_group_id]
 
     def __len__(self) -> int:
@@ -136,9 +131,7 @@ class DiaWindowLookup:
         rt_range: tuple[float, float] | None = None
         if rt is not None:
             rt_range = (rt - rt_tolerance, rt + rt_tolerance)
-        return self.query_range(
-            window_group_index=window_group_index, rt_range=rt_range
-        )
+        return self.query_range(window_group_index=window_group_index, rt_range=rt_range)
 
 
 class PrecursorLookup:
@@ -330,9 +323,7 @@ class PrmTargetLookup:
         if ook0 is not None:
             ook0_range = (ook0 - ook0_tolerance, ook0 + ook0_tolerance)
 
-        return self.query_range(
-            mz_range=mz_range, rt_range=rt_range, ook0_range=ook0_range
-        )
+        return self.query_range(mz_range=mz_range, rt_range=rt_range, ook0_range=ook0_range)
 
 
 class PrmTransitionLookup:
@@ -353,9 +344,7 @@ class PrmTransitionLookup:
     def __getitem__(self, target_id: int) -> list[PrmTransition]:
         """Get transitions by target ID. Returns a list as multiple frames target the same ion."""
         if target_id not in self._target_map:
-            raise _missing_id_error(
-                "PRM transition target ID", target_id, self._target_map
-            )
+            raise _missing_id_error("PRM transition target ID", target_id, self._target_map)
         return self._target_map[target_id]
 
     def __len__(self) -> int:

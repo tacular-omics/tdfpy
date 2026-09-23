@@ -10,8 +10,7 @@ PRM_D_PATH = "tests/data/example_prm.d"
 
 @pytest.mark.parametrize(
     "example",
-    list(find_examples("docs/getting-started.md"))
-    + list(find_examples("docs/analysis.md")),
+    list(find_examples("docs/getting-started.md")) + list(find_examples("docs/analysis.md")),
     ids=str,
 )
 def test_getting_started(example: CodeExample, eval_example: EvalExample) -> None:

@@ -69,9 +69,7 @@ class RawSpectrum:
     num_scans: int
 
     def __post_init__(self) -> None:
-        index_arrays(
-            self.scan_indices, self.mz_indices, self.intensities, self.num_scans
-        )
+        index_arrays(self.scan_indices, self.mz_indices, self.intensities, self.num_scans)
 
     def __len__(self) -> int:
         return int(self.intensities.size)
@@ -114,9 +112,7 @@ def read_spectrum(td: TimsData, frame_id: int) -> RawSpectrum:
     """Read a frame's raw peaks into integer-index form."""
     num_scans = td.frame_metadata(frame_id).num_scans
 
-    scan_indices, mz_indices_u32, intensities_u32 = td.read_frame_arrays(
-        frame_id, 0, num_scans
-    )
+    scan_indices, mz_indices_u32, intensities_u32 = td.read_frame_arrays(frame_id, 0, num_scans)
     total_peaks = int(scan_indices.size)
     if total_peaks == 0:
         logger.info(
@@ -161,8 +157,7 @@ def exclude_region(
     )
     if n_out == 0:
         logger.warning(
-            "exclude_region[frame %d]: the region excluded ALL %d peaks. Check the "
-            "ChargeStateRegion line endpoints against this frame's m/z range.",
+            "exclude_region[frame %d]: the region excluded ALL %d peaks. Check the ChargeStateRegion line endpoints against this frame's m/z range.",
             frame_id,
             len(spectrum),
         )
@@ -195,9 +190,7 @@ def subset_scans(
             "half-open and require scan_num_begin >= 0 and "
             "scan_num_end >= scan_num_begin."
         )
-    mask = (spectrum.scan_indices >= scan_num_begin) & (
-        spectrum.scan_indices < scan_num_end
-    )
+    mask = (spectrum.scan_indices >= scan_num_begin) & (spectrum.scan_indices < scan_num_end)
     return spectrum.filter(mask)
 
 
@@ -233,8 +226,7 @@ def apply_noise(
         )
         if n_in > 0 and n_out == 0:
             logger.warning(
-                "apply_noise[frame %d]: filter %s removed ALL %d peaks; the "
-                "downstream spectrum is empty. Check this filter's thresholds.",
+                "apply_noise[frame %d]: filter %s removed ALL %d peaks; the downstream spectrum is empty. Check this filter's thresholds.",
                 frame_id,
                 type(f).__name__,
                 n_in,
@@ -268,10 +260,7 @@ def convert(
 
     if ion_mobility_type == "ccs":
         ion_mobility_array = np.array(
-            [
-                oneOverK0ToCCSforMz(ook0, 1, mz)
-                for ook0, mz in zip(ion_mobility_array, mz_array)
-            ],
+            [oneOverK0ToCCSforMz(ook0, 1, mz) for ook0, mz in zip(ion_mobility_array, mz_array)],
             dtype=np.float64,
         )
     elif ion_mobility_type == "voltage":
@@ -562,9 +551,7 @@ if _HAS_NUMBA:
 
         cell_id = np.empty(n, dtype=np.int64)
         for i in range(n):
-            cell_id[i] = (scan_arr[i] // attach_scan_half_width) * _CELL_STRIDE + (
-                mz_arr[i] // attach_mz_idx_half_width
-            )
+            cell_id[i] = (scan_arr[i] // attach_scan_half_width) * _CELL_STRIDE + (mz_arr[i] // attach_mz_idx_half_width)
         cell_order = np.argsort(cell_id)
         sorted_cell_id = cell_id[cell_order]
 
@@ -609,15 +596,9 @@ if _HAS_NUMBA:
                             continue
                         j_group = group_id[j]
                         # Leash: reject if too far from this group's seed.
-                        if (
-                            max_scan_from_seed >= 0
-                            and abs(p_scan - seed_scan[j_group]) > max_scan_from_seed
-                        ):
+                        if max_scan_from_seed >= 0 and abs(p_scan - seed_scan[j_group]) > max_scan_from_seed:
                             continue
-                        if (
-                            max_mz_idx_from_seed >= 0
-                            and abs(p_mz - seed_mz[j_group]) > max_mz_idx_from_seed
-                        ):
+                        if max_mz_idx_from_seed >= 0 and abs(p_mz - seed_mz[j_group]) > max_mz_idx_from_seed:
                             continue
                         d = d_scan + d_mz
                         j_seed_int = seed_intensities[j_group]
@@ -629,11 +610,7 @@ if _HAS_NUMBA:
                             best_group < 0
                             or d < best_dist
                             or (d == best_dist and j_seed_int > best_seed_int)
-                            or (
-                                d == best_dist
-                                and j_seed_int == best_seed_int
-                                and j < best_j
-                            )
+                            or (d == best_dist and j_seed_int == best_seed_int and j < best_j)
                         ):
                             best_group = j_group
                             best_dist = d
@@ -759,15 +736,9 @@ def _watershed_python_kernel(
                         continue
                     q_group = int(group_id[q])
                     # Leash: reject if too far from this group's seed.
-                    if (
-                        max_scan_from_seed >= 0
-                        and abs(p_scan - seed_scan[q_group]) > max_scan_from_seed
-                    ):
+                    if max_scan_from_seed >= 0 and abs(p_scan - seed_scan[q_group]) > max_scan_from_seed:
                         continue
-                    if (
-                        max_mz_idx_from_seed >= 0
-                        and abs(p_mz - seed_mz[q_group]) > max_mz_idx_from_seed
-                    ):
+                    if max_mz_idx_from_seed >= 0 and abs(p_mz - seed_mz[q_group]) > max_mz_idx_from_seed:
                         continue
                     d = d_scan + d_mz
                     q_seed_int = seed_intensities[q_group]
@@ -777,11 +748,7 @@ def _watershed_python_kernel(
                         best_group < 0
                         or d < best_dist
                         or (d == best_dist and q_seed_int > best_seed_int)
-                        or (
-                            d == best_dist
-                            and q_seed_int == best_seed_int
-                            and q < best_j
-                        )
+                        or (d == best_dist and q_seed_int == best_seed_int and q < best_j)
                     ):
                         best_group = q_group
                         best_dist = d
@@ -817,12 +784,8 @@ def _watershed_python_kernel(
     # Matches merge_peaks and the Numba kernel.
     positive = total > 0.0
     safe_total = np.where(positive, total, 1.0)
-    cent_mz = np.where(
-        positive, sum_mz / safe_total, np.asarray(seed_mz_value, dtype=np.float64)
-    )
-    cent_im = np.where(
-        positive, sum_im / safe_total, np.asarray(seed_im_value, dtype=np.float64)
-    )
+    cent_mz = np.where(positive, sum_mz / safe_total, np.asarray(seed_mz_value, dtype=np.float64))
+    cent_im = np.where(positive, sum_im / safe_total, np.asarray(seed_im_value, dtype=np.float64))
 
     keep = total >= float(min_centroid_intensity)
     return np.column_stack([cent_mz[keep], total[keep], cent_im[keep]])
@@ -1079,9 +1042,7 @@ def _prepare_spectrum(
     if scan_range is not None:
         if len(scan_range) != 2:
             raise ValueError("scan_range must contain two bounds.")
-        spectrum = subset_scans(
-            spectrum, scan_num_begin=scan_range[0], scan_num_end=scan_range[1]
-        )
+        spectrum = subset_scans(spectrum, scan_num_begin=scan_range[0], scan_num_end=scan_range[1])
         record("subset_scans")
     if exclude is not None:
         spectrum = exclude_region(spectrum, exclude, td=td, frame_id=frame_id)

@@ -40,12 +40,8 @@ class TestSubclassRelationships:
 
     def test_equality(self):
         assert MergePeaksCentroider() == MergePeaksCentroider()
-        assert WatershedCentroider(attach_scan_half_width=10) == WatershedCentroider(
-            attach_scan_half_width=10
-        )
-        assert WatershedCentroider(attach_scan_half_width=10) != WatershedCentroider(
-            attach_scan_half_width=11
-        )
+        assert WatershedCentroider(attach_scan_half_width=10) == WatershedCentroider(attach_scan_half_width=10)
+        assert WatershedCentroider(attach_scan_half_width=10) != WatershedCentroider(attach_scan_half_width=11)
 
 
 # --------------------------------------------------------------------------
@@ -386,12 +382,8 @@ class TestWatershedZeroIntensity:
         assert zero_row.shape == (1, 3)
         # Either zero-intensity point may seed (both tie at 0.0), but the
         # centroid must sit on one of them, never at the origin.
-        assert zero_row[0, 0] == pytest.approx(200.0) or zero_row[
-            0, 0
-        ] == pytest.approx(200.1)
-        assert zero_row[0, 2] == pytest.approx(0.60) or zero_row[0, 2] == pytest.approx(
-            0.61
-        )
+        assert zero_row[0, 0] == pytest.approx(200.0) or zero_row[0, 0] == pytest.approx(200.1)
+        assert zero_row[0, 2] == pytest.approx(0.60) or zero_row[0, 2] == pytest.approx(0.61)
         real_row = out[out[:, 1] > 0.0][0]
         assert real_row[1] == pytest.approx(400.0)
 
@@ -419,9 +411,7 @@ def test_watershed_numba_matches_python_on_random_grid(params):
     mz_idx = rng.integers(0, 60, n).astype(np.int64)
     # Deduplicate: two points at the same (scan, TOF index) is not a state the
     # reader can produce, and it makes the ordering ambiguous.
-    _, unique_idx = np.unique(
-        np.column_stack([scan, mz_idx]), axis=0, return_index=True
-    )
+    _, unique_idx = np.unique(np.column_stack([scan, mz_idx]), axis=0, return_index=True)
     scan, mz_idx = scan[unique_idx], mz_idx[unique_idx]
     intens = rng.choice([10.0, 20.0, 30.0, 50.0], size=scan.size)
     mz_v = mz_idx * 0.01 + 300.0
@@ -608,9 +598,7 @@ class TestBoxSmoothIntensities:
         scan = np.repeat(np.arange(3), 3).astype(np.int64)
         mz = np.tile(np.array([10, 11, 12]), 3).astype(np.int64)
         intens = np.arange(1.0, 10.0)
-        out = box_smooth(
-            scan, mz, intens, scan_half_width=1, mz_idx_half_width=1, mode="sum"
-        )
+        out = box_smooth(scan, mz, intens, scan_half_width=1, mz_idx_half_width=1, mode="sum")
         assert out[4] == pytest.approx(intens.sum())  # centre: all 9
         assert out[0] == pytest.approx(1 + 2 + 4 + 5)  # top-left quadrant
         assert out[8] == pytest.approx(5 + 6 + 8 + 9)  # bottom-right quadrant

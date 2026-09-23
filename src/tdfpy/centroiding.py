@@ -149,16 +149,12 @@ if _HAS_NUMBA:
                         continue
                     im_i = im_sorted[i]
                     if im_i < im_lo:
-                        expand = (
-                            im_lo * mob_tol_factor if im_is_relative else mob_tol_abs
-                        )
+                        expand = im_lo * mob_tol_factor if im_is_relative else mob_tol_abs
                         if im_lo - im_i <= expand * 1.0000001:
                             im_lo = im_i
                             changed = True
                     elif im_i > im_hi:
-                        expand = (
-                            im_hi * mob_tol_factor if im_is_relative else mob_tol_abs
-                        )
+                        expand = im_hi * mob_tol_factor if im_is_relative else mob_tol_abs
                         if im_i - im_hi <= expand * 1.0000001:
                             im_hi = im_i
                             changed = True
@@ -202,9 +198,7 @@ if _HAS_NUMBA:
                 noise_left_mz = mz_peak - peak_noise_window
                 noise_right_mz = mz_peak + peak_noise_window
                 noise_left_idx = np.searchsorted(mz_sorted, noise_left_mz)
-                noise_right_idx = np.searchsorted(
-                    mz_sorted, noise_right_mz, side="right"
-                )
+                noise_right_idx = np.searchsorted(mz_sorted, noise_right_mz, side="right")
                 for i in range(noise_left_idx, noise_right_idx):
                     if used[i]:
                         continue
@@ -214,9 +208,7 @@ if _HAS_NUMBA:
                     d = mz_sorted[i] - mz_peak
                     if d < 0.0:
                         d = -d
-                    threshold = anchor_int * (
-                        1.0 - d * noise_inv_window * noise_one_minus_end
-                    )
+                    threshold = anchor_int * (1.0 - d * noise_inv_window * noise_one_minus_end)
                     if intensity_sorted[i] < threshold:
                         used[i] = True
 
@@ -492,27 +484,17 @@ def _merge_peaks_python(
                     continue
                 im_i = float(mobility_window[i])
                 if im_i < im_lo:
-                    expand = (
-                        im_lo * mobility_tol_factor
-                        if im_tolerance_type == "relative"
-                        else mobility_tol_abs
-                    )
+                    expand = im_lo * mobility_tol_factor if im_tolerance_type == "relative" else mobility_tol_abs
                     if im_lo - im_i <= expand * 1.0000001:
                         im_lo = im_i
                         changed = True
                 elif im_i > im_hi:
-                    expand = (
-                        im_hi * mobility_tol_factor
-                        if im_tolerance_type == "relative"
-                        else mobility_tol_abs
-                    )
+                    expand = im_hi * mobility_tol_factor if im_tolerance_type == "relative" else mobility_tol_abs
                     if im_i - im_hi <= expand * 1.0000001:
                         im_hi = im_i
                         changed = True
 
-        nearby_mask = (
-            (mobility_window >= im_lo) & (mobility_window <= im_hi) & ~used_window
-        )
+        nearby_mask = (mobility_window >= im_lo) & (mobility_window <= im_hi) & ~used_window
 
         # Get nearby intensities (need this for multiple operations)
         nearby_intensities = intensity_window[nearby_mask]
@@ -538,9 +520,7 @@ def _merge_peaks_python(
         total_intensity = np.sum(nearby_intensities)
         if total_intensity > 0.0:
             merged_mz = np.dot(nearby_mz, nearby_intensities) / total_intensity
-            merged_mobility = (
-                np.dot(nearby_mobility, nearby_intensities) / total_intensity
-            )
+            merged_mobility = np.dot(nearby_mobility, nearby_intensities) / total_intensity
         else:
             merged_mz = mz_peak
             merged_mobility = mobility_peak
@@ -561,26 +541,15 @@ def _merge_peaks_python(
         # against the raw anchor intensity.
         if peak_noise_filter and peak_noise_window > 0.0:
             anchor_int = float(intensity_peak)
-            noise_left_idx = int(
-                np.searchsorted(mz_array, mz_peak - peak_noise_window, side="left")
-            )
-            noise_right_idx = int(
-                np.searchsorted(mz_array, mz_peak + peak_noise_window, side="right")
-            )
+            noise_left_idx = int(np.searchsorted(mz_array, mz_peak - peak_noise_window, side="left"))
+            noise_right_idx = int(np.searchsorted(mz_array, mz_peak + peak_noise_window, side="right"))
             noise_mz = mz_array[noise_left_idx:noise_right_idx]
             noise_int = intensity_array[noise_left_idx:noise_right_idx]
             noise_im = ion_mobility_array[noise_left_idx:noise_right_idx]
             noise_used = used_mask[noise_left_idx:noise_right_idx]
             d = np.abs(noise_mz - mz_peak)
-            threshold = anchor_int * (
-                1.0 - (d / peak_noise_window) * (1.0 - peak_noise_end_fraction)
-            )
-            suppress = (
-                ~noise_used
-                & (noise_im >= im_lo)
-                & (noise_im <= im_hi)
-                & (noise_int < threshold)
-            )
+            threshold = anchor_int * (1.0 - (d / peak_noise_window) * (1.0 - peak_noise_end_fraction))
+            suppress = ~noise_used & (noise_im >= im_lo) & (noise_im <= im_hi) & (noise_int < threshold)
             if suppress.any():
                 global_suppress_idx = np.where(suppress)[0] + noise_left_idx
                 used_mask[global_suppress_idx] = True
@@ -588,9 +557,7 @@ def _merge_peaks_python(
         # None or any non-positive max_peaks means "no limit" (kept consistent
         # with the numba kernel, which normalises the same way).
         if max_peaks is not None and max_peaks > 0 and len(merged_mz_list) >= max_peaks:
-            logger.debug(
-                "Reached max_peaks limit of %d, stopping centroiding", max_peaks
-            )
+            logger.debug("Reached max_peaks limit of %d, stopping centroiding", max_peaks)
             break
 
     # Per-call summary stays at DEBUG: get_centroided_spectrum emits the
@@ -602,9 +569,7 @@ def _merge_peaks_python(
         len(merged_mz_list),
         100 - len(merged_mz_list) / len(mz_array) * 100,
     )
-    logger.debug(
-        "Total raw peaks used in centroiding: %d/%d", np.sum(used_mask), len(mz_array)
-    )
+    logger.debug("Total raw peaks used in centroiding: %d/%d", np.sum(used_mask), len(mz_array))
 
     if not merged_mz_list:
         return np.empty((0, 3), dtype=np.float64)
@@ -732,9 +697,7 @@ def get_centroided_spectrum(
     return centroids
 
 
-def _sum_by_tof_index(
-    tof_indices: np.ndarray, intensities: np.ndarray
-) -> tuple[np.ndarray, np.ndarray]:
+def _sum_by_tof_index(tof_indices: np.ndarray, intensities: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """Total the intensity landing on each distinct TOF index.
 
     Returns ``(tof_indices, summed_intensities)`` sorted ascending by TOF index.
@@ -830,9 +793,7 @@ def get_mobility_collapsed_spectrum(
     mz_chunks = []
     intensity_chunks = []
     for frame_id, tofs, intensities in groups.values():
-        bins, sums = _sum_by_tof_index(
-            np.concatenate(tofs), np.concatenate(intensities)
-        )
+        bins, sums = _sum_by_tof_index(np.concatenate(tofs), np.concatenate(intensities))
         mz_chunks.append(td.indexToMz(frame_id, bins))
         intensity_chunks.append(sums)
     mz_array = np.concatenate(mz_chunks)
@@ -877,14 +838,10 @@ def get_tdf_df(td: TimsData) -> pd.DataFrame:
     pasef_frame_msms_info_df = pd_tdf.pasef_frame_msms_info.drop(["Frame"], axis=1)
 
     # count the number of items in each group
-    pasef_frame_msms_info_df["count"] = pasef_frame_msms_info_df.groupby("Precursor")[
-        "Precursor"
-    ].transform("count")
+    pasef_frame_msms_info_df["count"] = pasef_frame_msms_info_df.groupby("Precursor")["Precursor"].transform("count")
 
     # keep only the row for each group
-    pasef_frame_msms_info_df = pasef_frame_msms_info_df.drop_duplicates(
-        subset="Precursor", keep="first"
-    )
+    pasef_frame_msms_info_df = pasef_frame_msms_info_df.drop_duplicates(subset="Precursor", keep="first")
     if len(pasef_frame_msms_info_df) != len(merged_df):
         raise ValueError(
             f"PASEF frame MS/MS info row count ({len(pasef_frame_msms_info_df)}) "

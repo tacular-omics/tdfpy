@@ -108,9 +108,7 @@ def slice_d_folder(
     return dest_dir
 
 
-def _write_slice(
-    source_dir: Path, dest_dir: Path, frame_start: int, frame_end: int
-) -> list[int]:
+def _write_slice(source_dir: Path, dest_dir: Path, frame_start: int, frame_end: int) -> list[int]:
     """Populate an existing, empty ``dest_dir`` with the sliced .d contents.
 
     Returns the list of kept frame IDs.
@@ -129,13 +127,9 @@ def _write_slice(
 
         if not rows:
             lo, hi = conn.execute("SELECT MIN(Id), MAX(Id) FROM Frames").fetchone()
-            available = (
-                f"{lo}..{hi}" if lo is not None else "none (Frames table is empty)"
-            )
+            available = f"{lo}..{hi}" if lo is not None else "none (Frames table is empty)"
             raise ValueError(
-                f"No frames in the requested range [{frame_start}, {frame_end}] "
-                f"(inclusive). Source .d folder has frame IDs {available}; frame "
-                "IDs are 1-based."
+                f"No frames in the requested range [{frame_start}, {frame_end}] (inclusive). Source .d folder has frame IDs {available}; frame IDs are 1-based."
             )
 
         null_offset_ids = [r[0] for r in rows if r[1] is None]
@@ -181,42 +175,29 @@ def _write_slice(
     return frame_ids
 
 
-def _validate_inputs(
-    source_dir: Path, dest_dir: Path, frame_start: int, frame_end: int
-) -> None:
+def _validate_inputs(source_dir: Path, dest_dir: Path, frame_start: int, frame_end: int) -> None:
     if not (source_dir / TDF_FILE).exists():
         raise FileNotFoundError(f"{TDF_FILE} not found in {source_dir}")
     if not (source_dir / TDF_BIN_FILE).exists():
         raise FileNotFoundError(f"{TDF_BIN_FILE} not found in {source_dir}")
     if frame_start > frame_end:
-        raise ValueError(
-            f"frame_start ({frame_start}) must be <= frame_end ({frame_end})"
-        )
+        raise ValueError(f"frame_start ({frame_start}) must be <= frame_end ({frame_end})")
 
     resolved_source = source_dir.resolve()
     resolved_dest = dest_dir.resolve()
     if resolved_dest == resolved_source:
         raise ValueError(
-            f"dest_dir ({dest_dir}) resolves to the source .d folder "
-            f"({source_dir}). Slicing in place is not supported; choose a "
-            "different destination."
+            f"dest_dir ({dest_dir}) resolves to the source .d folder ({source_dir}). Slicing in place is not supported; choose a different destination."
         )
     if resolved_source in resolved_dest.parents:
-        raise ValueError(
-            f"dest_dir ({dest_dir}) resolves to a location inside the source .d "
-            f"folder ({source_dir}). Choose a destination outside the source."
-        )
+        raise ValueError(f"dest_dir ({dest_dir}) resolves to a location inside the source .d folder ({source_dir}). Choose a destination outside the source.")
     if dest_dir.exists():
         raise FileExistsError(
-            f"dest_dir ({dest_dir}) already exists. slice_d_folder never "
-            "overwrites an existing path; remove it first or choose another "
-            "destination."
+            f"dest_dir ({dest_dir}) already exists. slice_d_folder never overwrites an existing path; remove it first or choose another destination."
         )
 
 
-def _rebuild_binary(
-    src_bin: Path, dst_bin: Path, original_offsets: list[int]
-) -> list[int]:
+def _rebuild_binary(src_bin: Path, dst_bin: Path, original_offsets: list[int]) -> list[int]:
     """Copy only the kept frames' blobs to a new binary file.
 
     Returns the list of new offsets corresponding to each kept frame.
@@ -239,10 +220,7 @@ def _rebuild_binary(
                 raise IOError(f"Invalid byte_count {byte_count} at offset {offset}")
             blob_rest = src.read(remaining)
             if len(blob_rest) < remaining:
-                raise IOError(
-                    f"Truncated blob at offset {offset}: expected {remaining} "
-                    f"bytes, got {len(blob_rest)}"
-                )
+                raise IOError(f"Truncated blob at offset {offset}: expected {remaining} bytes, got {len(blob_rest)}")
 
             new_offsets.append(dst.tell())
             dst.write(header)
@@ -284,16 +262,11 @@ def _filter_sqlite(conn: sqlite3.Connection, frame_start: int, frame_end: int) -
         # Also clean up PasefFrameMsMsInfo rows referencing deleted precursors.
         if _table_exists(conn, "PasefFrameMsMsInfo"):
             conn.execute(
-                "DELETE FROM PasefFrameMsMsInfo "
-                "WHERE Precursor NOT IN (SELECT Id FROM Precursors)",
+                "DELETE FROM PasefFrameMsMsInfo WHERE Precursor NOT IN (SELECT Id FROM Precursors)",
             )
 
     # Delete orphaned DIA windows.
-    if _table_exists(conn, "DiaFrameMsMsWindows") and _table_exists(
-        conn, "DiaFrameMsMsInfo"
-    ):
+    if _table_exists(conn, "DiaFrameMsMsWindows") and _table_exists(conn, "DiaFrameMsMsInfo"):
         conn.execute(
-            "DELETE FROM DiaFrameMsMsWindows "
-            "WHERE WindowGroup NOT IN "
-            "(SELECT DISTINCT WindowGroup FROM DiaFrameMsMsInfo)",
+            "DELETE FROM DiaFrameMsMsWindows WHERE WindowGroup NOT IN (SELECT DISTINCT WindowGroup FROM DiaFrameMsMsInfo)",
         )

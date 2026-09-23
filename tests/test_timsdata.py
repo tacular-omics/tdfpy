@@ -57,9 +57,7 @@ def _set_global_metadata(d: Path, key: str, value: str) -> None:
 def _frame_header(d: Path, frame_id: int = 1) -> tuple[int, int]:
     """Return ``(TimsId offset, NumScans)`` for a frame."""
     with closing(sqlite3.connect(d / "analysis.tdf")) as conn:
-        offset, num_scans = conn.execute(
-            "SELECT TimsId, NumScans FROM Frames WHERE Id = ?", (frame_id,)
-        ).fetchone()
+        offset, num_scans = conn.execute("SELECT TimsId, NumScans FROM Frames WHERE Id = ?", (frame_id,)).fetchone()
     return int(offset), int(num_scans)
 
 
@@ -87,9 +85,7 @@ def _patch_bin_header(
 def _set_num_scans(d: Path, frame_id: int, num_scans: int) -> None:
     """Keep Frames.NumScans in step with a patched binary header."""
     with closing(sqlite3.connect(d / "analysis.tdf")) as conn:
-        conn.execute(
-            "UPDATE Frames SET NumScans = ? WHERE Id = ?", (num_scans, frame_id)
-        )
+        conn.execute("UPDATE Frames SET NumScans = ? WHERE Id = ?", (num_scans, frame_id))
         conn.commit()
 
 
@@ -137,9 +133,7 @@ def test_unknown_tims_calibration_model_is_rejected(tmp_path: Path) -> None:
     with closing(sqlite3.connect(d / "analysis.tdf")) as conn:
         conn.execute("UPDATE TimsCalibration SET ModelType = 5")
         conn.commit()
-    with pytest.raises(
-        UnsupportedCalibrationError, match="TimsCalibration.ModelType 5"
-    ):
+    with pytest.raises(UnsupportedCalibrationError, match="TimsCalibration.ModelType 5"):
         TimsData(str(d))
 
 
@@ -185,9 +179,7 @@ def test_read_scans_matches_frame_metadata() -> None:
     _require_fixture()
     with timsdata.timsdata_connect(TDF_PATH) as td:
         assert td.conn is not None
-        rows = td.conn.execute(
-            "SELECT Id, NumScans, NumPeaks FROM Frames ORDER BY Id LIMIT 25"
-        ).fetchall()
+        rows = td.conn.execute("SELECT Id, NumScans, NumPeaks FROM Frames ORDER BY Id LIMIT 25").fetchall()
         for row in rows:
             scans = td.readScans(row["Id"], 0, row["NumScans"])
             assert len(scans) == row["NumScans"]
@@ -202,9 +194,7 @@ def test_partial_scan_range_matches_full_read() -> None:
     _require_fixture()
     with timsdata.timsdata_connect(TDF_PATH) as td:
         assert td.conn is not None
-        fid, num_scans = td.conn.execute(
-            "SELECT Id, NumScans FROM Frames ORDER BY Id LIMIT 1"
-        ).fetchone()
+        fid, num_scans = td.conn.execute("SELECT Id, NumScans FROM Frames ORDER BY Id LIMIT 1").fetchone()
         full = td.readScans(fid, 0, num_scans)
         part = td.readScans(fid, 10, 25)
         assert len(part) == 15
@@ -214,9 +204,7 @@ def test_partial_scan_range_matches_full_read() -> None:
             np.testing.assert_array_equal(inten, expected_int)
 
 
-@pytest.mark.parametrize(
-    "scan_range", [(0, None), (0, 1), (5, 50), (300, 671), (668, 671)]
-)
+@pytest.mark.parametrize("scan_range", [(0, None), (0, 1), (5, 50), (300, 671), (668, 671)])
 def test_read_frame_arrays_matches_read_scans(
     scan_range: tuple[int, int | None],
 ) -> None:
@@ -230,20 +218,14 @@ def test_read_frame_arrays_matches_read_scans(
     begin, end = scan_range
     with timsdata.timsdata_connect(TDF_PATH) as td:
         assert td.conn is not None
-        for row in td.conn.execute(
-            "SELECT Id, NumScans FROM Frames ORDER BY Id LIMIT 20"
-        ).fetchall():
+        for row in td.conn.execute("SELECT Id, NumScans FROM Frames ORDER BY Id LIMIT 20").fetchall():
             fid, num_scans = row["Id"], row["NumScans"]
             stop = num_scans if end is None else end
             scans = td.readScans(fid, begin, stop)
             scan_indices, tof, intensity = td.read_frame_arrays(fid, begin, stop)
 
-            np.testing.assert_array_equal(
-                tof, np.concatenate([idx for idx, _ in scans])
-            )
-            np.testing.assert_array_equal(
-                intensity, np.concatenate([val for _, val in scans])
-            )
+            np.testing.assert_array_equal(tof, np.concatenate([idx for idx, _ in scans]))
+            np.testing.assert_array_equal(intensity, np.concatenate([val for _, val in scans]))
             np.testing.assert_array_equal(
                 scan_indices,
                 np.repeat(np.arange(begin, stop), [len(idx) for idx, _ in scans]),
@@ -274,9 +256,7 @@ def test_use_after_close_raises() -> None:
 
 
 @pytest.mark.parametrize("byte_count", [0, 4, 7])
-def test_byte_count_below_header_size_is_rejected(
-    tmp_path: Path, byte_count: int
-) -> None:
+def test_byte_count_below_header_size_is_rejected(tmp_path: Path, byte_count: int) -> None:
     """A byte_count under 8 used to become a negative read length.
 
     7 is the nastiest: ``read(-1)`` swallowed the whole rest of the file — tens
@@ -288,9 +268,7 @@ def test_byte_count_below_header_size_is_rejected(
     offset, _ = _frame_header(d)
     _patch_bin_header(d, offset, byte_count=byte_count)
     with timsdata.timsdata_connect(str(d)) as td:
-        with pytest.raises(
-            UnsupportedTdfError, match=rf"Frame 1: .*{byte_count}-byte packet"
-        ):
+        with pytest.raises(UnsupportedTdfError, match=rf"Frame 1: .*{byte_count}-byte packet"):
             td.readScans(1, 0, 10)
 
 
@@ -304,9 +282,7 @@ def test_truncated_tdf_bin_is_rejected(tmp_path: Path) -> None:
         byte_count, _ = struct.unpack("<II", fh.read(8))
         fh.truncate(offset + 8 + byte_count // 2)
     with timsdata.timsdata_connect(str(d)) as td:
-        with pytest.raises(
-            UnsupportedTdfError, match=r"Frame 1: truncated payload .*expected \d+"
-        ):
+        with pytest.raises(UnsupportedTdfError, match=r"Frame 1: truncated payload .*expected \d+"):
             td.readScans(1, 0, 10)
 
 
@@ -316,9 +292,7 @@ def test_truncated_frame_header_is_rejected(tmp_path: Path) -> None:
     with open(d / "analysis.tdf_bin", "r+b") as fh:
         fh.truncate(offset + 3)
     with timsdata.timsdata_connect(str(d)) as td:
-        with pytest.raises(
-            UnsupportedTdfError, match=r"Frame 1: truncated header .*got 3"
-        ):
+        with pytest.raises(UnsupportedTdfError, match=r"Frame 1: truncated header .*got 3"):
             td.readScans(1, 0, 10)
 
 
@@ -373,9 +347,7 @@ def test_payload_scan_count_disagreeing_with_the_header_is_rejected(
     _patch_bin_header(d, offset, scan_count=num_scans + 2)
     _set_num_scans(d, 1, num_scans + 2)
     with timsdata.timsdata_connect(str(d)) as td:
-        with pytest.raises(
-            UnsupportedTdfError, match=r"Frame 1: the payload's leading word"
-        ):
+        with pytest.raises(UnsupportedTdfError, match=r"Frame 1: the payload's leading word"):
             td.readScans(1, 0, 10)
 
 
@@ -440,10 +412,7 @@ def eager_preemption():
 
 def _assert_concurrent_reads_match_serial(td: TimsData, workers: int) -> None:
     assert td.conn is not None
-    frame_ids = [
-        int(r["Id"])
-        for r in td.conn.execute("SELECT Id FROM Frames ORDER BY Id LIMIT 40")
-    ]
+    frame_ids = [int(r["Id"]) for r in td.conn.execute("SELECT Id FROM Frames ORDER BY Id LIMIT 40")]
     serial = {fid: td.read_frame_arrays(fid) for fid in frame_ids}
 
     def read(fid: int) -> tuple[int, tuple]:
@@ -473,9 +442,7 @@ def test_concurrent_frame_reads_match_serial_reads(eager_preemption) -> None:
         _assert_concurrent_reads_match_serial(td, workers=2)
 
 
-def test_concurrent_frame_reads_are_safe_without_pread(
-    eager_preemption, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_concurrent_frame_reads_are_safe_without_pread(eager_preemption, monkeypatch: pytest.MonkeyPatch) -> None:
     """The same, on the lock-guarded fallback used where os.pread is missing.
 
     ``os.pread`` is POSIX-only, so on Windows the fallback is the only path
@@ -500,18 +467,14 @@ def test_ccs_one_over_k0_roundtrip(charge: int) -> None:
             ccs = timsdata.oneOverK0ToCCSforMz(ook0, charge, mz)
             assert ccs > 0
             back = timsdata.ccsToOneOverK0forMz(ccs, charge, mz)
-            assert back == pytest.approx(ook0, rel=1e-12), (
-                f"charge={charge} mz={mz} 1/K0={ook0}"
-            )
+            assert back == pytest.approx(ook0, rel=1e-12), f"charge={charge} mz={mz} 1/K0={ook0}"
 
 
 def test_ccs_roundtrip_from_the_ccs_side() -> None:
     """And the other direction, so neither is merely self-consistent."""
     for ccs in (100.0, 350.0, 800.0):
         ook0 = timsdata.ccsToOneOverK0forMz(ccs, 2, 700.0)
-        assert timsdata.oneOverK0ToCCSforMz(ook0, 2, 700.0) == pytest.approx(
-            ccs, rel=1e-12
-        )
+        assert timsdata.oneOverK0ToCCSforMz(ook0, 2, 700.0) == pytest.approx(ccs, rel=1e-12)
 
 
 def test_misnamed_ccs_alias_still_works_but_warns() -> None:
@@ -573,9 +536,7 @@ def test_index_to_mz_domain_covers_every_real_tof_index() -> None:
             continue
         with timsdata.timsdata_connect(str(d)) as td:
             assert td.conn is not None
-            for row in td.conn.execute(
-                "SELECT Id FROM Frames ORDER BY Id LIMIT 20"
-            ).fetchall():
+            for row in td.conn.execute("SELECT Id FROM Frames ORDER BY Id LIMIT 20").fetchall():
                 fid = int(row["Id"])
                 cal, _, _ = td._mz_cal(fid)
                 assert cal.min_tof_index < 0

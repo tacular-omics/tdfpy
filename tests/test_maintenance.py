@@ -29,20 +29,11 @@ def test_high_level_extraction_matches_concurrent_first_use(mode, pread, monkeyp
     path = f"tests/data/example_{mode}.d"
     filters = [SelectionPolygonGate(), DiaMs1WindowGate()]
     with TimsData(path) as serial:
-        ids = [
-            r[0]
-            for r in serial.conn.execute(
-                "SELECT Id FROM Frames WHERE MsMsType=0 LIMIT 3"
-            )
-        ]
+        ids = [r[0] for r in serial.conn.execute("SELECT Id FROM Frames WHERE MsMsType=0 LIMIT 3")]
         expected = {fid: get_raw_peaks(serial, fid, noise=filters) for fid in ids}
     with TimsData(path) as parallel:
         with ThreadPoolExecutor(4) as pool:
-            results = list(
-                pool.map(
-                    lambda fid: get_raw_peaks(parallel, fid, noise=filters), ids * 2
-                )
-            )
+            results = list(pool.map(lambda fid: get_raw_peaks(parallel, fid, noise=filters), ids * 2))
     for fid, result in zip(ids * 2, results):
         np.testing.assert_array_equal(result, expected[fid])
 
@@ -97,14 +88,10 @@ def test_calibration_generator_refuses_to_replace_references():
 
 def test_precursor_coordinates_preserve_sqlite_precision():
     with DDA("tests/data/example_dda.d") as reader:
-        for pid, scan in reader.timsdata.conn.execute(
-            "SELECT Id, ScanNumber FROM Precursors"
-        ):
+        for pid, scan in reader.timsdata.conn.execute("SELECT Id, ScanNumber FROM Precursors"):
             precursor = reader.precursors[pid]
             assert precursor.scan_number == scan
-            expected = reader.timsdata.scanNumToOneOverK0(
-                precursor.parent_frame, [scan]
-            )[0]
+            expected = reader.timsdata.scanNumToOneOverK0(precursor.parent_frame, [scan])[0]
             assert precursor.ook0 == pytest.approx(expected, abs=1e-12)
 
 
@@ -148,18 +135,14 @@ def test_corrupt_frame_is_rejected(single_frame, mutation):
 
 def test_zero_padding_dia_gate_obeys_half_open_scans():
     with TimsData("tests/data/example_dia.d") as td:
-        fid, ns = td.conn.execute(
-            "SELECT Id, NumScans FROM Frames WHERE MsMsType=0 LIMIT 1"
-        ).fetchone()
+        fid, ns = td.conn.execute("SELECT Id, NumScans FROM Frames WHERE MsMsType=0 LIMIT 1").fetchone()
         boxes = read_dia_ms1_boxes(td)
         gate = _build_dia_ms1_gate(td, fid, ns, DiaMs1WindowGate(mz_pad=0, im_pad=0))
         for begin, end, lo, hi in boxes:
             tof = int(round(td.mzToIndex(fid, [(lo + hi) / 2])[0]))
             mz = td.indexToMz(fid, [tof])[0]
             for scan in (begin, end - 1, end):
-                expected = any(
-                    b <= scan < e and low <= mz <= high for b, e, low, high in boxes
-                )
+                expected = any(b <= scan < e and low <= mz <= high for b, e, low, high in boxes)
                 assert gate.contains(scan, tof) == expected
 
 
@@ -175,18 +158,13 @@ def test_gate_cache_respects_later_frame_calibration(tmp_path):
 
     d = slice_d_folder("tests/data/example_dia.d", tmp_path / "changed.d", 1, 40)
     with closing(sqlite3.connect(d / "analysis.tdf")) as conn:
-        ids = [
-            r[0]
-            for r in conn.execute("SELECT Id FROM Frames WHERE MsMsType=0 ORDER BY Id")
-        ]
+        ids = [r[0] for r in conn.execute("SELECT Id FROM Frames WHERE MsMsType=0 ORDER BY Id")]
         columns = [r[1] for r in conn.execute("PRAGMA table_info(MzCalibration)")]
         row = list(conn.execute("SELECT * FROM MzCalibration LIMIT 1").fetchone())
         new_id = conn.execute("SELECT MAX(Id)+1 FROM MzCalibration").fetchone()[0]
         row[columns.index("Id")] = new_id
         row[columns.index("C1")] *= 1.1
-        conn.execute(
-            f"INSERT INTO MzCalibration VALUES ({','.join('?' for _ in row)})", row
-        )
+        conn.execute(f"INSERT INTO MzCalibration VALUES ({','.join('?' for _ in row)})", row)
         conn.execute("UPDATE Frames SET MzCalibration=? WHERE Id=?", (new_id, ids[1]))
         conn.commit()
     cfg = DiaMs1WindowGate(mz_pad=0, im_pad=0)
@@ -222,9 +200,7 @@ def test_merge_rejects_invalid_configuration_before_dispatch(kwargs, use_numba):
     from tdfpy import merge_peaks
 
     with pytest.raises(ValueError):
-        merge_peaks(
-            np.empty(0), np.empty(0), np.empty(0), use_numba=use_numba, **kwargs
-        )
+        merge_peaks(np.empty(0), np.empty(0), np.empty(0), use_numba=use_numba, **kwargs)
 
 
 def test_invalid_filter_is_not_retried_as_a_numba_failure():
@@ -260,9 +236,7 @@ def test_bad_zstd_returns_a_frame_specific_validation_issue(single_frame):
 def test_timsdata_metadata_connection_is_read_only(tmp_path):
     from tdfpy import slice_d_folder
 
-    source = slice_d_folder(
-        "tests/data/example_dia.d", tmp_path / "read only #1.d", 1, 1
-    )
+    source = slice_d_folder("tests/data/example_dia.d", tmp_path / "read only #1.d", 1, 1)
     with TimsData(source) as td:
         with pytest.raises(sqlite3.OperationalError, match="readonly"):
             td.conn.execute("DELETE FROM Frames")

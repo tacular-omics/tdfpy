@@ -88,9 +88,7 @@ def plot_centroiding(
         import matplotlib.pyplot as plt
         from matplotlib.gridspec import GridSpec
     except ImportError as exc:
-        raise ImportError(
-            "matplotlib is required for visualization: pip install matplotlib"
-        ) from exc
+        raise ImportError("matplotlib is required for visualization: pip install matplotlib") from exc
 
     from .centroiding import merge_peaks
     from .noise import coerce_filters
@@ -119,14 +117,9 @@ def plot_centroiding(
     # Since both come from the same RawSpectrum in the same order, the kept
     # rows are a strict subset — compute the rejected rows via a row-mask.
     if filters and len(raw) < len(raw_all):
-        kept_keys = set(
-            zip(kept_spectrum.scan_indices.tolist(), kept_spectrum.mz_indices.tolist())
-        )
+        kept_keys = set(zip(kept_spectrum.scan_indices.tolist(), kept_spectrum.mz_indices.tolist()))
         rejected_mask = np.array(
-            [
-                (int(s), int(m)) not in kept_keys
-                for s, m in zip(spectrum.scan_indices, spectrum.mz_indices)
-            ],
+            [(int(s), int(m)) not in kept_keys for s, m in zip(spectrum.scan_indices, spectrum.mz_indices)],
             dtype=bool,
         )
         rejected_raw = raw_all[rejected_mask]
@@ -165,9 +158,7 @@ def plot_centroiding(
     retention_pct = 100.0 * total_c_int / total_raw_int if total_raw_int > 0 else 0.0
     # Fraction of the *pre-noise* intensity (kept + rejected) removed by filtering.
     total_pre_noise_int = total_raw_int + total_nr_int
-    lost_pct = (
-        100.0 * total_nr_int / total_pre_noise_int if total_pre_noise_int > 0 else 0.0
-    )
+    lost_pct = 100.0 * total_nr_int / total_pre_noise_int if total_pre_noise_int > 0 else 0.0
 
     # --- optional axis clipping -----------------------------------------------
     def _mask(mz: np.ndarray, im: np.ndarray) -> np.ndarray:
@@ -199,9 +190,7 @@ def plot_centroiding(
     )
 
     # --- layout ---------------------------------------------------------------
-    im_label = {"ook0": "1/K₀ (V·s/cm²)", "ccs": "CCS (Å²)", "voltage": "Voltage (V)"}[
-        ion_mobility_type
-    ]
+    im_label = {"ook0": "1/K₀ (V·s/cm²)", "ccs": "CCS (Å²)", "voltage": "Voltage (V)"}[ion_mobility_type]
 
     fig = plt.figure(figsize=(15, 11))
     gs = GridSpec(2, 2, figure=fig, hspace=0.38, wspace=0.3)
@@ -242,9 +231,7 @@ def plot_centroiding(
     if len(mz_c_p) > 0:
         s_min, s_max = 20, 200
         if int_c_p.max() > int_c_p.min():
-            s_c = s_min + (s_max - s_min) * (int_c_p - int_c_p.min()) / (
-                int_c_p.max() - int_c_p.min()
-            )
+            s_c = s_min + (s_max - s_min) * (int_c_p - int_c_p.min()) / (int_c_p.max() - int_c_p.min())
         else:
             s_c = np.full(len(int_c_p), (s_min + s_max) / 2)
         sc_cent = ax_cent.scatter(
@@ -264,11 +251,7 @@ def plot_centroiding(
     ax_cent.set_title(f"Centroided  (n={len(mz_c_p):,})")
 
     # Panel 3 — noise-rejected raw peaks (filters operate pre-centroid now)
-    nr_title = (
-        f"Noise-rejected raw peaks  (n={len(mz_nr_p):,},  {lost_pct:.1f}% of intensity)"
-        if filters
-        else "Noise-rejected raw peaks  (no `noise` set)"
-    )
+    nr_title = f"Noise-rejected raw peaks  (n={len(mz_nr_p):,},  {lost_pct:.1f}% of intensity)" if filters else "Noise-rejected raw peaks  (no `noise` set)"
     if len(mz_nr_p) > 0:
         ax_lost.scatter(
             mz_nr_p,
@@ -283,9 +266,7 @@ def plot_centroiding(
         ax_lost.text(
             0.5,
             0.5,
-            "No noise-rejected raw peaks"
-            if filters
-            else "Set `noise=` to see\nrejected peaks",
+            "No noise-rejected raw peaks" if filters else "Set `noise=` to see\nrejected peaks",
             ha="center",
             va="center",
             transform=ax_lost.transAxes,
@@ -304,9 +285,7 @@ def plot_centroiding(
         bin_centres = 0.5 * (bin_edges[:-1] + bin_edges[1:])
 
         hist_raw, _ = np.histogram(mz_raw_p, bins=bin_edges, weights=int_raw_p)
-        ax_spec.fill_between(
-            bin_centres, hist_raw, alpha=0.25, color="steelblue", label="Raw (summed)"
-        )
+        ax_spec.fill_between(bin_centres, hist_raw, alpha=0.25, color="steelblue", label="Raw (summed)")
         ax_spec.plot(bin_centres, hist_raw, lw=0.4, color="steelblue", alpha=0.5)
 
         if len(mz_nr_p) > 0:
@@ -340,9 +319,7 @@ def plot_centroiding(
         markerline.set_markersize(3)
         markerline.set_color("tomato")
         plt.setp(stemlines, linewidth=0.8, alpha=0.85)
-        ax_spec.plot(
-            [], [], color="tomato", marker="D", markersize=3, label="Centroided (kept)"
-        )
+        ax_spec.plot([], [], color="tomato", marker="D", markersize=3, label="Centroided (kept)")
 
     ax_spec.set_xlabel("m/z")
     ax_spec.set_ylabel("Intensity")

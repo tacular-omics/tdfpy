@@ -109,8 +109,7 @@ class Polarity(StrEnum):
             return Polarity.MIXED
         else:
             raise ValueError(
-                f"Unknown polarity string {s!r}. Expected one of (case-insensitive): "
-                "'positive'/'+', 'negative'/'-', 'unknown'/'?', 'mixed'/'mix'."
+                f"Unknown polarity string {s!r}. Expected one of (case-insensitive): 'positive'/'+', 'negative'/'-', 'unknown'/'?', 'mixed'/'mix'."
             )
 
 
@@ -121,9 +120,7 @@ class _TdfData:
     @property
     def timsdata(self) -> TimsData:
         if self._timsdata.handle is None:
-            raise RuntimeError(
-                "TimsData connection is closed. Keep DFolder instance alive or use context manager."
-            )
+            raise RuntimeError("TimsData connection is closed. Keep DFolder instance alive or use context manager.")
         return self._timsdata
 
 
@@ -274,15 +271,11 @@ class Precursor(_TdfData):
 
     @property
     def ook0(self) -> float:
-        return self.timsdata.scanNumToOneOverK0(self.parent_frame, [self.scan_number])[
-            0
-        ]
+        return self.timsdata.scanNumToOneOverK0(self.parent_frame, [self.scan_number])[0]
 
     @property
     def ccs(self) -> float:
-        return oneOverK0ToCCSforMz(
-            self.ook0, self.charge or 1, self.monoisotopic_mz or self.largest_peak_mz
-        )
+        return oneOverK0ToCCSforMz(self.ook0, self.charge or 1, self.monoisotopic_mz or self.largest_peak_mz)
 
     @property
     def voltage(self) -> float:
@@ -303,10 +296,7 @@ class Precursor(_TdfData):
         """
         return get_mobility_collapsed_spectrum(
             self.timsdata,
-            [
-                (info.frame_id, info.scan_num_begin, info.scan_num_end)
-                for info in self.pasef_frame_msms_infos
-            ],
+            [(info.frame_id, info.scan_num_begin, info.scan_num_end) for info in self.pasef_frame_msms_infos],
         )
 
     @property
@@ -465,15 +455,11 @@ class Frame(_TdfData):
     @property
     def peaks(self) -> list[npt.NDArray[np.float64]]:
         """Read raw peaks for this frame and return as list of (mz, intensity) arrays."""
-        d: list[tuple[npt.NDArray[np.uint32], npt.NDArray[np.uint32]]] = (
-            self.timsdata.readScans(self.frame_id, 0, self.num_scans)
-        )
+        d: list[tuple[npt.NDArray[np.uint32], npt.NDArray[np.uint32]]] = self.timsdata.readScans(self.frame_id, 0, self.num_scans)
         mz_int_arrays = []
         for index_array, int_array in d:
             mz_array = self.timsdata.indexToMz(self.frame_id, index_array)
-            mz_int_arrays.append(
-                np.stack((mz_array, int_array), axis=-1).astype(np.float64)
-            )
+            mz_int_arrays.append(np.stack((mz_array, int_array), axis=-1).astype(np.float64))
         return mz_int_arrays
 
     def raw_peaks(
@@ -558,17 +544,11 @@ class DiaWindow(DiaWindowGroup, _TdfData):
     @property
     def peaks(self) -> list[npt.NDArray[np.float64]]:
         """Read raw peaks for this DIA window and return as list of (mz, intensity) arrays."""
-        d: list[tuple[npt.NDArray[np.uint32], npt.NDArray[np.uint32]]] = (
-            self.timsdata.readScans(
-                self.frame_id, self.scan_num_begin, self.scan_num_end
-            )
-        )
+        d: list[tuple[npt.NDArray[np.uint32], npt.NDArray[np.uint32]]] = self.timsdata.readScans(self.frame_id, self.scan_num_begin, self.scan_num_end)
         mz_int_arrays = []
         for index_array, int_array in d:
             mz_array = self.timsdata.indexToMz(self.frame_id, index_array)
-            mz_int_arrays.append(
-                np.stack((mz_array, int_array), axis=-1).astype(np.float64)
-            )
+            mz_int_arrays.append(np.stack((mz_array, int_array), axis=-1).astype(np.float64))
         return mz_int_arrays
 
     def raw_peaks(
@@ -732,17 +712,11 @@ class PrmTransition(_TdfData):
     @property
     def peaks(self) -> list[npt.NDArray[np.float64]]:
         """Read raw peaks for this PRM transition and return as list of (mz, intensity) arrays."""
-        d: list[tuple[npt.NDArray[np.uint32], npt.NDArray[np.uint32]]] = (
-            self.timsdata.readScans(
-                self.frame_id, self.scan_num_begin, self.scan_num_end
-            )
-        )
+        d: list[tuple[npt.NDArray[np.uint32], npt.NDArray[np.uint32]]] = self.timsdata.readScans(self.frame_id, self.scan_num_begin, self.scan_num_end)
         mz_int_arrays = []
         for index_array, int_array in d:
             mz_array = self.timsdata.indexToMz(self.frame_id, index_array)
-            mz_int_arrays.append(
-                np.stack((mz_array, int_array), axis=-1).astype(np.float64)
-            )
+            mz_int_arrays.append(np.stack((mz_array, int_array), axis=-1).astype(np.float64))
         return mz_int_arrays
 
     def raw_peaks(
@@ -864,10 +838,7 @@ class _KeyDf:
 
     def __getitem__(self, key: str) -> str:
         if key not in self.df.index:
-            raise KeyError(
-                f"Key {key!r} not found in the {type(self).__name__} table. "
-                f"Available keys: {sorted(map(str, self.df.index))}"
-            )
+            raise KeyError(f"Key {key!r} not found in the {type(self).__name__} table. Available keys: {sorted(map(str, self.df.index))}")
         return self.df.loc[key]
 
 

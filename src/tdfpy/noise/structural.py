@@ -125,9 +125,7 @@ if _HAS_NUMBA:
                         run_last = s
                         run_sum = p
                     elif (s - run_last - 1) > max_gap_scans:
-                        if (
-                            run_last - run_first + 1
-                        ) >= min_streak_scans and run_sum >= min_streak_intensity:
+                        if (run_last - run_first + 1) >= min_streak_scans and run_sum >= min_streak_intensity:
                             run_lo[nkr] = run_first
                             run_hi[nkr] = run_last
                             nkr += 1
@@ -137,11 +135,7 @@ if _HAS_NUMBA:
                     else:
                         run_last = s
                         run_sum += p
-            if (
-                run_first != -1
-                and (run_last - run_first + 1) >= min_streak_scans
-                and run_sum >= min_streak_intensity
-            ):
+            if run_first != -1 and (run_last - run_first + 1) >= min_streak_scans and run_sum >= min_streak_intensity:
                 run_lo[nkr] = run_first
                 run_hi[nkr] = run_last
                 nkr += 1
@@ -203,9 +197,7 @@ def _single_pass_filter_python(
     for k in range(unique_mz.size):
         center = int(unique_mz[k])
         left = int(np.searchsorted(mz_sorted, center - mz_idx_half_width, side="left"))
-        right = int(
-            np.searchsorted(mz_sorted, center + mz_idx_half_width, side="right")
-        )
+        right = int(np.searchsorted(mz_sorted, center + mz_idx_half_width, side="right"))
 
         window_scans = scan_sorted[left:right]
         window_int = int_sorted[left:right]
@@ -467,8 +459,7 @@ class VerticalNoiseFilter(NoiseFilter):
         )
         if n_kept == 0:
             logger.warning(
-                "VerticalNoiseFilter: removed ALL %d points. The streak thresholds "
-                "may be too strict (min_streak_scans=%d, min_streak_intensity=%.1f).",
+                "VerticalNoiseFilter: removed ALL %d points. The streak thresholds may be too strict (min_streak_scans=%d, min_streak_intensity=%.1f).",
                 n,
                 self.min_streak_scans,
                 self.min_streak_intensity,

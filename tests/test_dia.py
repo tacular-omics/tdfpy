@@ -5,9 +5,7 @@ import pytest
 from tdfpy import DIA, DiaWindow, DiaWindowGroup, DIAMs1Frame, get_acquisition_type
 
 D_PATH = "tests/data/example_dia.d"
-SKIP_NO_DATA = pytest.mark.skipif(
-    not pathlib.Path(D_PATH).exists(), reason="Test data not available"
-)
+SKIP_NO_DATA = pytest.mark.skipif(not pathlib.Path(D_PATH).exists(), reason="Test data not available")
 
 
 def test_get_acquisition_type_dia():

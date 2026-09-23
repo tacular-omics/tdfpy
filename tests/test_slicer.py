@@ -9,9 +9,7 @@ import pytest
 from tdfpy.slicer import slice_d_folder
 
 TEST_DATA = Path("tests/data/example_dda.d")
-SKIP_NO_DATA = pytest.mark.skipif(
-    not TEST_DATA.exists(), reason="Test data not available"
-)
+SKIP_NO_DATA = pytest.mark.skipif(not TEST_DATA.exists(), reason="Test data not available")
 
 
 def _minimal_source(path: Path) -> Path:
@@ -79,9 +77,7 @@ def test_slice_precursors_filtered(tmp_path):
     slice_d_folder(TEST_DATA, dest, frame_start=1, frame_end=10)
 
     with closing(sqlite3.connect(dest / "analysis.tdf")) as conn:
-        orphaned = conn.execute(
-            "SELECT COUNT(*) FROM Precursors WHERE Parent < 1 OR Parent > 10"
-        ).fetchone()[0]
+        orphaned = conn.execute("SELECT COUNT(*) FROM Precursors WHERE Parent < 1 OR Parent > 10").fetchone()[0]
         assert orphaned == 0
 
 
@@ -92,9 +88,7 @@ def test_slice_pasef_filtered(tmp_path):
     slice_d_folder(TEST_DATA, dest, frame_start=1, frame_end=10)
 
     with closing(sqlite3.connect(dest / "analysis.tdf")) as conn:
-        orphaned = conn.execute(
-            "SELECT COUNT(*) FROM PasefFrameMsMsInfo WHERE Frame < 1 OR Frame > 10"
-        ).fetchone()[0]
+        orphaned = conn.execute("SELECT COUNT(*) FROM PasefFrameMsMsInfo WHERE Frame < 1 OR Frame > 10").fetchone()[0]
         assert orphaned == 0
 
 

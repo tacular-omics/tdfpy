@@ -33,9 +33,7 @@ def convert_table_to_df(db_path: str | Path, table_name: str) -> pd.DataFrame:
     """
     valid_names = {tn.value for tn in TableNames}
     if table_name not in valid_names:
-        raise ValueError(
-            f"Invalid table name: {table_name!r}. Must be one of: {sorted(valid_names)}"
-        )
+        raise ValueError(f"Invalid table name: {table_name!r}. Must be one of: {sorted(valid_names)}")
     db_path = Path(db_path)
     if not db_path.exists():
         raise FileNotFoundError(f"TDF database not found: {db_path}")
@@ -43,14 +41,10 @@ def convert_table_to_df(db_path: str | Path, table_name: str) -> pd.DataFrame:
     try:
         # sqlite3.Connection's own context manager commits or rolls back the
         # transaction; it does not close the connection. closing() does.
-        with closing(
-            sqlite3.connect(db_path.resolve().as_uri() + "?mode=ro", uri=True)
-        ) as conn:
+        with closing(sqlite3.connect(db_path.resolve().as_uri() + "?mode=ro", uri=True)) as conn:
             return pd.read_sql_query(f"SELECT * FROM {table_name}", conn)
     except (sqlite3.Error, pd.errors.DatabaseError) as e:
-        raise RuntimeError(
-            f"Failed to read table {table_name!r} from TDF database {db_path}: {e}"
-        ) from e
+        raise RuntimeError(f"Failed to read table {table_name!r} from TDF database {db_path}: {e}") from e
 
 
 @dataclass
@@ -87,9 +81,7 @@ class PandasTdf:
         The 'DiaFrameMsMsWindowGroups' table as a pandas DataFrame.
         :return: table as a pandas DataFrame
         """
-        return convert_table_to_df(
-            self.db_path, TableNames.DIA_FRAME_MSMS_WINDOW_GROUPS
-        )
+        return convert_table_to_df(self.db_path, TableNames.DIA_FRAME_MSMS_WINDOW_GROUPS)
 
     @property
     def dia_frame_msms_windows(self) -> pd.DataFrame:
@@ -258,10 +250,7 @@ class PandasTdf:
         Returns:
             bool: True if DDA data is present, False otherwise.
         """
-        return (
-            TableNames.PRECURSORS.value in self.get_table_names()
-            and len(self.precursors) > 0
-        )
+        return TableNames.PRECURSORS.value in self.get_table_names() and len(self.precursors) > 0
 
     @property
     def is_prm(self) -> bool:
@@ -271,10 +260,7 @@ class PandasTdf:
         Returns:
             bool: True if PRM data is present, False otherwise.
         """
-        return (
-            TableNames.PRM_FRAME_MSMS_INFO.value in self.get_table_names()
-            and len(self.prm_frame_msms_info) > 0
-        )
+        return TableNames.PRM_FRAME_MSMS_INFO.value in self.get_table_names() and len(self.prm_frame_msms_info) > 0
 
     @property
     def is_dia(self) -> bool:
@@ -284,10 +270,7 @@ class PandasTdf:
         Returns:
             bool: True if DIA data is present, False otherwise.
         """
-        return (
-            TableNames.DIA_FRAME_MSMS_INFO.value in self.get_table_names()
-            and len(self.dia_frame_msms_info) > 0
-        )
+        return TableNames.DIA_FRAME_MSMS_INFO.value in self.get_table_names() and len(self.dia_frame_msms_info) > 0
 
     @property
     def is_maldi(self) -> bool:

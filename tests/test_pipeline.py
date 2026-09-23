@@ -122,18 +122,14 @@ def ms1_spectrum(td: timsdata.TimsData, ms1_frame_id: int) -> RawSpectrum:
     return spectrum
 
 
-def test_convert_ook0_shape_and_positive(
-    td: timsdata.TimsData, ms1_frame_id: int, ms1_spectrum: RawSpectrum
-) -> None:
+def test_convert_ook0_shape_and_positive(td: timsdata.TimsData, ms1_frame_id: int, ms1_spectrum: RawSpectrum) -> None:
     out = convert(ms1_spectrum, td, ms1_frame_id, ion_mobility_type="ook0")
     assert out.shape == (ms1_spectrum.num_peaks, 3)
     assert np.all(out[:, 0] > 0)  # m/z
     assert np.all(np.isfinite(out[:, 2]))  # 1/K0
 
 
-def test_convert_ccs_differs_from_ook0(
-    td: timsdata.TimsData, ms1_frame_id: int, ms1_spectrum: RawSpectrum
-) -> None:
+def test_convert_ccs_differs_from_ook0(td: timsdata.TimsData, ms1_frame_id: int, ms1_spectrum: RawSpectrum) -> None:
     ook0 = convert(ms1_spectrum, td, ms1_frame_id, ion_mobility_type="ook0")
     ccs = convert(ms1_spectrum, td, ms1_frame_id, ion_mobility_type="ccs")
     assert ccs.shape == ook0.shape
@@ -141,9 +137,7 @@ def test_convert_ccs_differs_from_ook0(
     assert not np.allclose(ccs[:, 2], ook0[:, 2])
 
 
-def test_convert_voltage_matches_scannum_mapping(
-    td: timsdata.TimsData, ms1_frame_id: int, ms1_spectrum: RawSpectrum
-) -> None:
+def test_convert_voltage_matches_scannum_mapping(td: timsdata.TimsData, ms1_frame_id: int, ms1_spectrum: RawSpectrum) -> None:
     # Regression for the fixed bug: the voltage branch must map per-peak *scan
     # numbers* (not 1/K0 values) through scanNumToVoltage. Verify each peak's
     # voltage equals the ground-truth voltage for its scan number. Feeding 1/K0
