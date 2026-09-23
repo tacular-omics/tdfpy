@@ -15,9 +15,7 @@ def main() -> None:
         from .server import create_server
     except ModuleNotFoundError as exc:
         if exc.name in {"mcp", "pydantic", "mcp_types"}:
-            parser.exit(
-                2, "Install the optional interface with pip install 'tdfpy[mcp]'.\n"
-            )
+            parser.exit(2, "Install the optional interface with pip install 'tdfpy[mcp]'.\n")
         raise
     server = create_server(args.data_root, args.output_dir, args.max_frame_peaks)
     server.run(transport="stdio")

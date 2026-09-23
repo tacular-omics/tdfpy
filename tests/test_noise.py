@@ -320,9 +320,7 @@ class TestVerticalNumbaEquivalence:
         rng = np.random.default_rng(7)
         scan, mz, inten, ns = _synthetic_frame(rng, fractional=fractional)
         k_nb, nc_nb, nck_nb, _ = _single_pass_filter(scan, mz, inten, ns, **params)
-        k_py, nc_py, nck_py, _ = _single_pass_filter_python(
-            scan, mz, inten, ns, **params
-        )
+        k_py, nc_py, nck_py, _ = _single_pass_filter_python(scan, mz, inten, ns, **params)
         np.testing.assert_array_equal(k_nb, k_py)
         assert (nc_nb, nck_nb) == (nc_py, nck_py)
 
@@ -375,9 +373,7 @@ class TestVerticalKernelEdgeCases:
         rng = np.random.default_rng(19)
         scan, mz, inten, ns = _synthetic_frame(rng)
         smoothed = Smooth(scan_half_width=3, mz_idx_half_width=2, mode="mean").apply(
-            RawSpectrum(
-                scan_indices=scan, mz_indices=mz, intensities=inten, num_scans=ns
-            )
+            RawSpectrum(scan_indices=scan, mz_indices=mz, intensities=inten, num_scans=ns)
         )
         assert not np.allclose(smoothed.intensities, np.round(smoothed.intensities))
 
@@ -387,12 +383,8 @@ class TestVerticalKernelEdgeCases:
             max_gap_scans=1,
             min_streak_intensity=50.0,
         )
-        k_nb, nc_nb, nck_nb, _ = _single_pass_filter(
-            scan, mz, smoothed.intensities, ns, **params
-        )
-        k_py, nc_py, nck_py, _ = _single_pass_filter_python(
-            scan, mz, smoothed.intensities, ns, **params
-        )
+        k_nb, nc_nb, nck_nb, _ = _single_pass_filter(scan, mz, smoothed.intensities, ns, **params)
+        k_py, nc_py, nck_py, _ = _single_pass_filter_python(scan, mz, smoothed.intensities, ns, **params)
         np.testing.assert_array_equal(k_nb, k_py)
         assert (nc_nb, nck_nb) == (nc_py, nck_py)
 
@@ -438,36 +430,28 @@ class TestHorizontalHaloFilter:
 
     def test_removes_weak_left_right_neighbour(self):
         # Weak peak in the SAME scan row, offset in m/z from a bright peak.
-        filt = HorizontalHaloFilter(
-            peak_fraction=0.1, mz_idx_half_width=20, scan_half_width=2
-        )
+        filt = HorizontalHaloFilter(peak_fraction=0.1, mz_idx_half_width=20, scan_half_width=2)
         keep = _halo_mask(filt, [10, 10], [1000, 1010], [10000.0, 50.0])
         assert keep.tolist() == [True, False]
 
     def test_keeps_weak_vertical_neighbour_same_mz(self):
         # Same m/z column, offset in mobility = the vertical streak: always kept,
         # even though it is far weaker than the bright peak directly above it.
-        filt = HorizontalHaloFilter(
-            peak_fraction=0.1, mz_idx_half_width=20, scan_half_width=10
-        )
+        filt = HorizontalHaloFilter(peak_fraction=0.1, mz_idx_half_width=20, scan_half_width=10)
         keep = _halo_mask(filt, [10, 15], [1000, 1000], [10000.0, 50.0])
         assert keep.tolist() == [True, True]
 
     def test_keeps_diagonal_weak_peak_when_no_same_row_bright(self):
         # A weak peak below-and-beside a bright one, but whose own row has no
         # bright neighbour, is kept (the bright peak is not in its scan range).
-        filt = HorizontalHaloFilter(
-            peak_fraction=0.1, mz_idx_half_width=20, scan_half_width=2
-        )
+        filt = HorizontalHaloFilter(peak_fraction=0.1, mz_idx_half_width=20, scan_half_width=2)
         # bright at (scan 10, 1000); weak at (scan 50, 1010) — 40 scans away.
         keep = _halo_mask(filt, [10, 50], [1000, 1010], [10000.0, 50.0])
         assert keep.tolist() == [True, True]
 
     def test_keeps_comparable_neighbour(self):
         # A neighbour nearly as intense as its surroundings is not halo.
-        filt = HorizontalHaloFilter(
-            peak_fraction=0.1, mz_idx_half_width=20, scan_half_width=2
-        )
+        filt = HorizontalHaloFilter(peak_fraction=0.1, mz_idx_half_width=20, scan_half_width=2)
         keep = _halo_mask(filt, [10, 10], [1000, 1010], [10000.0, 9000.0])
         assert keep.tolist() == [True, True]
 
@@ -475,12 +459,8 @@ class TestHorizontalHaloFilter:
         # Same row: bright (10000) and weak (50) flank a mid peak (600).
         # Threshold = peak_fraction * MAX off-column = 0.1*10000 = 1000, so the
         # mid peak is dropped. (A mean reference (~5025) would have kept it.)
-        filt = HorizontalHaloFilter(
-            peak_fraction=0.1, mz_idx_half_width=25, scan_half_width=2
-        )
-        keep = _halo_mask(
-            filt, [10, 10, 10], [1000, 1010, 1020], [10000.0, 600.0, 50.0]
-        )
+        filt = HorizontalHaloFilter(peak_fraction=0.1, mz_idx_half_width=25, scan_half_width=2)
+        keep = _halo_mask(filt, [10, 10, 10], [1000, 1010, 1020], [10000.0, 600.0, 50.0])
         assert keep.tolist() == [True, False, False]
 
 
@@ -495,9 +475,7 @@ class TestHorizontalHaloFilterLive:
 
         with timsdata.timsdata_connect(self.TDF_PATH) as td:
             cursor = td.conn.cursor()
-            cursor.execute(
-                "SELECT Id FROM Frames WHERE MsMsType = 0 ORDER BY Id LIMIT 1"
-            )
+            cursor.execute("SELECT Id FROM Frames WHERE MsMsType = 0 ORDER BY Id LIMIT 1")
             frame_id = cursor.fetchone()[0]
             spec = read_spectrum(td, frame_id)
             mask = HorizontalHaloFilter().keep_mask(

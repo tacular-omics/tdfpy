@@ -79,9 +79,7 @@ class SpectrumSelection(Input):
     @model_validator(mode="after")
     def scans(self) -> "SpectrumSelection":
         if self.kind == "precursor" and self.mobility_range is not None:
-            raise ValueError(
-                "Mobility-collapsed precursor spectra have no mobility axis"
-            )
+            raise ValueError("Mobility-collapsed precursor spectra have no mobility axis")
         if (self.scan_begin is None) != (self.scan_end is None):
             raise ValueError("Specify both scan_begin and scan_end")
         if self.scan_begin is not None:

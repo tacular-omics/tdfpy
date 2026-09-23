@@ -103,7 +103,7 @@ class MzCalibration:
             )
 
     @classmethod
-    def from_row(cls, row: dict) -> "MzCalibration":
+    def from_row(cls, row: dict) -> MzCalibration:
         """Build from a ``MzCalibration`` row (``sqlite3.Row`` or mapping)."""
         return cls(
             model_type=int(row["ModelType"]),
@@ -135,9 +135,7 @@ class MzCalibration:
         drift = self.dc1 * (frame_t1 - self.t1) + self.dc2 * (frame_t2 - self.t2)
         return self.c1 * (1.0 - 1e-6 * drift)
 
-    def index_to_mz(
-        self, tof_index: ArrayLike, frame_t1: float, frame_t2: float
-    ) -> npt.NDArray[np.float64]:
+    def index_to_mz(self, tof_index: ArrayLike, frame_t1: float, frame_t2: float) -> npt.NDArray[np.float64]:
         """Convert TOF sample indices to m/z for a frame at the given temperatures.
 
         Raises:
@@ -165,16 +163,10 @@ class MzCalibration:
         root = 2.0 * d / (k + np.sqrt(k * k + 4.0 * self.c2 * d))
         return root * root
 
-    def mz_to_index(
-        self, mz: ArrayLike, frame_t1: float, frame_t2: float
-    ) -> npt.NDArray[np.float64]:
+    def mz_to_index(self, mz: ArrayLike, frame_t1: float, frame_t2: float) -> npt.NDArray[np.float64]:
         """Convert m/z to (fractional) TOF sample indices."""
         mz_arr = _as_float_array(mz)
-        t = (
-            self.c0
-            + 1e6 * np.sqrt(mz_arr / self._c1_at(frame_t1, frame_t2))
-            + self.c2 * mz_arr
-        )
+        t = self.c0 + 1e6 * np.sqrt(mz_arr / self._c1_at(frame_t1, frame_t2)) + self.c2 * mz_arr
         return (t - self.digitizer_delay) / self.digitizer_timebase
 
 
@@ -211,7 +203,7 @@ class TimsCalibration:
             )
 
     @classmethod
-    def from_row(cls, row: dict) -> "TimsCalibration":
+    def from_row(cls, row: dict) -> TimsCalibration:
         """Build from a ``TimsCalibration`` row (``sqlite3.Row`` or mapping)."""
         return cls(
             model_type=int(row["ModelType"]),
@@ -226,17 +218,11 @@ class TimsCalibration:
 
     def scan_to_voltage(self, scan: ArrayLike) -> npt.NDArray[np.float64]:
         """Convert scan numbers to TIMS ramp voltage."""
-        return self.c2 + (self.c3 - self.c2) / self.c1 * (
-            _as_float_array(scan) - self.c0 - self.c4
-        )
+        return self.c2 + (self.c3 - self.c2) / self.c1 * (_as_float_array(scan) - self.c0 - self.c4)
 
     def voltage_to_scan(self, voltage: ArrayLike) -> npt.NDArray[np.float64]:
         """Convert TIMS ramp voltage to (fractional) scan numbers."""
-        return (
-            (_as_float_array(voltage) - self.c2) * self.c1 / (self.c3 - self.c2)
-            + self.c0
-            + self.c4
-        )
+        return (_as_float_array(voltage) - self.c2) * self.c1 / (self.c3 - self.c2) + self.c0 + self.c4
 
     def scan_to_one_over_k0(self, scan: ArrayLike) -> npt.NDArray[np.float64]:
         """Convert scan numbers to inverse reduced mobility (1/K0)."""
@@ -258,9 +244,7 @@ def one_over_k0_to_ccs(one_over_k0: float, charge: int, mz: float) -> float:
     """
     mass = mz * charge
     reduced_mass = (mass * _CCS_MASS_GAS) / (mass + _CCS_MASS_GAS)
-    return float(
-        _CCS_K * charge / np.sqrt(reduced_mass * _CCS_TEMPERATURE) * one_over_k0
-    )
+    return float(_CCS_K * charge / np.sqrt(reduced_mass * _CCS_TEMPERATURE) * one_over_k0)
 
 
 def ccs_to_one_over_k0(ccs: float, charge: int, mz: float) -> float:

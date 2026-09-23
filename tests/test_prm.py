@@ -6,9 +6,7 @@ import pytest
 from tdfpy import PRM, PrmTarget, PrmTransition, get_acquisition_type
 
 D_PATH = "tests/data/example_prm.d"
-SKIP_NO_DATA = pytest.mark.skipif(
-    not pathlib.Path(D_PATH).exists(), reason="Test data not available"
-)
+SKIP_NO_DATA = pytest.mark.skipif(not pathlib.Path(D_PATH).exists(), reason="Test data not available")
 
 
 def test_get_acquisition_type_prm():
@@ -64,9 +62,7 @@ def test_prm_target_lookup_by_id():
 def test_prm_target_query_by_mz():
     """Test querying PRM targets by m/z."""
     with PRM(D_PATH) as prm:
-        results = list(
-            prm.targets.query(mz=487.26, mz_tolerance=0.01, mz_tolerance_type="da")
-        )
+        results = list(prm.targets.query(mz=487.26, mz_tolerance=0.01, mz_tolerance_type="da"))
         assert len(results) >= 1
         assert any(t.target_id == 1 for t in results)
 
@@ -159,9 +155,7 @@ def test_prm_transition_query_by_rt():
     with PRM(D_PATH) as prm:
         # Frame 275 has RT close to the start
         first_tr = prm.transitions[1][0]
-        results = list(
-            prm.transitions.query(target=1, rt=first_tr.rt, rt_tolerance=5.0)
-        )
+        results = list(prm.transitions.query(target=1, rt=first_tr.rt, rt_tolerance=5.0))
         assert len(results) >= 1
         assert all(t.target.target_id == 1 for t in results)
 

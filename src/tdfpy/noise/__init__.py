@@ -52,12 +52,16 @@ class NoiseFilter(ABC):
         intensities: np.ndarray,
         *,
         num_scans: int,
-        td: "TimsData",
+        td: TimsData,
         frame_id: int,
     ) -> np.ndarray:
         """Return a boolean keep-mask of length ``len(intensities)``."""
 
 
+from .gates import (  # noqa: E402
+    DiaMs1WindowGate,
+    SelectionPolygonGate,
+)
 from .intensity import (  # noqa: E402
     AbsoluteThreshold,
     BaselineThreshold,
@@ -72,10 +76,6 @@ from .structural import (  # noqa: E402
     VerticalNoiseDiagnostics,
     VerticalNoiseFilter,
 )
-from .gates import (  # noqa: E402
-    DiaMs1WindowGate,
-    SelectionPolygonGate,
-)
 
 _STRING_ALIASES: dict[str, type[IntensityThreshold]] = {
     "mad": MadThreshold,
@@ -86,9 +86,7 @@ _STRING_ALIASES: dict[str, type[IntensityThreshold]] = {
 }
 
 
-NoiseSpec = (
-    NoiseFilter | str | float | int | list["NoiseSpec"] | tuple["NoiseSpec", ...] | None
-)
+NoiseSpec = NoiseFilter | str | float | int | list["NoiseSpec"] | tuple["NoiseSpec", ...] | None
 
 
 def coerce_filters(spec: NoiseSpec) -> tuple[NoiseFilter, ...]:
@@ -115,10 +113,7 @@ def coerce_filters(spec: NoiseSpec) -> tuple[NoiseFilter, ...]:
         try:
             cls = _STRING_ALIASES[spec]
         except KeyError as exc:
-            raise ValueError(
-                f"Unknown noise filter name {spec!r}. "
-                f"Valid names: {sorted(_STRING_ALIASES)}"
-            ) from exc
+            raise ValueError(f"Unknown noise filter name {spec!r}. Valid names: {sorted(_STRING_ALIASES)}") from exc
         return (cls(),)
     if isinstance(spec, (int, float)) and not isinstance(spec, bool):
         return (AbsoluteThreshold(value=float(spec)),)
@@ -127,10 +122,7 @@ def coerce_filters(spec: NoiseSpec) -> tuple[NoiseFilter, ...]:
         for item in spec:
             out.extend(coerce_filters(item))
         return tuple(out)
-    raise TypeError(
-        f"Cannot coerce {type(spec).__name__} to a noise filter. "
-        "Expected NoiseFilter, str, float, list/tuple, or None."
-    )
+    raise TypeError(f"Cannot coerce {type(spec).__name__} to a noise filter. Expected NoiseFilter, str, float, list/tuple, or None.")
 
 
 __all__ = [

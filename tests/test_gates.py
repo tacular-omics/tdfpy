@@ -1,7 +1,7 @@
 """Tests for tdfpy.noise.gates — selection-polygon and diaPASEF MS1 window gates."""
 
-from collections.abc import Generator
 import pathlib
+from collections.abc import Generator
 
 import numpy as np
 import pytest
@@ -30,9 +30,7 @@ def _square() -> tuple[np.ndarray, np.ndarray]:
 
 def _square_gate(mz_pad: float = 0.0, im_pad: float = 0.0) -> PerScanTofIntervals:
     mz, im = _square()
-    g = build_polygon_intervals(
-        mz, im, np.arange(100.0), lambda a: np.asarray(a), mz_pad=mz_pad, im_pad=im_pad
-    )
+    g = build_polygon_intervals(mz, im, np.arange(100.0), lambda a: np.asarray(a), mz_pad=mz_pad, im_pad=im_pad)
     assert g is not None
     return g
 
@@ -43,12 +41,7 @@ def _square_gate(mz_pad: float = 0.0, im_pad: float = 0.0) -> PerScanTofInterval
 
 
 def test_degenerate_polygon_yields_none():
-    assert (
-        build_polygon_intervals(
-            np.array([0.0, 1.0]), np.array([0.0, 1.0]), np.arange(100.0), _IDENTITY
-        )
-        is None
-    )
+    assert build_polygon_intervals(np.array([0.0, 1.0]), np.array([0.0, 1.0]), np.arange(100.0), _IDENTITY) is None
 
 
 def test_square_keeps_inside_drops_outside():
@@ -92,9 +85,7 @@ def test_keep_mask_matches_contains():
     g = _square_gate()
     scan = np.array([50, 50, 5])
     tof = np.array([50, 95, 50])
-    np.testing.assert_array_equal(
-        g.keep_mask(scan, tof), np.array([True, False, False])
-    )
+    np.testing.assert_array_equal(g.keep_mask(scan, tof), np.array([True, False, False]))
 
 
 def test_keep_mask_empty_input():
@@ -121,9 +112,7 @@ def test_window_empty_yields_none():
 
 
 def test_window_overlapping_boxes_merge():
-    g = build_window_intervals(
-        [(10, 20, 1000, 1500), (12, 18, 1490, 2000)], num_scans=100
-    )
+    g = build_window_intervals([(10, 20, 1000, 1500), (12, 18, 1490, 2000)], num_scans=100)
     assert g is not None
     assert g.contains(15, 1495)  # seam between the two TOF ranges is bridged
     assert g.contains(15, 1000) and g.contains(15, 2000)
@@ -135,9 +124,7 @@ def test_window_keep_mask_matches_contains():
     assert g is not None
     scan = np.array([15, 15, 9])
     tof = np.array([1500, 3000, 1500])
-    np.testing.assert_array_equal(
-        g.keep_mask(scan, tof), np.array([True, False, False])
-    )
+    np.testing.assert_array_equal(g.keep_mask(scan, tof), np.array([True, False, False]))
 
 
 def test_window_negative_scan_lo_clamps_without_wrapping():
@@ -163,9 +150,7 @@ def test_keep_mask_handles_unsorted_scan_indices():
     #   (15, 3000) tof past window -> drop
     #   ( 9, 1500) scan below window -> drop
     #   (12, 1500) inside -> keep
-    np.testing.assert_array_equal(
-        g.keep_mask(scan, tof), np.array([False, False, True])
-    )
+    np.testing.assert_array_equal(g.keep_mask(scan, tof), np.array([False, False, True]))
 
 
 # ---------------------------------------------------------------------------
@@ -239,9 +224,7 @@ def test_dia_ms1_gate_drops_out_of_window_points(dia_td):
 
     built = _build_dia_ms1_gate(dia_td, fid, spec.num_scans, gate)
     assert built is not None
-    np.testing.assert_array_equal(
-        mask, built.keep_mask(spec.scan_indices, spec.mz_indices)
-    )
+    np.testing.assert_array_equal(mask, built.keep_mask(spec.scan_indices, spec.mz_indices))
 
 
 def test_dia_ms1_gate_is_noop_on_ms2_frame(dia_td):
@@ -250,9 +233,7 @@ def test_dia_ms1_gate_is_noop_on_ms2_frame(dia_td):
     from tdfpy import read_spectrum
 
     cur = dia_td.conn.cursor()
-    row = cur.execute(
-        "SELECT Id FROM Frames WHERE MsMsType=9 ORDER BY Id LIMIT 1"
-    ).fetchone()
+    row = cur.execute("SELECT Id FROM Frames WHERE MsMsType=9 ORDER BY Id LIMIT 1").fetchone()
     if row is None:
         pytest.skip("no MS2 frame in fixture")
     fid = int(row[0])
@@ -336,9 +317,7 @@ def test_polygon_gate_filters_with_injected_polygon(dda_td, monkeypatch):
         np.array([500.0, 800.0, 800.0, 500.0]),
         np.array([0.5, 0.5, 1.7, 1.7]),
     )
-    monkeypatch.setattr(
-        gates_mod, "read_selection_polygon", lambda td, frame_id=None: poly
-    )
+    monkeypatch.setattr(gates_mod, "read_selection_polygon", lambda td, frame_id=None: poly)
     dda_td._gate_cache.clear()  # avoid a cached "no polygon" result
 
     fid = _first_ms1_frame(dda_td)

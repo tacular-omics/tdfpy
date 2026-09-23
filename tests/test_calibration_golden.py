@@ -91,9 +91,7 @@ def test_calibration_matches_golden(fixture: str) -> None:
             )
 
             np.testing.assert_allclose(
-                np.asarray(
-                    td.oneOverK0ToScanNum(fid, np.asarray(entry["one_over_k0"]))
-                ),
+                np.asarray(td.oneOverK0ToScanNum(fid, np.asarray(entry["one_over_k0"]))),
                 entry["one_over_k0_to_scan"],
                 rtol=0,
                 atol=SCAN_ATOL,
@@ -135,9 +133,7 @@ def test_ook0_scan_roundtrip(fixture: str) -> None:
         for entry in GOLDEN["fixtures"][fixture]["frames"]:
             fid = entry["frame_id"]
             scans = np.asarray(entry["scans"], dtype=np.float64)
-            back = np.asarray(
-                td.oneOverK0ToScanNum(fid, td.scanNumToOneOverK0(fid, scans))
-            )
+            back = np.asarray(td.oneOverK0ToScanNum(fid, td.scanNumToOneOverK0(fid, scans)))
             np.testing.assert_allclose(back, scans, rtol=0, atol=SCAN_ATOL)
 
 
@@ -164,6 +160,4 @@ def test_mobility_is_monotonic_in_scan() -> None:
             continue
         for entry in GOLDEN["fixtures"][fixture]["frames"]:
             ook0 = np.asarray(entry["one_over_k0"])
-            assert np.all(np.diff(ook0) < 0), (
-                f"{fixture} frame {entry['frame_id']}: 1/K0 is not decreasing in scan"
-            )
+            assert np.all(np.diff(ook0) < 0), f"{fixture} frame {entry['frame_id']}: 1/K0 is not decreasing in scan"

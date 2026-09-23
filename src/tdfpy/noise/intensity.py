@@ -54,7 +54,7 @@ class IntensityThreshold(NoiseFilter):
         intensities: np.ndarray,
         *,
         num_scans: int,
-        td: "TimsData",
+        td: TimsData,
         frame_id: int,
     ) -> np.ndarray:
         if intensities.size == 0:

@@ -47,7 +47,19 @@ check:
     just ty
     just test
 
+# --- release (standard tacular-omics recipes; canonical copy in the workspace templates/) ---
 
+# Set the version everywhere and date the [Unreleased] changelog section
+set-version version:
+    python scripts/release_version.py sync --set {{version}}
+
+# Copy __version__ to CITATION.cff / .zenodo.json after editing it by hand
+sync-version:
+    python scripts/release_version.py sync
+
+# Fail if version metadata disagrees
+check-version:
+    python scripts/release_version.py check
 
 # Build the package
 build:

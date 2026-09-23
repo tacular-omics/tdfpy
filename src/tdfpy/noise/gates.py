@@ -27,8 +27,9 @@ everything) rather than dropping all points.
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -41,7 +42,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def _is_ms1_frame(td: "TimsData", frame_id: int) -> bool:
+def _is_ms1_frame(td: TimsData, frame_id: int) -> bool:
     """Check immutable frame metadata without a per-call SQL query."""
     if td.handle is None:
         return False
@@ -51,9 +52,7 @@ def _is_ms1_frame(td: "TimsData", frame_id: int) -> bool:
         return False
 
 
-def _ms1_only_noop(
-    td: "TimsData", frame_id: int, intensities: np.ndarray, gate_name: str
-) -> np.ndarray | None:
+def _ms1_only_noop(td: TimsData, frame_id: int, intensities: np.ndarray, gate_name: str) -> np.ndarray | None:
     """Keep-all mask (with a debug log) when ``gate_name`` must not gate this frame.
 
     Returns ``None`` when the frame is a confirmed MS1 frame and the gate should
@@ -63,8 +62,7 @@ def _ms1_only_noop(
     if _is_ms1_frame(td, frame_id):
         return None
     logger.debug(
-        "%s applied to non-MS1 frame %d; it gates MS1 precursor selection only "
-        "— keeping all %d points.",
+        "%s applied to non-MS1 frame %d; it gates MS1 precursor selection only — keeping all %d points.",
         gate_name,
         frame_id,
         intensities.size,
@@ -77,9 +75,7 @@ def _ms1_only_noop(
 # ---------------------------------------------------------------------------
 
 
-def _scanline_spans(
-    poly_mz: np.ndarray, poly_im: np.ndarray, y: float
-) -> list[tuple[float, float]]:
+def _scanline_spans(poly_mz: np.ndarray, poly_im: np.ndarray, y: float) -> list[tuple[float, float]]:
     """m/z spans where the horizontal line ``1/K0 == y`` lies inside the polygon.
 
     Uses the even-odd ray-crossing rule over the closed edge ring (the last
@@ -99,9 +95,7 @@ def _scanline_spans(
     return [(xs[k], xs[k + 1]) for k in range(0, len(xs) - 1, 2)]
 
 
-def _merge_mz_spans(
-    spans: list[tuple[float, float]], mz_pad: float
-) -> list[tuple[float, float]]:
+def _merge_mz_spans(spans: list[tuple[float, float]], mz_pad: float) -> list[tuple[float, float]]:
     """Pad each span by ``mz_pad`` per side and merge overlapping spans (sorted)."""
     if not spans:
         return []
@@ -170,9 +164,7 @@ class PerScanTofIntervals:
         i = int(np.searchsorted(hi, tof, side="left"))
         return i < hi.size and tof >= self.lo[scan][i]
 
-    def keep_mask(
-        self, scan_indices: np.ndarray, tof_indices: np.ndarray
-    ) -> np.ndarray:
+    def keep_mask(self, scan_indices: np.ndarray, tof_indices: np.ndarray) -> np.ndarray:
         """Vectorised per-point keep mask (input order)."""
         n = scan_indices.size
         out = np.zeros(n, dtype=bool)
@@ -193,7 +185,7 @@ class PerScanTofIntervals:
         # Group the sorted points by scan and test each group in one searchsorted.
         starts = np.concatenate(([0], np.flatnonzero(group_diffs) + 1))
         ends = np.concatenate((starts[1:], [n]))
-        for st, en in zip(starts, ends):
+        for st, en in zip(starts, ends, strict=True):
             s = int(ss[st])
             if s < 0 or s >= self.num_scans:
                 continue
@@ -251,26 +243,20 @@ def build_polygon_intervals(
 
     # Batch the monotone m/z -> TOF conversion; floor the low edge and ceil the
     # high edge so a point exactly on the boundary is kept. Clamp negative m/z.
-    t_lo = np.floor(
-        np.maximum(mz_to_tof(np.maximum(np.asarray(span_lo), 0.0)), 0.0)
-    ).astype(np.int64)
-    t_hi = np.ceil(
-        np.maximum(mz_to_tof(np.maximum(np.asarray(span_hi), 0.0)), 0.0)
-    ).astype(np.int64)
+    t_lo = np.floor(np.maximum(mz_to_tof(np.maximum(np.asarray(span_lo), 0.0)), 0.0)).astype(np.int64)
+    t_hi = np.ceil(np.maximum(mz_to_tof(np.maximum(np.asarray(span_hi), 0.0)), 0.0)).astype(np.int64)
 
     rows: list[list[tuple[int, int]]] = [[] for _ in range(num_scans)]
     for k, s in enumerate(owner):
         if t_hi[k] >= t_lo[k]:
             rows[s].append((int(t_lo[k]), int(t_hi[k])))
 
-    los, his = zip(*(_coalesce_intervals(r) for r in rows))
+    los, his = zip(*(_coalesce_intervals(r) for r in rows), strict=True)
     gate = PerScanTofIntervals(lo=tuple(los), hi=tuple(his))
     return None if gate.is_empty else gate
 
 
-def build_window_intervals(
-    boxes: list[tuple[int, int, int, int]], num_scans: int
-) -> PerScanTofIntervals | None:
+def build_window_intervals(boxes: list[tuple[int, int, int, int]], num_scans: int) -> PerScanTofIntervals | None:
     """Build per-scan TOF intervals from ``(scan_lo, scan_hi, tof_lo, tof_hi)`` boxes.
 
     All bounds are inclusive. Scan bounds are clamped into ``[0, num_scans)``;
@@ -293,7 +279,7 @@ def build_window_intervals(
             continue
         for s in range(lo, hi + 1):
             rows[s].append((tof_lo, tof_hi))
-    los, his = zip(*(_coalesce_intervals(r) for r in rows))
+    los, his = zip(*(_coalesce_intervals(r) for r in rows), strict=True)
     gate = PerScanTofIntervals(lo=tuple(los), hi=tuple(his))
     return None if gate.is_empty else gate
 
@@ -303,9 +289,7 @@ def build_window_intervals(
 # ---------------------------------------------------------------------------
 
 
-def read_selection_polygon(
-    td: "TimsData", frame_id: int | None = None
-) -> tuple[np.ndarray, np.ndarray] | None:
+def read_selection_polygon(td: TimsData, frame_id: int | None = None) -> tuple[np.ndarray, np.ndarray] | None:
     """Read a selection polygon from the opening-time metadata snapshot.
 
     When frame_id is supplied, use that frame's property group. Both vertex
@@ -313,9 +297,7 @@ def read_selection_polygon(
     """
     if td.handle is None:
         return None
-    definitions = {
-        r["PermanentName"]: r["Id"] for r in td.metadata_table("PropertyDefinitions")
-    }
+    definitions = {r["PermanentName"]: r["Id"] for r in td.metadata_table("PropertyDefinitions")}
     mz_id = definitions.get("IMS_PolygonFilter_Mass")
     im_id = definitions.get("IMS_PolygonFilter_Mobility")
     if mz_id is None or im_id is None:
@@ -338,7 +320,7 @@ def read_selection_polygon(
     return None
 
 
-def read_dia_ms1_boxes(td: "TimsData") -> list[tuple[int, int, float, float]]:
+def read_dia_ms1_boxes(td: TimsData) -> list[tuple[int, int, float, float]]:
     """Read distinct half-open DIA scan windows from the metadata snapshot."""
     if td.handle is None:
         return []
@@ -356,9 +338,7 @@ def read_dia_ms1_boxes(td: "TimsData") -> list[tuple[int, int, float, float]]:
     return boxes
 
 
-def _cached(
-    td: "TimsData", key: tuple, build: Callable[[], PerScanTofIntervals | None]
-) -> PerScanTofIntervals | None:
+def _cached(td: TimsData, key: tuple, build: Callable[[], PerScanTofIntervals | None]) -> PerScanTofIntervals | None:
     # Keep caches on their reader and serialize first construction. Bound the
     # cache because temperature changes may produce many effective calibrations.
     with td._gate_lock:
@@ -400,7 +380,7 @@ class SelectionPolygonGate(NoiseFilter):
         intensities: np.ndarray,
         *,
         num_scans: int,
-        td: "TimsData",
+        td: TimsData,
         frame_id: int,
     ) -> np.ndarray:
         noop = _ms1_only_noop(td, frame_id, intensities, "SelectionPolygonGate")
@@ -414,13 +394,10 @@ class SelectionPolygonGate(NoiseFilter):
             td.calibration_key(frame_id),
             td.frame_metadata(frame_id).property_group,
         )
-        gate = _cached(
-            td, key, lambda: _build_polygon_gate(td, frame_id, num_scans, self)
-        )
+        gate = _cached(td, key, lambda: _build_polygon_gate(td, frame_id, num_scans, self))
         if gate is None:
             logger.debug(
-                "SelectionPolygonGate: no usable polygon for this run; keeping all "
-                "%d points.",
+                "SelectionPolygonGate: no usable polygon for this run; keeping all %d points.",
                 intensities.size,
             )
             return np.ones(intensities.size, dtype=bool)
@@ -454,7 +431,7 @@ class DiaMs1WindowGate(NoiseFilter):
         intensities: np.ndarray,
         *,
         num_scans: int,
-        td: "TimsData",
+        td: TimsData,
         frame_id: int,
     ) -> np.ndarray:
         noop = _ms1_only_noop(td, frame_id, intensities, "DiaMs1WindowGate")
@@ -467,22 +444,17 @@ class DiaMs1WindowGate(NoiseFilter):
             self.im_pad,
             td.calibration_key(frame_id),
         )
-        gate = _cached(
-            td, key, lambda: _build_dia_ms1_gate(td, frame_id, num_scans, self)
-        )
+        gate = _cached(td, key, lambda: _build_dia_ms1_gate(td, frame_id, num_scans, self))
         if gate is None:
             logger.debug(
-                "DiaMs1WindowGate: no isolation windows for this run (ddaPASEF?); "
-                "keeping all %d points.",
+                "DiaMs1WindowGate: no isolation windows for this run (ddaPASEF?); keeping all %d points.",
                 intensities.size,
             )
             return np.ones(intensities.size, dtype=bool)
         return gate.keep_mask(scan_indices, mz_indices)
 
 
-def _build_polygon_gate(
-    td: "TimsData", frame_id: int, num_scans: int, params: SelectionPolygonGate
-) -> PerScanTofIntervals | None:
+def _build_polygon_gate(td: TimsData, frame_id: int, num_scans: int, params: SelectionPolygonGate) -> PerScanTofIntervals | None:
     # diaPASEF stores multiple window quads under the same property, not one
     # selection ring — skip the polygon gate there (dia_ms1 handles diaPASEF MS1).
     if read_dia_ms1_boxes(td):
@@ -504,9 +476,7 @@ def _build_polygon_gate(
     )
 
 
-def _build_dia_ms1_gate(
-    td: "TimsData", frame_id: int, num_scans: int, params: DiaMs1WindowGate
-) -> PerScanTofIntervals | None:
+def _build_dia_ms1_gate(td: TimsData, frame_id: int, num_scans: int, params: DiaMs1WindowGate) -> PerScanTofIntervals | None:
     boxes = read_dia_ms1_boxes(td)
     if not boxes or num_scans == 0:
         return None
@@ -514,20 +484,14 @@ def _build_dia_ms1_gate(
     tof_boxes: list[tuple[int, int, int, int]] = []
     for scan_begin, scan_end, mz_lo, mz_hi in boxes:
         # m/z edges -> TOF indices (monotonic increasing), padded by mz_pad Da.
-        t0, t1 = np.asarray(
-            td.mzToIndex(frame_id, [mz_lo - params.mz_pad, mz_hi + params.mz_pad])
-        )
+        t0, t1 = np.asarray(td.mzToIndex(frame_id, [mz_lo - params.mz_pad, mz_hi + params.mz_pad]))
         tof_lo = int(np.floor(max(min(t0, t1), 0.0)))
         tof_hi = int(np.ceil(max(max(t0, t1), 0.0)))
 
         # Scan range -> 1/K0 (monotonic decreasing), padded by im_pad, back to
         # scans. min/max keep it correct regardless of conversion direction.
         im0, im1 = np.asarray(td.scanNumToOneOverK0(frame_id, [scan_begin, scan_end]))
-        s0, s1 = np.asarray(
-            td.oneOverK0ToScanNum(
-                frame_id, [max(im0, im1) + params.im_pad, min(im0, im1) - params.im_pad]
-            )
-        )
+        s0, s1 = np.asarray(td.oneOverK0ToScanNum(frame_id, [max(im0, im1) + params.im_pad, min(im0, im1) - params.im_pad]))
         # Preserve [begin, end) after padding. Snap numerical round-trip
         # residue at integer boundaries before taking the ceiling.
         bounds = np.array([min(s0, s1), max(s0, s1)])

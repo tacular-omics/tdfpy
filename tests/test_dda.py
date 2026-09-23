@@ -6,9 +6,7 @@ import pytest
 from tdfpy import DDA, get_acquisition_type
 
 D_PATH = "tests/data/example_dda.d"
-SKIP_NO_DATA = pytest.mark.skipif(
-    not pathlib.Path(D_PATH).exists(), reason="Test data not available"
-)
+SKIP_NO_DATA = pytest.mark.skipif(not pathlib.Path(D_PATH).exists(), reason="Test data not available")
 
 
 def test_get_acquisition_type():
@@ -38,9 +36,7 @@ def test_dda_precursors():
         # Check PASEF info for Precursor 1
         # From output: Frame 2, ScanNumBegin 150, ScanNumEnd 175, IsolationMz 1293.371888, Precursor 1
         assert len(p1.pasef_frame_msms_infos) == 6
-        pasef = next(
-            (info for info in p1.pasef_frame_msms_infos if info.frame_id == 2), None
-        )
+        pasef = next((info for info in p1.pasef_frame_msms_infos if info.frame_id == 2), None)
         assert pasef is not None
         assert pasef.scan_num_begin == 150
         assert pasef.scan_num_end == 175
@@ -94,11 +90,7 @@ def test_dda_lookup_features():
         # Test Precursor Query by m/z
         # Precursor 1 has monoisotopic_mz 1292.637062
         mz_target = 1292.637062
-        results = list(
-            dda.precursors.query(
-                mz=mz_target, mz_tolerance=0.01, mz_tolerance_type="da"
-            )
-        )
+        results = list(dda.precursors.query(mz=mz_target, mz_tolerance=0.01, mz_tolerance_type="da"))
         found_ids = [p.precursor_id for p in results]
         assert 1 in found_ids
 

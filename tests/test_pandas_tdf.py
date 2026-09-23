@@ -78,9 +78,7 @@ def test_get_table_names_lists_the_real_tables(pd_tdf: PandasTdf) -> None:
     assert isinstance(names, list)
     assert all(isinstance(n, str) for n in names)
     # Every .d has these, whatever the acquisition mode.
-    assert {"Frames", "GlobalMetadata", "MzCalibration", "TimsCalibration"} <= set(
-        names
-    )
+    assert {"Frames", "GlobalMetadata", "MzCalibration", "TimsCalibration"} <= set(names)
 
 
 def test_get_table_names_is_repeatable(pd_tdf: PandasTdf) -> None:
@@ -118,9 +116,7 @@ def test_missing_database_is_reported() -> None:
         ("example_prm.d", "prm"),
     ],
 )
-def test_acquisition_predicates_identify_exactly_one_mode(
-    fixture: str, mode: str
-) -> None:
+def test_acquisition_predicates_identify_exactly_one_mode(fixture: str, mode: str) -> None:
     """Each fixture must match its own predicate and no other.
 
     The predicates key off different tables, so a file that satisfied two of

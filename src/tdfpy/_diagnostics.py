@@ -80,9 +80,7 @@ def _process(
         nonlocal basis
         if name == "smooth":
             basis = "smoothed"
-        stages.append(
-            StageDiagnostics(name, len(value), float(value.intensities.sum()), basis)
-        )
+        stages.append(StageDiagnostics(name, len(value), float(value.intensities.sum()), basis))
 
     filters = coerce_filters(noise)
     cfg = centroid if centroid is not None else MergePeaksCentroider()
@@ -97,14 +95,8 @@ def _process(
         ion_mobility_type=ion_mobility_type,
         observe=observe,
     )
-    peaks = (
-        cfg(prepared, td, frame_id, ion_mobility_type=ion_mobility_type)
-        if not prepared.empty
-        else np.empty((0, 3), dtype=np.float64)
-    )
-    stages.append(
-        StageDiagnostics("centroid", len(peaks), float(peaks[:, 1].sum()), basis)
-    )
+    peaks = cfg(prepared, td, frame_id, ion_mobility_type=ion_mobility_type) if not prepared.empty else np.empty((0, 3), dtype=np.float64)
+    stages.append(StageDiagnostics("centroid", len(peaks), float(peaks[:, 1].sum()), basis))
     configuration = [
         ("scan_range", repr(scan_range)),
         ("exclude", repr(exclude)),

@@ -1,10 +1,10 @@
 """Scientific accounting and streaming behavior for analysis helpers."""
 
-from dataclasses import asdict
-from itertools import islice
 import json
 import subprocess
 import sys
+from dataclasses import asdict
+from itertools import islice
 
 import numpy as np
 import pytest
@@ -30,12 +30,8 @@ def test_diagnostics_reconcile_with_pipeline():
         frame = next(iter(reader.ms1))
         noise = AbsoluteThreshold(100)
         cfg = MergePeaksCentroider(min_peaks=1, max_peaks=10)
-        result = process_frame(
-            reader.timsdata, frame.frame_id, noise=noise, centroid=cfg
-        )
-        expected = get_centroided_spectrum(
-            reader.timsdata, frame.frame_id, noise=noise, centroid=cfg
-        )
+        result = process_frame(reader.timsdata, frame.frame_id, noise=noise, centroid=cfg)
+        expected = get_centroided_spectrum(reader.timsdata, frame.frame_id, noise=noise, centroid=cfg)
         np.testing.assert_array_equal(result.peaks, expected)
         original = read_spectrum(reader.timsdata, frame.frame_id)
         assert result.stages[0].num_peaks == len(original)
@@ -45,9 +41,7 @@ def test_diagnostics_reconcile_with_pipeline():
         assert result.stages[1].intensity_sum == filtered.sum()
         assert result.stages[-1].intensity_sum == result.peaks[:, 1].sum()
         json.dumps(asdict(result.provenance))
-        smoothed = process_frame(
-            reader.timsdata, frame.frame_id, smooth=Smooth(0, 1), centroid=cfg
-        )
+        smoothed = process_frame(reader.timsdata, frame.frame_id, smooth=Smooth(0, 1), centroid=cfg)
         assert smoothed.stages[0].intensity_basis == "original"
         assert all(s.intensity_basis == "smoothed" for s in smoothed.stages[1:])
 
@@ -56,9 +50,7 @@ def test_diagnostics_reconcile_with_pipeline():
     "reader_cls, mode, attribute",
     [(DIA, "dia", "windows"), (PRM, "prm", "transitions")],
 )
-def test_batch_matches_windows_and_decodes_each_frame_once(
-    reader_cls, mode, attribute, monkeypatch
-):
+def test_batch_matches_windows_and_decodes_each_frame_once(reader_cls, mode, attribute, monkeypatch):
     from tdfpy import processing
 
     original = processing.read_spectrum
@@ -74,7 +66,7 @@ def test_batch_matches_windows_and_decodes_each_frame_once(
         config = MergePeaksCentroider(min_peaks=1, max_peaks=10)
         results = list(iter_window_spectra(windows, centroid=config))
         assert calls == list(dict.fromkeys(w.frame_id for w in windows))
-        for window, result in zip(windows, results):
+        for window, result in zip(windows, results, strict=True):
             assert result[0] is window
             np.testing.assert_array_equal(result[1], window.centroid(centroid=config))
 
@@ -114,9 +106,7 @@ def test_batch_iterator_rejects_cached_spectral_access_after_close():
     try:
         windows = list(islice(reader.windows, 2))
         assert windows[0].frame_id == windows[1].frame_id
-        iterator = iter_window_spectra(
-            windows, centroid=MergePeaksCentroider(max_peaks=5)
-        )
+        iterator = iter_window_spectra(windows, centroid=MergePeaksCentroider(max_peaks=5))
         window, peaks = next(iterator)
         assert window is windows[0]
         assert peaks.shape[1] == 3

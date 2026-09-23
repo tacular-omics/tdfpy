@@ -6,25 +6,13 @@ import numpy as np
 
 
 def nonnegative(name: str, value: float) -> None:
-    if (
-        isinstance(value, bool)
-        or not isinstance(value, Real)
-        or not np.isfinite(value)
-        or value < 0
-    ):
+    if isinstance(value, bool) or not isinstance(value, Real) or not np.isfinite(value) or value < 0:
         raise ValueError(f"{name} must be finite and nonnegative.")
 
 
 def integer(name: str, value: int, minimum: int | None = 0) -> None:
-    if (
-        isinstance(value, bool)
-        or not isinstance(value, Integral)
-        or (minimum is not None and value < minimum)
-    ):
-        raise ValueError(
-            f"{name} must be an integer"
-            + (f" >= {minimum}." if minimum is not None else ".")
-        )
+    if isinstance(value, bool) or not isinstance(value, Integral) or (minimum is not None and value < minimum):
+        raise ValueError(f"{name} must be an integer" + (f" >= {minimum}." if minimum is not None else "."))
 
 
 def choice(name: str, value: str, allowed: tuple[str, ...]) -> None:
@@ -43,21 +31,12 @@ def arrays(*values: np.ndarray) -> None:
         raise ValueError("Peak arrays must contain finite values.")
 
 
-def index_arrays(
-    scan: np.ndarray, tof: np.ndarray, intensity: np.ndarray, num_scans: int
-) -> None:
+def index_arrays(scan: np.ndarray, tof: np.ndarray, intensity: np.ndarray, num_scans: int) -> None:
     arrays(scan, tof, intensity)
     integer("num_scans", num_scans)
-    if not np.issubdtype(scan.dtype, np.integer) or not np.issubdtype(
-        tof.dtype, np.integer
-    ):
+    if not np.issubdtype(scan.dtype, np.integer) or not np.issubdtype(tof.dtype, np.integer):
         raise ValueError("Scan and TOF indices must have integer dtypes.")
-    if (
-        np.any(scan < 0)
-        or np.any(scan >= num_scans)
-        or np.any(tof < 0)
-        or np.any(intensity < 0)
-    ):
+    if np.any(scan < 0) or np.any(scan >= num_scans) or np.any(tof < 0) or np.any(intensity < 0):
         raise ValueError("Peak indices or intensities are outside their valid range.")
 
 

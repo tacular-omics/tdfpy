@@ -23,7 +23,7 @@ from .._validation import index_arrays, integer, nonnegative
 from . import NoiseFilter
 
 try:
-    from numba import njit as _njit  # ty: ignore[unresolved-import]
+    from numba import njit as _njit
 
     _HAS_NUMBA = True
 except ImportError:  # pragma: no cover
@@ -125,9 +125,7 @@ if _HAS_NUMBA:
                         run_last = s
                         run_sum = p
                     elif (s - run_last - 1) > max_gap_scans:
-                        if (
-                            run_last - run_first + 1
-                        ) >= min_streak_scans and run_sum >= min_streak_intensity:
+                        if (run_last - run_first + 1) >= min_streak_scans and run_sum >= min_streak_intensity:
                             run_lo[nkr] = run_first
                             run_hi[nkr] = run_last
                             nkr += 1
@@ -137,11 +135,7 @@ if _HAS_NUMBA:
                     else:
                         run_last = s
                         run_sum += p
-            if (
-                run_first != -1
-                and (run_last - run_first + 1) >= min_streak_scans
-                and run_sum >= min_streak_intensity
-            ):
+            if run_first != -1 and (run_last - run_first + 1) >= min_streak_scans and run_sum >= min_streak_intensity:
                 run_lo[nkr] = run_first
                 run_hi[nkr] = run_last
                 nkr += 1
@@ -203,9 +197,7 @@ def _single_pass_filter_python(
     for k in range(unique_mz.size):
         center = int(unique_mz[k])
         left = int(np.searchsorted(mz_sorted, center - mz_idx_half_width, side="left"))
-        right = int(
-            np.searchsorted(mz_sorted, center + mz_idx_half_width, side="right")
-        )
+        right = int(np.searchsorted(mz_sorted, center + mz_idx_half_width, side="right"))
 
         window_scans = scan_sorted[left:right]
         window_int = int_sorted[left:right]
@@ -223,7 +215,7 @@ def _single_pass_filter_python(
 
         kept_scans = np.zeros(num_scans, dtype=bool)
         any_run_kept = False
-        for run_start, run_end in zip(run_starts, run_ends):
+        for run_start, run_end in zip(run_starts, run_ends, strict=True):
             first_scan = int(occ_scans[run_start])
             last_scan = int(occ_scans[run_end - 1])
             span = last_scan - first_scan + 1
@@ -363,7 +355,7 @@ class VerticalNoiseFilter(NoiseFilter):
         intensities: np.ndarray,
         *,
         num_scans: int,
-        td: "TimsData",
+        td: TimsData,
         frame_id: int,
     ) -> np.ndarray:
         return self.run(
@@ -394,7 +386,7 @@ class VerticalNoiseFilter(NoiseFilter):
         *,
         num_scans: int,
         diagnostics: Literal[True],
-    ) -> "VerticalNoiseDiagnostics": ...
+    ) -> VerticalNoiseDiagnostics: ...
 
     def run(
         self,
@@ -404,7 +396,7 @@ class VerticalNoiseFilter(NoiseFilter):
         *,
         num_scans: int,
         diagnostics: bool = False,
-    ) -> "np.ndarray | VerticalNoiseDiagnostics":
+    ) -> np.ndarray | VerticalNoiseDiagnostics:
         """Run the filter on raw arrays.
 
         When ``diagnostics`` is False (default) returns the keep-mask only.
@@ -467,8 +459,7 @@ class VerticalNoiseFilter(NoiseFilter):
         )
         if n_kept == 0:
             logger.warning(
-                "VerticalNoiseFilter: removed ALL %d points. The streak thresholds "
-                "may be too strict (min_streak_scans=%d, min_streak_intensity=%.1f).",
+                "VerticalNoiseFilter: removed ALL %d points. The streak thresholds may be too strict (min_streak_scans=%d, min_streak_intensity=%.1f).",
                 n,
                 self.min_streak_scans,
                 self.min_streak_intensity,
@@ -598,7 +589,7 @@ class HorizontalHaloFilter(NoiseFilter):
         intensities: np.ndarray,
         *,
         num_scans: int,
-        td: "TimsData",
+        td: TimsData,
         frame_id: int,
     ) -> np.ndarray:
         index_arrays(scan_indices, mz_indices, intensities, num_scans)

@@ -34,7 +34,6 @@ accumulation window, and this reader reproduces that.
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 import os
 import sqlite3
 import sys
@@ -44,6 +43,7 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -125,7 +125,7 @@ def _resolve_zstd() -> Callable[[bytes], bytes]:
         except ImportError:  # pragma: no cover - build without libzstd
             pass
     try:
-        from zstandard import decompress  # ty: ignore[unresolved-import]
+        from zstandard import decompress
 
         return decompress
     except ImportError:
@@ -187,14 +187,11 @@ def _decode_frame(
     except MemoryError:
         raise
     except Exception as exc:
-        raise UnsupportedTdfError(
-            f"Frame {frame_id}: invalid zstd payload ({exc})."
-        ) from exc
+        raise UnsupportedTdfError(f"Frame {frame_id}: invalid zstd payload ({exc}).") from exc
     raw = np.frombuffer(decompressed, dtype=np.uint8)
     if raw.size % 4:
         raise UnsupportedTdfError(
-            f"Frame {frame_id}: decompressed payload is {raw.size} bytes, not a "
-            "multiple of 4; the file may be corrupt or use an unexpected layout."
+            f"Frame {frame_id}: decompressed payload is {raw.size} bytes, not a multiple of 4; the file may be corrupt or use an unexpected layout."
         )
     # Byte-plane de-interleaving: the payload stores an (N, 4) u32 byte matrix
     # column-major, so transposing the (4, N) view restores little-endian words.
@@ -234,17 +231,12 @@ def _decode_frame(
 
     total_peaks = peak_words // 2
     if np.any(words[1:scan_count] & 1):
-        raise UnsupportedTdfError(
-            f"Frame {frame_id}: scan peak-count words must be even."
-        )
+        raise UnsupportedTdfError(f"Frame {frame_id}: scan peak-count words must be even.")
     counts = np.empty(scan_count, dtype=np.int64)
     counts[: scan_count - 1] = words[1:scan_count] >> 1  # stored as 2 * peak count
     counts[scan_count - 1] = total_peaks - int(counts[: scan_count - 1].sum())
     if counts[scan_count - 1] < 0:
-        raise UnsupportedTdfError(
-            f"Frame {frame_id}: scan sizes sum to more than the {total_peaks} "
-            "peaks actually decoded; the file may be corrupt."
-        )
+        raise UnsupportedTdfError(f"Frame {frame_id}: scan sizes sum to more than the {total_peaks} peaks actually decoded; the file may be corrupt.")
 
     payload_words = words[scan_count:]
     tof_deltas = payload_words[0::2]
@@ -262,9 +254,7 @@ def _decode_frame(
     carry = np.zeros(scan_count, dtype=np.uint64)
     non_empty = counts > 0
     prev_index = starts[non_empty] - 1
-    carry[non_empty] = np.where(
-        prev_index >= 0, running[np.maximum(prev_index, 0)], np.uint64(0)
-    )
+    carry[non_empty] = np.where(prev_index >= 0, running[np.maximum(prev_index, 0)], np.uint64(0))
     tof = running - np.repeat(carry, counts) - np.uint64(1)
     if np.any(tof > np.iinfo(np.uint32).max):
         raise UnsupportedTdfError(f"Frame {frame_id}: TOF indices overflow uint32.")
@@ -301,35 +291,20 @@ class TimsData:
         analysis_directory = str(analysis_directory)
 
         if use_recalibrated_state:
-            raise UnsupportedTdfError(
-                "use_recalibrated_state=True is not supported; tdfpy reads the "
-                "calibration recorded in analysis.tdf."
-            )
-        if (
-            pressure_compensation_strategy
-            is not PressureCompensationStrategy.NoPressureCompensation
-        ):
-            raise UnsupportedTdfError(
-                f"{pressure_compensation_strategy.name} is not supported; only "
-                "NoPressureCompensation is implemented."
-            )
+            raise UnsupportedTdfError("use_recalibrated_state=True is not supported; tdfpy reads the calibration recorded in analysis.tdf.")
+        if pressure_compensation_strategy is not PressureCompensationStrategy.NoPressureCompensation:
+            raise UnsupportedTdfError(f"{pressure_compensation_strategy.name} is not supported; only NoPressureCompensation is implemented.")
 
         if not os.path.isdir(analysis_directory):
-            raise FileNotFoundError(
-                f"Analysis directory not found: {analysis_directory!r}"
-            )
+            raise FileNotFoundError(f"Analysis directory not found: {analysis_directory!r}")
         tdf_path = os.path.join(analysis_directory, "analysis.tdf")
         bin_path = os.path.join(analysis_directory, "analysis.tdf_bin")
         for path in (tdf_path, bin_path):
             if not os.path.exists(path):
-                raise FileNotFoundError(
-                    f"{os.path.basename(path)} not found in {analysis_directory!r}"
-                )
+                raise FileNotFoundError(f"{os.path.basename(path)} not found in {analysis_directory!r}")
 
         self.analysis_directory = analysis_directory
-        self.conn: sqlite3.Connection | None = sqlite3.connect(
-            Path(tdf_path).resolve().as_uri() + "?mode=ro", uri=True
-        )
+        self.conn: sqlite3.Connection | None = sqlite3.connect(Path(tdf_path).resolve().as_uri() + "?mode=ro", uri=True)
         self.conn.row_factory = sqlite3.Row
 
         try:
@@ -370,17 +345,10 @@ class TimsData:
             )
             for r in self.conn.execute("SELECT * FROM Frames ORDER BY Id")
         }
-        table_names = {
-            r[0]
-            for r in self.conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='table'"
-            )
-        }
+        table_names = {r[0] for r in self.conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         # sqlite3.Row values are immutable and can be read by worker threads.
         self._metadata_tables = {
-            name: tuple(self.conn.execute(f"SELECT * FROM {name}"))
-            if name in table_names
-            else ()
+            name: tuple(self.conn.execute(f"SELECT * FROM {name}")) if name in table_names else ()
             for name in (
                 "PropertyDefinitions",
                 "GroupProperties",
@@ -398,14 +366,8 @@ class TimsData:
                 "legacy LZF format; such files need Bruker's native library."
             )
 
-        self._mz_calibrations = {
-            int(row["Id"]): MzCalibration.from_row(row)
-            for row in self.conn.execute("SELECT * FROM MzCalibration")
-        }
-        self._tims_calibrations = {
-            int(row["Id"]): TimsCalibration.from_row(row)
-            for row in self.conn.execute("SELECT * FROM TimsCalibration")
-        }
+        self._mz_calibrations = {int(row["Id"]): MzCalibration.from_row(row) for row in self.conn.execute("SELECT * FROM MzCalibration")}
+        self._tims_calibrations = {int(row["Id"]): TimsCalibration.from_row(row) for row in self.conn.execute("SELECT * FROM TimsCalibration")}
 
         # (offset, num_scans, accumulation_time, T1, T2, mz_cal_id, tims_cal_id)
         self._frames: dict[int, tuple[int, int, float, float, float, int, int]] = {
@@ -418,10 +380,7 @@ class TimsData:
                 int(r["MzCalibration"]),
                 int(r["TimsCalibration"]),
             )
-            for r in self.conn.execute(
-                "SELECT Id, TimsId, NumScans, AccumulationTime, T1, T2, "
-                "MzCalibration, TimsCalibration FROM Frames"
-            )
+            for r in self.conn.execute("SELECT Id, TimsId, NumScans, AccumulationTime, T1, T2, MzCalibration, TimsCalibration FROM Frames")
         }
 
     def _frame(self, frame_id: int) -> tuple[int, int, float, float, float, int, int]:
@@ -433,10 +392,7 @@ class TimsData:
                 valid = f"{lo}..{hi}"
             else:
                 valid = "none (Frames table is empty)"
-            raise ValueError(
-                f"Frame {frame_id} not found in the Frames table "
-                f"(valid frame IDs: {valid}). Frame IDs are 1-based."
-            ) from None
+            raise ValueError(f"Frame {frame_id} not found in the Frames table (valid frame IDs: {valid}). Frame IDs are 1-based.") from None
 
     def _mz_cal(self, frame_id: int) -> tuple[MzCalibration, float, float]:
         _, _, _, t1, t2, mz_id, _ = self._frame(frame_id)
@@ -484,7 +440,7 @@ class TimsData:
 
     # -- lifecycle --------------------------------------------------------
 
-    def __enter__(self) -> "TimsData":
+    def __enter__(self) -> TimsData:
         return self
 
     def __exit__(self, exit_type: Any, value: Any, traceback: Any) -> None:
@@ -497,8 +453,9 @@ class TimsData:
         if getattr(self, "handle", None) is not None:
             self.handle.close()
             self.handle = None
-        if getattr(self, "conn", None) is not None:
-            self.conn.close()  # type: ignore[union-attr]
+        conn = getattr(self, "conn", None)
+        if conn is not None:
+            conn.close()
             self.conn = None
 
     def _require_open(self) -> Any:
@@ -538,9 +495,7 @@ class TimsData:
 
     # -- conversions ------------------------------------------------------
 
-    def indexToMz(
-        self, frame_id: int, indices: npt.ArrayLike
-    ) -> npt.NDArray[np.float64]:
+    def indexToMz(self, frame_id: int, indices: npt.ArrayLike) -> npt.NDArray[np.float64]:
         """Convert TOF sample indices to m/z for ``frame_id``."""
         cal, t1, t2 = self._mz_cal(frame_id)
         return cal.index_to_mz(indices, t1, t2)
@@ -550,27 +505,19 @@ class TimsData:
         cal, t1, t2 = self._mz_cal(frame_id)
         return cal.mz_to_index(mzs, t1, t2)
 
-    def scanNumToOneOverK0(
-        self, frame_id: int, scan_nums: npt.ArrayLike
-    ) -> npt.NDArray[np.float64]:
+    def scanNumToOneOverK0(self, frame_id: int, scan_nums: npt.ArrayLike) -> npt.NDArray[np.float64]:
         """Convert scan numbers to inverse reduced mobility (1/K0)."""
         return self._tims_cal(frame_id).scan_to_one_over_k0(scan_nums)
 
-    def oneOverK0ToScanNum(
-        self, frame_id: int, mobilities: npt.ArrayLike
-    ) -> npt.NDArray[np.float64]:
+    def oneOverK0ToScanNum(self, frame_id: int, mobilities: npt.ArrayLike) -> npt.NDArray[np.float64]:
         """Convert 1/K0 to (fractional) scan numbers."""
         return self._tims_cal(frame_id).one_over_k0_to_scan(mobilities)
 
-    def scanNumToVoltage(
-        self, frame_id: int, scan_nums: npt.ArrayLike
-    ) -> npt.NDArray[np.float64]:
+    def scanNumToVoltage(self, frame_id: int, scan_nums: npt.ArrayLike) -> npt.NDArray[np.float64]:
         """Convert scan numbers to TIMS ramp voltage."""
         return self._tims_cal(frame_id).scan_to_voltage(scan_nums)
 
-    def voltageToScanNum(
-        self, frame_id: int, voltages: npt.ArrayLike
-    ) -> npt.NDArray[np.float64]:
+    def voltageToScanNum(self, frame_id: int, voltages: npt.ArrayLike) -> npt.NDArray[np.float64]:
         """Convert TIMS ramp voltage to (fractional) scan numbers."""
         return self._tims_cal(frame_id).voltage_to_scan(voltages)
 
@@ -630,30 +577,18 @@ class TimsData:
             )
         if not payload:
             if self._peak_counts[frame_id] != 0:
-                raise UnsupportedTdfError(
-                    f"Frame {frame_id}: empty packet disagrees with Frames.NumPeaks "
-                    f"({self._peak_counts[frame_id]})."
-                )
+                raise UnsupportedTdfError(f"Frame {frame_id}: empty packet disagrees with Frames.NumPeaks ({self._peak_counts[frame_id]}).")
             return None
 
-        starts, counts, tof, raw_intensity = _decode_frame(
-            payload, scan_count, frame_id
-        )
+        starts, counts, tof, raw_intensity = _decode_frame(payload, scan_count, frame_id)
         if tof.size != self._peak_counts[frame_id]:
-            raise UnsupportedTdfError(
-                f"Frame {frame_id}: decoded {tof.size} peaks but Frames.NumPeaks "
-                f"is {self._peak_counts[frame_id]}."
-            )
+            raise UnsupportedTdfError(f"Frame {frame_id}: decoded {tof.size} peaks but Frames.NumPeaks is {self._peak_counts[frame_id]}.")
         if np.any(tof >= self._digitizer_num_samples):
-            raise UnsupportedTdfError(
-                f"Frame {frame_id}: TOF index exceeds DigitizerNumSamples."
-            )
+            raise UnsupportedTdfError(f"Frame {frame_id}: TOF index exceeds DigitizerNumSamples.")
 
         # Bruker normalises raw digitiser sums to a 100 ms accumulation window.
         if accum_time > 0:
-            intensity = np.floor(raw_intensity * (100.0 / accum_time) + 0.5).astype(
-                np.uint32
-            )
+            intensity = np.floor(raw_intensity * (100.0 / accum_time) + 0.5).astype(np.uint32)
         else:
             logger.warning(
                 "Frame %d has AccumulationTime=0; returning un-normalised intensities.",
@@ -694,14 +629,10 @@ class TimsData:
 
         lo = int(starts[begin])
         hi = int(starts[end - 1] + counts[end - 1])
-        scan_indices = np.repeat(
-            np.arange(begin, end, dtype=np.int64), counts[begin:end]
-        )
+        scan_indices = np.repeat(np.arange(begin, end, dtype=np.int64), counts[begin:end])
         return scan_indices, tof[lo:hi], intensity[lo:hi]
 
-    def readScans(
-        self, frame_id: int, scan_begin: int, scan_end: int
-    ) -> list[tuple[npt.NDArray[np.uint32], npt.NDArray[np.uint32]]]:
+    def readScans(self, frame_id: int, scan_begin: int, scan_end: int) -> list[tuple[npt.NDArray[np.uint32], npt.NDArray[np.uint32]]]:
         """Read scans ``[scan_begin, scan_end)`` of a frame.
 
         Returns one ``(tof_indices, intensities)`` pair per scan. Intensities are
@@ -759,8 +690,7 @@ def ccsToOneOverK0ToCCSforMz(ccs: float, charge: int, mz: float) -> float:
     existing callers keep working.
     """
     warnings.warn(
-        "ccsToOneOverK0ToCCSforMz is a misnamed alias and will be removed in a "
-        "future release; use ccsToOneOverK0forMz instead.",
+        "ccsToOneOverK0ToCCSforMz is a misnamed alias and will be removed in a future release; use ccsToOneOverK0forMz instead.",
         DeprecationWarning,
         stacklevel=2,
     )

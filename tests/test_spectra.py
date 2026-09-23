@@ -20,9 +20,7 @@ class TestSpectra(unittest.TestCase):
         with timsdata.timsdata_connect(TDF_PATH) as td:
             # Get the first MS1 frame
             cursor = td.conn.cursor()
-            cursor.execute(
-                "SELECT Id FROM Frames WHERE MsMsType = 0 ORDER BY Id LIMIT 1"
-            )
+            cursor.execute("SELECT Id FROM Frames WHERE MsMsType = 0 ORDER BY Id LIMIT 1")
             frame_id = cursor.fetchone()[0]
 
             # Extract spectrum
@@ -46,9 +44,7 @@ class TestSpectra(unittest.TestCase):
         with timsdata.timsdata_connect(TDF_PATH) as td:
             # Get first 2 MS1 frame IDs
             cursor = td.conn.cursor()
-            cursor.execute(
-                "SELECT Id FROM Frames WHERE MsMsType = 0 ORDER BY Id LIMIT 2"
-            )
+            cursor.execute("SELECT Id FROM Frames WHERE MsMsType = 0 ORDER BY Id LIMIT 2")
             frame_ids = [row[0] for row in cursor.fetchall()]
 
             if len(frame_ids) >= 2:  # Only test if we have at least 2 frames
@@ -65,15 +61,11 @@ class TestSpectra(unittest.TestCase):
 
         with timsdata.timsdata_connect(TDF_PATH) as td:
             cursor = td.conn.cursor()
-            cursor.execute(
-                "SELECT Id FROM Frames WHERE MsMsType = 0 ORDER BY Id LIMIT 1"
-            )
+            cursor.execute("SELECT Id FROM Frames WHERE MsMsType = 0 ORDER BY Id LIMIT 1")
             frame_id = cursor.fetchone()[0]
 
             base = get_raw_peaks(td, frame_id)
-            smoothed = get_raw_peaks(
-                td, frame_id, smooth=Smooth(scan_half_width=5, mz_idx_half_width=2)
-            )
+            smoothed = get_raw_peaks(td, frame_id, smooth=Smooth(scan_half_width=5, mz_idx_half_width=2))
             # Position-preserving: same point count, but intensities differ.
             self.assertEqual(base.shape[0], smoothed.shape[0])
             self.assertFalse(np.allclose(base[:, 1], smoothed[:, 1]))
@@ -190,12 +182,8 @@ class TestSpectra(unittest.TestCase):
 
         for test in test_cases:
             with self.subTest(params=test["params"]):
-                py_peaks = _merge_peaks_python(
-                    test["mz"], test["intensity"], test["im"], **test["params"]
-                )
-                numba_peaks = _merge_peaks_numba(
-                    test["mz"], test["intensity"], test["im"], **test["params"]
-                )
+                py_peaks = _merge_peaks_python(test["mz"], test["intensity"], test["im"], **test["params"])
+                numba_peaks = _merge_peaks_numba(test["mz"], test["intensity"], test["im"], **test["params"])
 
                 self.assertEqual(
                     len(py_peaks),
@@ -204,15 +192,9 @@ class TestSpectra(unittest.TestCase):
                 )
 
                 if len(py_peaks) > 0:
-                    np.testing.assert_allclose(
-                        py_peaks[:, 0], numba_peaks[:, 0], rtol=1e-6
-                    )
-                    np.testing.assert_allclose(
-                        py_peaks[:, 1], numba_peaks[:, 1], rtol=1e-6
-                    )
-                    np.testing.assert_allclose(
-                        py_peaks[:, 2], numba_peaks[:, 2], rtol=1e-6
-                    )
+                    np.testing.assert_allclose(py_peaks[:, 0], numba_peaks[:, 0], rtol=1e-6)
+                    np.testing.assert_allclose(py_peaks[:, 1], numba_peaks[:, 1], rtol=1e-6)
+                    np.testing.assert_allclose(py_peaks[:, 2], numba_peaks[:, 2], rtol=1e-6)
 
     def test_peak_noise_filter_off_is_noop(self):
         """peak_noise_filter=False should produce identical output to omitting it."""
@@ -428,7 +410,7 @@ class TestSpectra(unittest.TestCase):
         sat_mz = []
         sat_int = []
         sat_im = []
-        for a_mz, a_im in zip(anchors_mz, anchors_im):
+        for a_mz, a_im in zip(anchors_mz, anchors_im, strict=True):
             offsets = rng.uniform(-0.09, 0.09, size=30)
             sat_mz.extend((a_mz + offsets).tolist())
             sat_int.extend(rng.uniform(50.0, 500.0, size=30).tolist())
@@ -454,15 +436,9 @@ class TestSpectra(unittest.TestCase):
         self.assertEqual(len(py_peaks), len(nb_peaks))
         order_py = np.argsort(py_peaks[:, 0])
         order_nb = np.argsort(nb_peaks[:, 0])
-        np.testing.assert_allclose(
-            py_peaks[order_py, 0], nb_peaks[order_nb, 0], rtol=1e-9
-        )
-        np.testing.assert_allclose(
-            py_peaks[order_py, 1], nb_peaks[order_nb, 1], rtol=1e-9
-        )
-        np.testing.assert_allclose(
-            py_peaks[order_py, 2], nb_peaks[order_nb, 2], rtol=1e-9
-        )
+        np.testing.assert_allclose(py_peaks[order_py, 0], nb_peaks[order_nb, 0], rtol=1e-9)
+        np.testing.assert_allclose(py_peaks[order_py, 1], nb_peaks[order_nb, 1], rtol=1e-9)
+        np.testing.assert_allclose(py_peaks[order_py, 2], nb_peaks[order_nb, 2], rtol=1e-9)
 
 
 class TestWatershedCentroiderCall(unittest.TestCase):
@@ -494,9 +470,7 @@ class TestWatershedCentroiderCall(unittest.TestCase):
             if spectrum.empty:
                 self.skipTest("First MS1 frame has no peaks")
 
-            centroider = WatershedCentroider(
-                smooth_scan_half_width=5, smooth_mz_idx_half_width=3
-            )
+            centroider = WatershedCentroider(smooth_scan_half_width=5, smooth_mz_idx_half_width=3)
             self.assertGreater(centroider.smooth_scan_half_width, 0)
             centroids = centroider(spectrum, td, frame_id)
 
@@ -519,16 +493,12 @@ class TestWatershedCentroiderCall(unittest.TestCase):
             if spectrum.empty:
                 self.skipTest("First MS1 frame has no peaks")
             smoothed = WatershedCentroider()(spectrum, td, frame_id)
-            unsmoothed = WatershedCentroider(
-                smooth_scan_half_width=0, smooth_mz_idx_half_width=0
-            )(spectrum, td, frame_id)
+            unsmoothed = WatershedCentroider(smooth_scan_half_width=0, smooth_mz_idx_half_width=0)(spectrum, td, frame_id)
 
         raw_total = float(spectrum.intensities.sum())
         self.assertNotEqual(len(smoothed), len(unsmoothed))
         for out in (smoothed, unsmoothed):
-            self.assertAlmostEqual(
-                float(out[:, 1].sum()), raw_total, delta=1e-6 * raw_total
-            )
+            self.assertAlmostEqual(float(out[:, 1].sum()), raw_total, delta=1e-6 * raw_total)
 
     def test_single_nonzero_half_width_still_smooths(self):
         """Skip smoothing only when *both* half-widths are 0.
@@ -544,15 +514,9 @@ class TestWatershedCentroiderCall(unittest.TestCase):
             spectrum = read_spectrum(td, frame_id)
             if spectrum.empty:
                 self.skipTest("First MS1 frame has no peaks")
-            mz_only = WatershedCentroider(
-                smooth_scan_half_width=0, smooth_mz_idx_half_width=3
-            )(spectrum, td, frame_id)
-            scan_only = WatershedCentroider(
-                smooth_scan_half_width=5, smooth_mz_idx_half_width=0
-            )(spectrum, td, frame_id)
-            none = WatershedCentroider(
-                smooth_scan_half_width=0, smooth_mz_idx_half_width=0
-            )(spectrum, td, frame_id)
+            mz_only = WatershedCentroider(smooth_scan_half_width=0, smooth_mz_idx_half_width=3)(spectrum, td, frame_id)
+            scan_only = WatershedCentroider(smooth_scan_half_width=5, smooth_mz_idx_half_width=0)(spectrum, td, frame_id)
+            none = WatershedCentroider(smooth_scan_half_width=0, smooth_mz_idx_half_width=0)(spectrum, td, frame_id)
 
         # Each single-axis config must smooth along its own axis, so neither
         # may reproduce the no-smoothing grouping.
@@ -562,9 +526,7 @@ class TestWatershedCentroiderCall(unittest.TestCase):
 
         raw_total = float(spectrum.intensities.sum())
         for out in (mz_only, scan_only, none):
-            self.assertAlmostEqual(
-                float(out[:, 1].sum()), raw_total, delta=1e-6 * raw_total
-            )
+            self.assertAlmostEqual(float(out[:, 1].sum()), raw_total, delta=1e-6 * raw_total)
 
     def test_empty_spectrum_returns_empty(self):
         from tdfpy.pipeline import RawSpectrum, WatershedCentroider
