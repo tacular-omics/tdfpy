@@ -279,7 +279,7 @@ def build_window_intervals(boxes: list[tuple[int, int, int, int]], num_scans: in
             continue
         for s in range(lo, hi + 1):
             rows[s].append((tof_lo, tof_hi))
-    los, his = zip(*(_coalesce_intervals(r) for r in rows))
+    los, his = zip(*(_coalesce_intervals(r) for r in rows), strict=True)
     gate = PerScanTofIntervals(lo=tuple(los), hi=tuple(his))
     return None if gate.is_empty else gate
 
