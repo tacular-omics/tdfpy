@@ -125,7 +125,7 @@ def _resolve_zstd() -> Callable[[bytes], bytes]:
         except ImportError:  # pragma: no cover - build without libzstd
             pass
     try:
-        from zstandard import decompress  # ty: ignore[unresolved-import]
+        from zstandard import decompress
 
         return decompress
     except ImportError:
@@ -453,8 +453,9 @@ class TimsData:
         if getattr(self, "handle", None) is not None:
             self.handle.close()
             self.handle = None
-        if getattr(self, "conn", None) is not None:
-            self.conn.close()  # type: ignore[union-attr]
+        conn = getattr(self, "conn", None)
+        if conn is not None:
+            conn.close()
             self.conn = None
 
     def _require_open(self) -> Any:

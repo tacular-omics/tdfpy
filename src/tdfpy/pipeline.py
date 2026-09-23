@@ -35,7 +35,7 @@ from .timsdata import TimsData, oneOverK0ToCCSforMz
 logger = logging.getLogger(__name__)
 
 try:
-    from numba import njit as _njit  # ty: ignore[unresolved-import]
+    from numba import njit as _njit
 
     _HAS_NUMBA = True
 except ImportError:
@@ -261,7 +261,7 @@ def convert(
 
     if ion_mobility_type == "ccs":
         ion_mobility_array = np.array(
-            [oneOverK0ToCCSforMz(ook0, 1, mz) for ook0, mz in zip(ion_mobility_array, mz_array, strict=True)],
+            [oneOverK0ToCCSforMz(float(ook0), 1, float(mz)) for ook0, mz in zip(ion_mobility_array, mz_array, strict=True)],
             dtype=np.float64,
         )
     elif ion_mobility_type == "voltage":

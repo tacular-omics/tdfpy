@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any, Literal, NamedTuple
 
 import numpy as np
-import pandas as pd  # type: ignore
+import pandas as pd
 
 from ._validation import arrays, merge_config
 from .noise import NoiseSpec
@@ -30,8 +30,8 @@ from .timsdata import TimsData
 
 # Try to import Numba for JIT-accelerated implementation
 try:
-    from numba import njit as _njit  # ty: ignore[unresolved-import]
-    from numba.core.errors import NumbaError  # ty: ignore[unresolved-import]
+    from numba import njit as _njit
+    from numba.core.errors import NumbaError
 
     _HAS_NUMBA = True
 except ImportError:

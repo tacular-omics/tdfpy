@@ -23,7 +23,7 @@ from .._validation import index_arrays, integer, nonnegative
 from . import NoiseFilter
 
 try:
-    from numba import njit as _njit  # ty: ignore[unresolved-import]
+    from numba import njit as _njit
 
     _HAS_NUMBA = True
 except ImportError:  # pragma: no cover
