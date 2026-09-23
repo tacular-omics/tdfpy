@@ -74,7 +74,9 @@ def processing_options() -> dict:
         ],
         "defaults": "Defaults match the Python API. No output peak cap is imposed by the server.",
         "max_peaks": "MergePeaksCentroider.max_peaks limits seed traversal, not final intensity ranking.",
-        "precursors": "DDA precursor extraction uses the existing mobility-collapsed picker and its defaults. Processing overrides are not supported for precursors.",
+        "precursors": (
+            "DDA precursor extraction uses the existing mobility-collapsed picker and its defaults. Processing overrides are not supported for precursors."
+        ),
     }
 
 
@@ -417,7 +419,8 @@ class AcquisitionService:
                 if selection.kind == "precursor":
                     if processing != Processing():
                         raise ValueError(
-                            "Precursor spectra use the existing mobility-collapsed picker. Omit processing overrides, or select individual PASEF frames for custom processing"
+                            "Precursor spectra use the existing mobility-collapsed picker. Omit "
+                            "processing overrides, or select individual PASEF frames for custom processing"
                         )
                     assert isinstance(reader, DDA)
                     obj = reader.precursors[selection.id]
