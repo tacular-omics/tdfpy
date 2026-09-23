@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.1.0] (2026-09-23)
+
 ### Fixed
 
 - `plot_centroiding` accepts `centroid=` (any `Centroider`), like `Frame.centroid()` and `get_centroided_spectrum()`. With no arguments it now plots the default `MergePeaksCentroider()`, so the figure matches `frame.centroid()` (the old default used `im_tolerance=0.01`, not 0.1).
