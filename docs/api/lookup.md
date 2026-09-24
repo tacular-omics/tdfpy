@@ -82,11 +82,11 @@ with PRM("experiment.d") as prm:
     print(t.description, t.rt, t.ook0)
 
     # Query by m/z (20 ppm window)
-    for target in prm.targets.query(mz=565.3189, mz_tolerance=20.0):
+    for target in prm.targets.query(precursor_mz=565.3189, mz_tolerance=20.0):
         print(target.target_id, target.precursor_mz)
 
     # Query by m/z and expected RT (±30 s)
-    for target in prm.targets.query(mz=565.3189, rt=480.0, rt_tolerance=30.0):
+    for target in prm.targets.query(precursor_mz=565.3189, rt=480.0, rt_tolerance=30.0):
         print(target.target_id, target.description)
 
     # Query by 1/K0 (ion mobility)

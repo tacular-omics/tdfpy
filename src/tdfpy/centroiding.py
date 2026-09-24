@@ -266,7 +266,7 @@ def _merge_peaks_numba(
     # pure-Python kernel, which treats a falsy max_peaks as unlimited.
     _max_peaks = -1 if (max_peaks is None or max_peaks <= 0) else int(max_peaks)
     if mz_array.size > 1 and not np.all(mz_array[1:] >= mz_array[:-1]):
-        sort_idx = np.argsort(mz_array)
+        sort_idx = np.argsort(mz_array, kind="stable")
         mz_array = mz_array[sort_idx]
         intensity_array = intensity_array[sort_idx]
         ion_mobility_array = ion_mobility_array[sort_idx]
@@ -275,7 +275,9 @@ def _merge_peaks_numba(
     mz_s = np.ascontiguousarray(mz_array, dtype=np.float64)
     int_s = np.ascontiguousarray(intensity_array, dtype=np.float64)
     im_s = np.ascontiguousarray(ion_mobility_array, dtype=np.float64)
-    intensity_order = np.ascontiguousarray(np.argsort(int_s)[::-1].astype(np.int64))
+    # Stable sort on negated intensity: equal-intensity seeds keep ascending
+    # m/z order, independent of the NumPy version and sort backend.
+    intensity_order = np.ascontiguousarray(np.argsort(-int_s, kind="stable").astype(np.int64))
     out_mz, out_int, out_im = _merge_peaks_numba_kernel(
         mz_s,
         int_s,
@@ -456,15 +458,18 @@ def _merge_peaks_python(
         mobility_tol_abs = im_tolerance
         mobility_tol_factor = 0.0
 
-    # Sort by mz for binary search
-    sort_idx = np.argsort(mz_array)
-    mz_array = mz_array[sort_idx]
-    intensity_array = intensity_array[sort_idx]
-    ion_mobility_array = ion_mobility_array[sort_idx]
-    logger.debug("Sorted %d peaks by m/z", len(mz_array))
+    # Sort by mz for binary search (skipped when already ascending, as in the
+    # numba kernel, so both kernels see the same peak order).
+    if mz_array.size > 1 and not np.all(mz_array[1:] >= mz_array[:-1]):
+        sort_idx = np.argsort(mz_array, kind="stable")
+        mz_array = mz_array[sort_idx]
+        intensity_array = intensity_array[sort_idx]
+        ion_mobility_array = ion_mobility_array[sort_idx]
+        logger.debug("Sorted %d peaks by m/z", len(mz_array))
 
-    # Sort by intensity for greedy clustering
-    intensity_order = np.argsort(intensity_array)[::-1]
+    # Sort by intensity for greedy clustering; stable so equal-intensity seeds
+    # keep ascending m/z order.
+    intensity_order = np.argsort(-intensity_array, kind="stable")
     logger.debug("Created intensity-ordered index for greedy clustering")
 
     # Use boolean mask for tracking used peaks

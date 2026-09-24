@@ -67,7 +67,7 @@ DIA and PRM acquisitions work the same way with `DIA(...)` and `PRM(...)`; see t
 
 | Feature | Example |
 | --- | --- |
-| **Lookups & queries** | `dda.precursors.query(mz=1292.63, mz_tolerance=20.0, rt=2400.0, rt_tolerance=30.0)` — by ID or by m/z/RT window |
+| **Lookups & queries** | `dda.precursors.query(precursor_mz=1292.63, mz_tolerance=20.0, rt=2400.0, rt_tolerance=30.0)` — by ID or by m/z/RT window |
 | **Custom peak pipelines** | `frame.centroid(exclude=ChargeStateRegion(), smooth=Smooth(...), noise=[MadThreshold(k=3), ...], centroid=WatershedCentroider(...))` |
 | **Noise filter shorthand** | `frame.centroid(noise="mad")` or `frame.centroid(noise=500.0)` for common cases |
 | **CLI validation** | `tdfpy validate sample.d --full` checks every binary frame without modifying the acquisition |

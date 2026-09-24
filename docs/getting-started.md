@@ -106,7 +106,7 @@ with DDA(D_PATH) as dda:
 
     # Query precursors by m/z and retention time
     results = dda.precursors.query(
-        mz=1292.63,
+        precursor_mz=1292.63,
         mz_tolerance=20.0,       # ppm by default
         rt=2400.0,               # seconds
         rt_tolerance=30.0,       # seconds

@@ -421,3 +421,86 @@ def test_empty_lookup_miss_message():
     from tdfpy.lookup import _missing_id_error
 
     assert "none are loaded" in str(_missing_id_error("MS1 frame ID", 3, []))
+
+
+# -- centroid tie-break ----------------------------------------------------------
+
+
+@settings(max_examples=80, deadline=None)
+@given(
+    mz=st.lists(st.floats(500, 500.2, allow_nan=False), min_size=1, max_size=60, unique=True),
+    levels=st.integers(1, 3),
+    seed=st.integers(0, 2**16),
+)
+def test_merge_peaks_equal_intensities_are_order_independent(mz, levels, seed):
+    """Equal-intensity seeds break ties by ascending m/z in both kernels.
+
+    Many equal intensities in a narrow m/z band make the greedy seed order
+    decide the clusters, so shuffled and presorted input, and numba and pure
+    Python, must still agree.
+    """
+    rng = np.random.default_rng(seed)
+    mz_arr = np.asarray(mz)
+    intensity = rng.integers(1, levels + 1, len(mz_arr)).astype(np.float64) * 100.0
+    im = np.full(len(mz_arr), 1.0)
+    shuffle = rng.permutation(len(mz_arr))
+    order = np.argsort(mz_arr)
+    kwargs = {"mz_tolerance": 0.01, "mz_tolerance_type": "da", "min_peaks": 1}
+    results = []
+    for use_numba in (True, False):
+        for idx in (shuffle, order):
+            results.append(merge_peaks(mz_arr[idx], intensity[idx], im[idx], use_numba=use_numba, **kwargs))
+    np.testing.assert_array_equal(results[0], results[1])
+    np.testing.assert_array_equal(results[2], results[3])
+    np.testing.assert_allclose(results[0], results[2], rtol=1e-12)
+
+
+@pytest.mark.parametrize("use_numba", [True, False])
+def test_merge_peaks_tie_seeds_lowest_mz_first(use_numba):
+    """Three equal peaks 0.008 Da apart with a 0.01 Da tolerance: the lowest m/z seeds."""
+    mz = np.array([500.016, 500.000, 500.008])
+    intensity = np.full(3, 100.0)
+    im = np.ones(3)
+    got = merge_peaks(mz, intensity, im, mz_tolerance=0.01, mz_tolerance_type="da", min_peaks=1, use_numba=use_numba)
+    got = got[np.argsort(got[:, 0])]
+    np.testing.assert_allclose(got[:, 0], [500.004, 500.016])
+    np.testing.assert_allclose(got[:, 1], [200.0, 100.0])
+
+
+# -- iter_precursor_spectra input check -------------------------------------------
+
+
+def test_iter_precursor_spectra_rejects_dia_windows():
+    _need(DIA_PATH)
+    with DIA(DIA_PATH) as dia:
+        windows = list(dia.windows)[:3]
+        with pytest.raises(TdfpyError, match="iter_window_spectra"):
+            list(iter_precursor_spectra(windows))  # type: ignore[arg-type]
+
+
+# -- sliced reads check only the scans they decode --------------------------------
+
+
+def test_sliced_read_does_not_check_tof_outside_the_slice(dda_td, monkeypatch):
+    """A TOF index past DigitizerNumSamples in a scan outside the slice is not reported.
+
+    The bounds check covers the decoded scans only (the price of decoding a slice);
+    a full read of the same frame still raises.
+    """
+    for frame_id in sorted(dda_td._peak_counts):
+        decoded = dda_td._decode(frame_id)
+        if decoded is None:
+            continue
+        _, starts, counts, tof, _ = decoded
+        per_scan = [(scan, int(tof[starts[scan] : starts[scan] + counts[scan]].max())) for scan in np.flatnonzero(counts)]
+        low_scan, low_max = min(per_scan, key=lambda item: item[1])
+        if low_max < int(tof.max()):
+            break
+    else:
+        pytest.skip("no frame with a scan below the frame's max TOF")
+    # Pretend the digitiser is shorter: only scans outside the chosen one now overflow.
+    monkeypatch.setattr(dda_td, "_digitizer_num_samples", low_max + 1)
+    scans, arr_tof, _ = dda_td.read_frame_arrays(frame_id, int(low_scan), int(low_scan) + 1)
+    assert arr_tof.size == int(counts[low_scan])
+    with pytest.raises(TdfpyError, match="DigitizerNumSamples"):
+        dda_td.read_frame_arrays(frame_id)

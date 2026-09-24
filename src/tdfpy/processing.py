@@ -9,6 +9,7 @@ import numpy as np
 
 from .centroiding import _collapsed_spectrum
 from .elems import DiaWindow, Precursor, PrmTransition
+from .errors import TdfpyError
 from .noise import NoiseSpec
 from .pipeline import (
     Centroider,
@@ -80,11 +81,16 @@ def iter_precursor_spectra(precursors: Iterable[Precursor]) -> Iterator[tuple[Pr
 
     Raises:
         ReaderClosedError: If the reader was closed.
-        TdfpyError: If a window's scan range does not fit its frame (corrupt file).
+        TdfpyError: If an item is not a :class:`Precursor`, or a window's scan
+            range does not fit its frame (corrupt file).
     """
     cache: OrderedDict[tuple[TimsData, int], tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray] | None] = OrderedDict()
 
     for precursor in precursors:
+        if not isinstance(precursor, Precursor):
+            raise TdfpyError(
+                f"iter_precursor_spectra takes DDA precursors, got {type(precursor).__name__}; use iter_window_spectra for DIA windows or PRM transitions."
+            )
         td = precursor.timsdata
 
         def read(frame_id: int, begin: int, end: int, td=td) -> tuple[np.ndarray, np.ndarray]:

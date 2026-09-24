@@ -98,7 +98,7 @@ with DDA("run.d") as dda:              # always use the context manager
     cen = frame.centroid()             # (N, 3) float: m/z, intensity, 1/K0
     cen = frame.centroid(noise="mad", exclude=ChargeStateRegion())
     cen = frame.centroid(centroid=WatershedCentroider())
-    for p in dda.precursors.query(mz=652.3, rt=1200.0):   # PrecursorLookup
+    for p in dda.precursors.query(precursor_mz=652.3, rt=1200.0):   # PrecursorLookup
         p.merged_peaks()               # (N, 2): MS2 m/z, intensity (mobility collapsed, 30 ppm merge)
 
 with DIA("run.d") as dia:

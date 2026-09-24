@@ -8,7 +8,7 @@ arguments are keyword-only.
 
 Argument names follow one rule: a ``(low, high)`` tuple is ``*_range``
 (``rt_range``, ``ook0_range``, ``precursor_mz_range``) and goes to
-``query_range``; a point value is ``rt`` / ``mz`` / ``ook0`` plus a
+``query_range``; a point value is ``rt`` / ``precursor_mz`` / ``ook0`` plus a
 ``*_tolerance`` and goes to ``query``. Ranges and tolerances are inclusive.
 """
 
@@ -240,16 +240,16 @@ class PrecursorLookup(_IdLookup[Precursor, Precursor]):
     def query(
         self,
         *,
-        mz: float | None = None,
+        precursor_mz: float | None = None,
         rt: float | None = None,
         mz_tolerance: float = 20.0,
         mz_tolerance_type: Literal["ppm", "da"] = "ppm",
         rt_tolerance: float = 30.0,
     ) -> Iterator[Precursor]:
-        """Precursors within a tolerance of ``mz`` and/or ``rt``.
+        """Precursors within a tolerance of ``precursor_mz`` and/or ``rt``.
 
         Args:
-            mz: Target m/z. ``None`` skips m/z filtering.
+            precursor_mz: Target precursor m/z. ``None`` skips m/z filtering.
             rt: Target retention time in seconds. ``None`` skips RT filtering.
             mz_tolerance: m/z tolerance (default 20).
             mz_tolerance_type: ``"ppm"`` (default) or ``"da"``.
@@ -261,7 +261,7 @@ class PrecursorLookup(_IdLookup[Precursor, Precursor]):
         Raises:
             TdfpyError: If a tolerance is negative or ``mz_tolerance_type`` is unknown.
         """
-        precursor_mz_range = _mz_range(mz, mz_tolerance, mz_tolerance_type)
+        precursor_mz_range = _mz_range(precursor_mz, mz_tolerance, mz_tolerance_type)
         nonnegative("rt_tolerance", rt_tolerance)
         return self.query_range(precursor_mz_range=precursor_mz_range, rt_range=_tolerance_range(rt, rt_tolerance))
 
@@ -298,7 +298,7 @@ class PrmTargetLookup(_IdLookup[PrmTarget, PrmTarget]):
     def query(
         self,
         *,
-        mz: float | None = None,
+        precursor_mz: float | None = None,
         rt: float | None = None,
         ook0: float | None = None,
         mz_tolerance: float = 20.0,
@@ -306,10 +306,10 @@ class PrmTargetLookup(_IdLookup[PrmTarget, PrmTarget]):
         rt_tolerance: float = 30.0,
         ook0_tolerance: float = 0.05,
     ) -> Iterator[PrmTarget]:
-        """Targets within a tolerance of ``mz``, ``rt`` and/or ``ook0``.
+        """Targets within a tolerance of ``precursor_mz``, ``rt`` and/or ``ook0``.
 
         Args:
-            mz: Target precursor m/z. ``None`` skips m/z filtering.
+            precursor_mz: Target precursor m/z. ``None`` skips m/z filtering.
             rt: Target retention time in seconds. ``None`` skips RT filtering.
             ook0: Target 1/K0. ``None`` skips 1/K0 filtering.
             mz_tolerance: m/z tolerance (default 20).
@@ -323,7 +323,7 @@ class PrmTargetLookup(_IdLookup[PrmTarget, PrmTarget]):
         Raises:
             TdfpyError: If a tolerance is negative or ``mz_tolerance_type`` is unknown.
         """
-        precursor_mz_range = _mz_range(mz, mz_tolerance, mz_tolerance_type)
+        precursor_mz_range = _mz_range(precursor_mz, mz_tolerance, mz_tolerance_type)
         nonnegative("rt_tolerance", rt_tolerance)
         nonnegative("ook0_tolerance", ook0_tolerance)
         return self.query_range(

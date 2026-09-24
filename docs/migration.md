@@ -95,12 +95,14 @@ Every spectral accessor is now a method, so each call visibly decodes the frame:
   Compare with strings: `frame.polarity == "positive"`. `FrameMetadata.polarity`
   is still the raw `"+"` / `"-"`.
 - **Lookup keywords.** A `(low, high)` tuple is always `*_range` and goes to
-  `query_range`; a point is `rt=` / `mz=` / `ook0=` plus a `*_tolerance` and goes
-  to `query`. The precursor m/z range is `precursor_mz_range=`.
+  `query_range`; a point is `rt=` / `precursor_mz=` / `ook0=` plus a `*_tolerance` and goes
+  to `query`, as in mzmlpy 0.10. `query(mz=...)` is now `query(precursor_mz=...)`
+  and the range is `precursor_mz_range=`; `mz_tolerance` / `mz_tolerance_type` are unchanged.
 - **MS1 centroids.** `MergePeaksCentroider` now sorts on the integer TOF index
-  before converting to m/z. Ties (equal-intensity seeds, equal m/z) are broken in
-  (TOF, scan) order, so about 0.1% of centroids on a dense MS1 frame differ from
-  4.x. `merged_peaks()` is unchanged.
+  before converting to m/z, and `merge_peaks` seeds equal-intensity peaks in
+  ascending m/z (TOF, scan) order with a stable sort. About 1.2-1.4% of centroids
+  on dense MS1 frames differ from 4.x (1.43% diaPASEF, 1.16% DDA, 15-min runs);
+  summed intensity moves by under 0.02%. `merged_peaks()` is unchanged.
 - **Elements are frozen, slotted and keyword-only.** Assigning to a field raises
   `FrozenInstanceError`; constructing one needs keyword arguments.
   `PrmTarget` equality and hashing ignore `transitions`.

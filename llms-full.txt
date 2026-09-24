@@ -34,7 +34,7 @@ with DDA("run.d") as dda:              # always use the context manager
     cen = frame.centroid()             # (N, 3) float: m/z, intensity, 1/K0
     cen = frame.centroid(noise="mad", exclude=ChargeStateRegion())
     cen = frame.centroid(centroid=WatershedCentroider())
-    for p in dda.precursors.query(mz=652.3, rt=1200.0):   # PrecursorLookup
+    for p in dda.precursors.query(precursor_mz=652.3, rt=1200.0):   # PrecursorLookup
         p.merged_peaks()               # (N, 2): MS2 m/z, intensity (mobility collapsed, 30 ppm merge)
 
 with DIA("run.d") as dia:
@@ -269,7 +269,7 @@ with DDA(D_PATH) as dda:
 
     # Query precursors by m/z and retention time
     results = dda.precursors.query(
-        mz=1292.63,
+        precursor_mz=1292.63,
         mz_tolerance=20.0,       # ppm by default
         rt=2400.0,               # seconds
         rt_tolerance=30.0,       # seconds
@@ -1100,7 +1100,7 @@ support:
   DDA precursors, indexed by precursor ID, with m/z and RT queries.
   - `.get(key: int, default: object = None) -> object`: Return the entry for ``key``, or ``default`` (``None``) if it is not present.
   - `.ids() -> tuple[int, ...]`: Every ID this lookup is indexed by, in insertion order.
-  - `.query(*, mz: float | None = None, rt: float | None = None, mz_tolerance: float = 20.0, mz_tolerance_type: Literal['ppm', 'da'] = 'ppm', rt_tolerance: float = 30.0) -> Iterator[Precursor]`: Precursors within a tolerance of ``mz`` and/or ``rt``.
+  - `.query(*, precursor_mz: float | None = None, rt: float | None = None, mz_tolerance: float = 20.0, mz_tolerance_type: Literal['ppm', 'da'] = 'ppm', rt_tolerance: float = 30.0) -> Iterator[Precursor]`: Precursors within a tolerance of ``precursor_mz`` and/or ``rt``.
   - `.query_range(*, precursor_mz_range: tuple[float, float] | None = None, rt_range: tuple[float, float] | None = None) -> Iterator[Precursor]`: Precursors inside precursor m/z and/or RT ranges (inclusive).
 
 ---
@@ -1168,11 +1168,11 @@ with PRM("experiment.d") as prm:
     print(t.description, t.rt, t.ook0)
 
     # Query by m/z (20 ppm window)
-    for target in prm.targets.query(mz=565.3189, mz_tolerance=20.0):
+    for target in prm.targets.query(precursor_mz=565.3189, mz_tolerance=20.0):
         print(target.target_id, target.precursor_mz)
 
     # Query by m/z and expected RT (±30 s)
-    for target in prm.targets.query(mz=565.3189, rt=480.0, rt_tolerance=30.0):
+    for target in prm.targets.query(precursor_mz=565.3189, rt=480.0, rt_tolerance=30.0):
         print(target.target_id, target.description)
 
     # Query by 1/K0 (ion mobility)
@@ -1184,7 +1184,7 @@ with PRM("experiment.d") as prm:
   PRM targets, indexed by target ID, with m/z, RT and 1/K0 queries.
   - `.get(key: int, default: object = None) -> object`: Return the entry for ``key``, or ``default`` (``None``) if it is not present.
   - `.ids() -> tuple[int, ...]`: Every ID this lookup is indexed by, in insertion order.
-  - `.query(*, mz: float | None = None, rt: float | None = None, ook0: float | None = None, mz_tolerance: float = 20.0, mz_tolerance_type: Literal['ppm', 'da'] = 'ppm', rt_tolerance: float = 30.0, ook0_tolerance: float = 0.05) -> Iterator[PrmTarget]`: Targets within a tolerance of ``mz``, ``rt`` and/or ``ook0``.
+  - `.query(*, precursor_mz: float | None = None, rt: float | None = None, ook0: float | None = None, mz_tolerance: float = 20.0, mz_tolerance_type: Literal['ppm', 'da'] = 'ppm', rt_tolerance: float = 30.0, ook0_tolerance: float = 0.05) -> Iterator[PrmTarget]`: Targets within a tolerance of ``precursor_mz``, ``rt`` and/or ``ook0``.
   - `.query_range(*, precursor_mz_range: tuple[float, float] | None = None, rt_range: tuple[float, float] | None = None, ook0_range: tuple[float, float] | None = None) -> Iterator[PrmTarget]`: Targets inside precursor m/z, RT and/or 1/K0 ranges (inclusive).
 
 ### PRM Transition Lookup
