@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Breaking API cleanup for 5.0. [docs/migration.md](docs/migration.md) has the full old-to-new table.
+
+### Removed
+
+- `plot_centroiding` tolerance keywords `mz_tolerance`, `mz_tolerance_type`, `im_tolerance`, `im_tolerance_type`, `min_peaks`, `max_peaks` (deprecated in 4.1). Pass `centroid=MergePeaksCentroider(...)`.
+- camelCase names with no alias: `TimsData.indexToMz`, `mzToIndex`, `scanNumToOneOverK0`, `oneOverK0ToScanNum`, `scanNumToVoltage`, `voltageToScanNum`, `readScans`; `tdfpy.timsdata.oneOverK0ToCCSforMz`, `ccsToOneOverK0forMz`, `ccsToOneOverK0ToCCSforMz`.
+- `tdfpy.centroiding.batch_iterator`, `calculate_nmass`, `get_tdf_df` and `Peak`, unused helpers outside the documented API.
+
+### Added
+
+- `tdfpy.errors`: `TdfpyError(ValueError)` base, `TdfpyKeyError` (+`KeyError`), `ReaderClosedError` (+`RuntimeError`). All exported from `tdfpy`.
+- `AcquisitionType` (`StrEnum`), `MsMsType`, `Polarity`, `MetaValue`, `ook0_to_ccs` and `ccs_to_ook0` exported from `tdfpy`.
+- `scan_peaks()`, `raw_peaks()` and `centroid()` on `PasefFrameMsmsInfo`.
+- Lookups: `ids()`, `id in lookup`, and `get(id, default)` on every lookup.
+- `__all__` in every public module; `Raises:` sections in docstrings.
+- `docs/migration.md` ("Migrating to 5.0").
+
+### Changed
+
+- Renamed, no alias: `.time` -> `.rt` (`Frame`, `PrmTarget`); `PrmTarget.one_over_k0` -> `ook0`; `Frame.mz_calibration`, `tims_calibration`, `property_group` -> `*_id`; `Precursor.parent_frame` -> `parent_frame_id`; `PasefFrameMsmsInfo.precursor` -> `precursor_id`; `window_group` -> `window_group_id` on `DiaWindowGroup` / `DiaWindow`; `MetaData.one_over_k0_acq_range*` -> `ook0_acq_range*`; `TimsCalibration.scan_to_one_over_k0` / `one_over_k0_to_scan` -> `scan_to_ook0` / `ook0_to_scan`; `tdfpy.calibration.one_over_k0_to_ccs` / `ccs_to_one_over_k0` -> `ook0_to_ccs` / `ccs_to_ook0`; camelCase `TimsData` methods -> snake_case (`index_to_mz`, `mz_to_index`, `scan_num_to_ook0`, `ook0_to_scan_num`, `scan_num_to_voltage`, `voltage_to_scan_num`, `read_scans`).
+- The per-scan `.peaks` property of `Frame`, `DiaWindow` and `PrmTransition` is now the `scan_peaks()` method. `Precursor.peaks` / `PasefFrameMsmsInfo.peaks` (one merged `(N, 2)` spectrum) are unchanged.
+- Every error is a `TdfpyError`. Lookup misses and missing `MetaData` / `Calibration` keys raise `TdfpyKeyError`; spectral access after close raises `ReaderClosedError`; SQLite errors in `PandasTdf`, `convert_table_to_df` and `slice_d_folder` raise `TdfpyError` (`convert_table_to_df` raised `RuntimeError`). `PandasTdf.get_table_names` opens the database read-only.
+- `get_acquisition_type` returns `AcquisitionType`; `Frame.msms_type` is `MsMsType`. Both still compare equal to the old `str` / `int` values.
+- Elements are frozen, slotted, keyword-only dataclasses. `PrmTarget` equality and hashing ignore `transitions`.
+- `DiaWindowLookup[id]` and `PrmTransitionLookup[id]` return tuples (were lists); `DIA.window_groups` returns a tuple (was a generator). `query()` / `query_range()` arguments are keyword-only, and `DiaWindowLookup`'s `window_group_index=` is now `window_group=`.
+- `MetaData` and `Calibration` are read-only `Mapping`s; the `df` field is replaced by `table`.
+- `plot_centroiding`: every argument after `frame_id` is keyword-only, including `ion_mobility_type`.
+- MCP `query_dia_windows`: parameter `window_group` -> `window_group_id`.
+
 ## [4.1.1] (2026-09-23)
 
 ### Fixed

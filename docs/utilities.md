@@ -66,7 +66,7 @@ with DDA("experiment.d") as dda:
     frame_ids = [
         frame.frame_id
         for frame in dda.ms1
-        if rt_min <= frame.time <= rt_max
+        if rt_min <= frame.rt <= rt_max
     ]
 
 first_frame = min(frame_ids)

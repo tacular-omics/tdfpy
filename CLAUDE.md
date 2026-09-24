@@ -93,7 +93,7 @@ src/tdfpy/
 
 Data flow: reader opens `analysis.tdf` (all frame/precursor/window metadata loaded
 eagerly into dataclasses and lookups) and a `TimsData` handle on `analysis.tdf_bin`.
-Spectral access (`.peaks`, `.raw_peaks()`, `.centroid()`) decodes on demand through
+Spectral access (`.peaks`, `.scan_peaks()`, `.raw_peaks()`, `.centroid()`) decodes on demand through
 `read_spectrum → subset_scans → exclude_region → smooth → apply_noise → centroider`,
 all in integer (scan, TOF-index) space; `convert` maps to m/z and 1/K0 once at the end.
 
@@ -107,11 +107,14 @@ golden-data generators, llms-full builder, release and distribution checks),
 
 All names below are exported from `tdfpy` (`__all__`); add new exports there.
 
-- Readers: `DDA`, `DIA`, `PRM`, `get_acquisition_type`, `slice_d_folder`
+- Readers: `DDA`, `DIA`, `PRM`, `get_acquisition_type` (returns `AcquisitionType`, a
+  `StrEnum`), `slice_d_folder`
 - Frame elements (returned by readers, not constructed by users): `Frame`,
   `DDAMs1Frame`, `DIAMs1Frame`, `PRMMs1Frame`, `Precursor`, `PasefFrameMsmsInfo`,
   `DiaWindow`, `DiaWindowGroup`, `PrmTarget`, `PrmTransition`, `MetaData`,
-  `Calibration`, `FrameMetadata`
+  `Calibration`, `FrameMetadata`, plus `MsMsType`, `Polarity`, `MetaValue`. Elements are
+  frozen, slotted, keyword-only dataclasses; ids end in `_id`, retention time is `rt`,
+  ion mobility (1/K0) is `ook0`
 - Lookups: `Ms1FrameLookup`, `PrecursorLookup`, `DiaWindowLookup`,
   `PrmTargetLookup`, `PrmTransitionLookup`
 - Convenience extraction: `get_raw_peaks`, `get_centroided_spectrum`,
@@ -126,12 +129,14 @@ All names below are exported from `tdfpy` (`__all__`); add new exports there.
   `HorizontalHaloFilter`, `SelectionPolygonGate`, `DiaMs1WindowGate`
 - Validation: `validate_acquisition`, `ValidationReport`, `ValidationIssue`
 - Visualization: `plot_centroiding`
-- Low level and errors: `PandasTdf`, `TimsData`, `timsdata_connect`,
-  `UnsupportedTdfError`, `UnsupportedCalibrationError` (both subclass
-  `NotImplementedError`)
+- Low level: `PandasTdf`, `TimsData`, `timsdata_connect`, `ook0_to_ccs`, `ccs_to_ook0`
+- Errors (`errors.py`): `TdfpyError(ValueError)` is the base; `TdfpyKeyError` (+`KeyError`)
+  for a missing id or key, `ReaderClosedError` (+`RuntimeError`) for spectral access
+  after close, `UnsupportedTdfError` / `UnsupportedCalibrationError`
+  (+`NotImplementedError`). SQLite errors are wrapped as `TdfpyError`.
 
 Output shapes: `raw_peaks()` / `centroid()` return `(N, 3)` `[m/z, intensity,
-ion_mobility]`; `Precursor.peaks` is `(N, 2)`; `PrmTransition.peaks` is a *list* of
+ion_mobility]`; `Precursor.peaks` is `(N, 2)`; `scan_peaks()` (Frame, DiaWindow, PrmTransition, PasefFrameMsmsInfo) is a *list* of
 per-scan `(N, 2)` arrays.
 
 ## Conventions
@@ -147,7 +152,7 @@ per-scan `(N, 2)` arrays.
 - Errors: validate arguments up front with `_validation.py` helpers before arrays
   reach a JIT kernel. Unsupported formats raise `UnsupportedTdfError` /
   `UnsupportedCalibrationError`; spectral access on a closed reader raises
-  `RuntimeError`.
+  `ReaderClosedError`. New errors subclass `TdfpyError`; methods are snake_case.
 - Logging: module-level `logger = logging.getLogger(__name__)`; never configure
   logging from the library.
 - Tests: `tests/test_<area>.py`. Real fixtures `tests/data/example_{dda,dia,prm}.d`
@@ -182,7 +187,7 @@ per-scan `(N, 2)` arrays.
   `noise/structural.py`). Import numba only inside that existing try/except;
   numba imports are slow. The first centroid call JIT-compiles (seconds).
 - **Lazy spectral access.** Frame elements hold the reader's `TimsData`; after the
-  `with` block, spectral access must raise `RuntimeError`, never return stale data.
+  `with` block, spectral access must raise `ReaderClosedError`, never return stale data.
   Do not break this contract.
 - **Region exclusion is not noise filtering.** `ChargeStateRegion` says which part
   of the (m/z, 1/K0) plane matters (physical knowledge); noise filters say what

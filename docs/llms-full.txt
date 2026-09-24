@@ -44,7 +44,7 @@ with DIA("run.d") as dia:
 with PRM("run.d") as prm:
     for tr in prm.transitions:         # PrmTransitionLookup; also prm.targets
         tr.centroid()                  # (N, 3)
-        tr.peaks                       # list of (N, 2) arrays, one per mobility scan
+        tr.scan_peaks()                # list of (N, 2) arrays, one per mobility scan
 ```
 
 Return types at a glance:
@@ -53,8 +53,8 @@ Return types at a glance:
 |---|---|
 | `Frame.raw_peaks()`, `Frame.centroid()`, `DiaWindow.centroid()`, `PrmTransition.centroid()` | `np.ndarray` shape `(N, 3)`: m/z, intensity, ion mobility (`ion_mobility_type="ook0"` default; also `"ccs"`, `"voltage"`) |
 | `Precursor.peaks` | `np.ndarray` `(N, 2)`: m/z, intensity |
-| `PrmTransition.peaks` | `list[np.ndarray]`, one `(N, 2)` array per mobility scan |
-| `get_acquisition_type(path)` | `"DDA"`, `"DIA"`, `"PRM"` or `"Unknown"` |
+| `Frame.scan_peaks()`, `DiaWindow.scan_peaks()`, `PrmTransition.scan_peaks()` | `list[np.ndarray]`, one `(N, 2)` array per mobility scan |
+| `get_acquisition_type(path)` | `AcquisitionType` (a `StrEnum`: `"DDA"`, `"DIA"`, `"PRM"` or `"Unknown"`) |
 | `validate_acquisition(path, full=False)` | `ValidationReport` (`.valid`, `.issues`) |
 
 Keyword arguments shared by `raw_peaks()` / `centroid()` and the functional
@@ -84,7 +84,7 @@ python -m tdfpy.mcp --data-root DIR --output-dir OUT
 
 - Spectral data is lazy. Frames, precursors, windows and transitions hold the
   reader's open connection; using them after the `with` block raises
-  `RuntimeError: TimsData connection is closed`. Extract arrays inside the block.
+  `ReaderClosedError` (subclasses `RuntimeError`). Extract arrays inside the block.
 - Unsupported formats raise instead of guessing: legacy compression type 1,
   `use_recalibrated_state=True` and pressure compensation raise
   `UnsupportedTdfError`; unknown m/z or mobility calibration model types raise
@@ -99,8 +99,11 @@ python -m tdfpy.mcp --data-root DIR --output-dir OUT
   to suppress isolated noise after merging, raise `min_peaks` on the centroider.
 - Algorithm settings (`MergePeaksCentroider`, `WatershedCentroider`, noise filters,
   `ChargeStateRegion`, `Smooth`) are frozen dataclasses: hashable, safe as cache keys.
-- `PrmTransition.peaks` is a list per scan, not one array; use `.centroid()` for a
-  single spectrum.
+- `scan_peaks()` returns a list per mobility scan, not one array; use `.centroid()`
+  for a single spectrum.
+- Every error tdfpy raises subclasses `TdfpyError` (a `ValueError`); a missing id
+  raises `TdfpyKeyError` (also a `KeyError`). Frame elements are frozen and
+  keyword-only; lookup `[]` for DIA windows and PRM transitions returns a tuple.
 
 ==============================================================================
 # docs/index.md
@@ -196,7 +199,7 @@ from tdfpy import DDA
 with DDA(D_PATH) as dda:
     # Iterate over MS1 frames
     for frame in dda.ms1:
-        print(f"Frame {frame.frame_id} at RT {frame.time:.1f}s")
+        print(f"Frame {frame.frame_id} at RT {frame.rt:.1f}s")
         # Centroid the frame. Returns shape (N, 3): [m/z, intensity, 1/K0]
         peaks = frame.centroid()
         print(f"  {len(peaks)} centroided peaks")
@@ -223,7 +226,7 @@ with DIA(D_PATH) as dia:
 
     # DIA windows
     for window in dia.windows:
-        print(f"Window group {window.window_group}: isolation {window.isolation_mz} m/z")
+        print(f"Window group {window.window_group_id}: isolation {window.isolation_mz} m/z")
         peaks = window.centroid()
         break
 ```
@@ -247,7 +250,7 @@ with PRM(D_PATH) as prm:
     # PRM transitions (MS2 spectra linked to a target)
     for transition in prm.transitions:
         print(f"Transition frame {transition.frame_id}: isolation {transition.isolation_mz} m/z")
-        raw = transition.peaks  # list of per-scan (mz, intensity) arrays
+        raw = transition.scan_peaks()  # list of per-scan (N, 2) [m/z, intensity] arrays
         peaks = transition.centroid()  # shape (N, 3): [m/z, intensity, 1/K0]
         break
 ```
@@ -280,12 +283,12 @@ from tdfpy import DIA
 
 with DIA(D_PATH) as dia:
     # Get all windows in a window group
-    group_windows = dia.windows[1]  # returns a list
+    group_windows = dia.windows[1]  # returns a tuple
 
     # Query windows by retention time
     results = dia.windows.query(rt=10.0, rt_tolerance=5.0)
     for w in results:
-        print(w.window_group, w.isolation_mz)
+        print(w.window_group_id, w.isolation_mz)
 ```
 
 ## How data access works
@@ -300,7 +303,7 @@ When you open a `DDA`, `DIA` or `PRM` reader, it immediately:
 
 The objects you get back — `Frame`, `Precursor`, `DiaWindow`, etc. — all hold a reference
 to that open connection. Their fields (`frame_id`, `rt`, `monoisotopic_mz`, etc.) are
-available immediately. **Spectral data is fetched lazily**: calling `.peaks` or `.centroid()`
+available immediately. **Spectral data is fetched lazily**: calling `.peaks`, `.scan_peaks()` or `.centroid()`
 reads from the binary file at that moment.
 
 This means objects cannot be used after the reader closes:
@@ -312,7 +315,7 @@ with DDA(D_PATH) as dda:
     frame = dda.ms1[1]
     peaks = frame.centroid()  # The connection is open
 
-# peaks = frame.centroid()  # RuntimeError: TimsData connection is closed.
+# peaks = frame.centroid()  # ReaderClosedError (a RuntimeError subclass)
 ```
 
 ## Development
@@ -404,7 +407,7 @@ with DDA("experiment.d") as dda:
     frame_ids = [
         frame.frame_id
         for frame in dda.ms1
-        if rt_min <= frame.time <= rt_max
+        if rt_min <= frame.rt <= rt_max
     ]
 
 first_frame = min(frame_ids)
@@ -723,7 +726,7 @@ The implementation uses the [official MCP Python SDK](https://github.com/modelco
 
 High-level entry points for opening timsTOF `.d` acquisitions.
 
-**`get_acquisition_type(analysis_dir: str | Path) -> Literal['DDA', 'DIA', 'PRM', 'Unknown']`**
+**`get_acquisition_type(analysis_dir: str | Path) -> AcquisitionType`**
   Determine the acquisition type (DDA, DIA, or PRM) of a .d folder by examining the MsMsType values in the Frames table.
 
 **class `DDA(analysis_dir: str | Path)`**
@@ -748,8 +751,8 @@ High-level entry points for opening timsTOF `.d` acquisitions.
   - `.metadata` -> `MetaData`: Global metadata about the acquisition.
   - `.ms1` -> `Ms1FrameLookup[DIAMs1Frame]`: Lookup for MS1 frames. Supports indexing by frame ID.
   - `.pandas_tdf` -> `PandasTdf`
-  - `.window_groups` -> `Generator[DiaWindowGroup, None, None]`: Iterate over all DiaWindowGroup objects across all window groups.
-  - `.windows` -> `DiaWindowLookup`: Lookup for all DIA windows. Supports indexing by window *group* ID and `.query()`.
+  - `.window_groups` -> `tuple[DiaWindowGroup, ...]`: Every window definition (`DiaFrameMsMsWindows` row), grouped by window group ID.
+  - `.windows` -> `DiaWindowLookup`: Lookup for all per-frame DIA windows. Indexed by window *group* ID; supports `.query()`.
 
 **class `PRM(analysis_dir: str | Path)`**
   Open a PRM (Parallel Reaction Monitoring) `.d` folder.
@@ -775,23 +778,27 @@ inherit every field and method listed under `Frame` — only their additional fi
 below each subclass.
 
 **dataclass `Frame`**
-  Base class for a single timsTOF acquisition frame.
-  - fields: `frame_id: int`, `time: float`, `polarity: Polarity`, `scan_mode: int`, `msms_type: int`, `tims_id: int | None`, `max_intensity: int`, `summed_intensities: int`, `num_scans: int`, `num_peaks: int`, `mz_calibration: int`, `t1: float`, `t2: float`, `tims_calibration: int`, `property_group: int | None`, `accumulation_time: float`, `ramp_time: float`
+  Base class for a single timsTOF MS1 frame.
+  - fields: `frame_id: int`, `rt: float`, `polarity: Polarity`, `scan_mode: int`, `msms_type: MsMsType`, `tims_id: int | None`, `max_intensity: int`, `summed_intensities: int`, `num_scans: int`, `num_peaks: int`, `mz_calibration_id: int`, `t1: float`, `t2: float`, `tims_calibration_id: int`, `property_group_id: int | None`, `accumulation_time: float`, `ramp_time: float`
   - returned by the readers; do not construct directly
-  - `.centroid(*, exclude: ChargeStateRegion | None = None, smooth: Smooth | None = None, noise: NoiseSpec = None, ion_mobility_type: Literal['ook0', 'ccs', 'voltage'] = 'ook0', centroid: Centroider | None = None) -> np.ndarray`: Centroid the spectrum for this frame.
-  - `.peaks` -> `list[NDArray[numpy.float64]]`: Read raw peaks for this frame and return as list of (mz, intensity) arrays.
-  - `.raw_peaks(*, exclude: ChargeStateRegion | None = None, smooth: Smooth | None = None, noise: NoiseSpec = None, ion_mobility_type: Literal['ook0', 'ccs', 'voltage'] = 'ook0') -> np.ndarray`: Return raw peaks as ``(N, 3)`` ``[mz, intensity, ion_mobility]``.
+  - `.centroid(*, exclude: ChargeStateRegion | None = None, smooth: Smooth | None = None, noise: NoiseSpec = None, ion_mobility_type: Literal['ook0', 'ccs', 'voltage'] = 'ook0', centroid: Centroider | None = None) -> NDArray[numpy.float64]`: Centroided peaks as one ``(N, 3)`` ``[m/z, intensity, ion_mobility]`` array.
+  - `.raw_peaks(*, exclude: ChargeStateRegion | None = None, smooth: Smooth | None = None, noise: NoiseSpec = None, ion_mobility_type: Literal['ook0', 'ccs', 'voltage'] = 'ook0') -> NDArray[numpy.float64]`: Raw peaks as one ``(N, 3)`` ``[m/z, intensity, ion_mobility]`` array.
+  - `.scan_peaks() -> list[NDArray[numpy.float64]]`: Raw peaks, one ``(N_i, 2)`` ``[m/z, intensity]`` float64 array per mobility scan.
 
 **dataclass `DDAMs1Frame`** (subclass of Frame)
   An MS1 frame from a DDA acquisition.
   - fields: `precursors: tuple[Precursor, ...]`
   - returned by the readers; do not construct directly
+  - `.centroid(*, exclude: ChargeStateRegion | None = None, smooth: Smooth | None = None, noise: NoiseSpec = None, ion_mobility_type: Literal['ook0', 'ccs', 'voltage'] = 'ook0', centroid: Centroider | None = None) -> NDArray[numpy.float64]`: Centroided peaks as one ``(N, 3)`` ``[m/z, intensity, ion_mobility]`` array.
+  - `.raw_peaks(*, exclude: ChargeStateRegion | None = None, smooth: Smooth | None = None, noise: NoiseSpec = None, ion_mobility_type: Literal['ook0', 'ccs', 'voltage'] = 'ook0') -> NDArray[numpy.float64]`: Raw peaks as one ``(N, 3)`` ``[m/z, intensity, ion_mobility]`` array.
   - inherits all fields and methods of Frame
 
 **dataclass `DIAMs1Frame`** (subclass of Frame)
   An MS1 frame from a DIA acquisition.
   - fields: `dia_windows: tuple[DiaWindow, ...]`
   - returned by the readers; do not construct directly
+  - `.centroid(*, exclude: ChargeStateRegion | None = None, smooth: Smooth | None = None, noise: NoiseSpec = None, ion_mobility_type: Literal['ook0', 'ccs', 'voltage'] = 'ook0', centroid: Centroider | None = None) -> NDArray[numpy.float64]`: Centroided peaks as one ``(N, 3)`` ``[m/z, intensity, ion_mobility]`` array.
+  - `.raw_peaks(*, exclude: ChargeStateRegion | None = None, smooth: Smooth | None = None, noise: NoiseSpec = None, ion_mobility_type: Literal['ook0', 'ccs', 'voltage'] = 'ook0') -> NDArray[numpy.float64]`: Raw peaks as one ``(N, 3)`` ``[m/z, intensity, ion_mobility]`` array.
   - inherits all fields and methods of Frame
 
 ## PRM MS1 Frame
@@ -804,6 +811,8 @@ the targeted transitions acquired in the same run.
   An MS1 frame from a PRM acquisition.
   - fields: `prm_transitions: tuple[PrmTransition, ...]`
   - returned by the readers; do not construct directly
+  - `.centroid(*, exclude: ChargeStateRegion | None = None, smooth: Smooth | None = None, noise: NoiseSpec = None, ion_mobility_type: Literal['ook0', 'ccs', 'voltage'] = 'ook0', centroid: Centroider | None = None) -> NDArray[numpy.float64]`: Centroided peaks as one ``(N, 3)`` ``[m/z, intensity, ion_mobility]`` array.
+  - `.raw_peaks(*, exclude: ChargeStateRegion | None = None, smooth: Smooth | None = None, noise: NoiseSpec = None, ion_mobility_type: Literal['ook0', 'ccs', 'voltage'] = 'ook0') -> NDArray[numpy.float64]`: Raw peaks as one ``(N, 3)`` ``[m/z, intensity, ion_mobility]`` array.
   - inherits all fields and methods of Frame
 
 ==============================================================================
@@ -814,40 +823,43 @@ the targeted transitions acquired in the same run.
 
 **dataclass `Precursor`**
   A detected precursor ion from a DDA acquisition.
-  - fields: `precursor_id: int`, `largest_peak_mz: float`, `average_mz: float`, `monoisotopic_mz: float | None`, `charge: int | None`, `scan_number: float`, `intensity: float`, `parent_frame: int`, `pasef_frame_msms_infos: tuple[PasefFrameMsmsInfo, ...]`, `rt: float`
+  - fields: `precursor_id: int`, `largest_peak_mz: float`, `average_mz: float`, `monoisotopic_mz: float | None`, `charge: int | None`, `scan_number: float`, `intensity: float`, `parent_frame_id: int`, `pasef_frame_msms_infos: tuple[PasefFrameMsmsInfo, ...]`, `rt: float`
   - returned by the readers; do not construct directly
-  - `.ccs` -> `float`
-  - `.ccs_range` -> `tuple[float, float] | None`
-  - `.collision_energy` -> `float | None`
-  - `.mz_range` -> `tuple[float, float] | None`
-  - `.ook0` -> `float`
-  - `.ook0_range` -> `tuple[float, float] | None`
-  - `.pasef_peaks` -> `list[np.ndarray]`
-  - `.peaks` -> `NDArray[numpy.float64]`: **Centroided** PASEF MS/MS peaks for this precursor.
-  - `.polarity` -> `Polarity`
-  - `.scan_num_range` -> `tuple[int, int] | None`
-  - `.voltage` -> `float`
-  - `.voltage_range` -> `tuple[float, float] | None`
+  - `.ccs` -> `float`: CCS (Å²). Uses charge 1 and ``largest_peak_mz`` when charge or monoisotopic m/z is unknown.
+  - `.ccs_range` -> `tuple[float, float] | None`: Shared CCS range of the PASEF windows, or ``None`` (with a warning) if they differ.
+  - `.collision_energy` -> `float | None`: Shared collision energy (eV) of the PASEF windows, or ``None`` (with a warning) if they differ.
+  - `.mz_range` -> `tuple[float, float] | None`: Shared isolation m/z range of the PASEF windows, or ``None`` (with a warning) if they differ.
+  - `.ook0` -> `float`: 1/K0 (V·s/cm²) at ``scan_number`` in the parent frame.
+  - `.ook0_range` -> `tuple[float, float] | None`: Shared 1/K0 range of the PASEF windows, or ``None`` (with a warning) if they differ.
+  - `.pasef_peaks` -> `list[NDArray[numpy.float64]]`: ``.peaks`` of each PASEF window, one ``(N_i, 2)`` array per window.
+  - `.peaks` -> `NDArray[numpy.float64]`: Centroided MS/MS peaks, one ``(N, 2)`` ``[m/z, intensity]`` array.
+  - `.polarity` -> `Polarity`: Shared polarity of the PASEF windows; ``UNKNOWN`` if none, ``MIXED`` if they differ (both warn).
+  - `.scan_num_range` -> `tuple[int, int] | None`: Shared scan range of the PASEF windows, or ``None`` (with a warning) if they differ.
+  - `.voltage` -> `float`: TIMS voltage (V) at ``scan_number`` in the parent frame.
+  - `.voltage_range` -> `tuple[float, float] | None`: Shared voltage range of the PASEF windows, or ``None`` (with a warning) if they differ.
 
 **dataclass `PasefFrameMsmsInfo`**
-  A single PASEF MS/MS isolation window within a parent frame.
-  - fields: `frame_id: int`, `scan_num_begin: int`, `scan_num_end: int`, `isolation_mz: float`, `isolation_width: float`, `collision_energy: float`, `precursor: int | None`, `rt: float`, `polarity: Polarity`
+  A single PASEF MS/MS isolation window within an MS/MS frame.
+  - fields: `frame_id: int`, `scan_num_begin: int`, `scan_num_end: int`, `isolation_mz: float`, `isolation_width: float`, `collision_energy: float`, `precursor_id: int | None`, `rt: float`, `polarity: Polarity`
   - returned by the readers; do not construct directly
-  - `.ccs_begin` -> `float`
-  - `.ccs_end` -> `float`
-  - `.ccs_range` -> `tuple[float, float]`
-  - `.mz_begin` -> `float`
-  - `.mz_end` -> `float`
-  - `.mz_range` -> `tuple[float, float]`
-  - `.ook0_begin` -> `float`
-  - `.ook0_end` -> `float`
-  - `.ook0_range` -> `tuple[float, float]`
-  - `.peaks` -> `NDArray[numpy.float64]`: **Centroided** MS/MS peaks summed over this window's scan range.
-  - `.scan_num_range` -> `tuple[int, int]`
-  - `.unique_id` -> `tuple[int, int | None]`
-  - `.voltage_begin` -> `float`
-  - `.voltage_end` -> `float`
-  - `.voltage_range` -> `tuple[float, float]`
+  - `.ccs_begin` -> `float`: CCS (Å²) at ``ook0_begin``, for charge 1 at ``isolation_mz``.
+  - `.ccs_end` -> `float`: CCS (Å²) at ``ook0_end``, for charge 1 at ``isolation_mz``.
+  - `.ccs_range` -> `tuple[float, float]`: ``(ccs_begin, ccs_end)``.
+  - `.centroid(*, exclude: ChargeStateRegion | None = None, smooth: Smooth | None = None, noise: NoiseSpec = None, ion_mobility_type: Literal['ook0', 'ccs', 'voltage'] = 'ook0', centroid: Centroider | None = None) -> NDArray[numpy.float64]`: Centroided peaks as one ``(N, 3)`` ``[m/z, intensity, ion_mobility]`` array.
+  - `.mz_begin` -> `float`: Lower isolation edge, ``isolation_mz - isolation_width / 2``.
+  - `.mz_end` -> `float`: Upper isolation edge, ``isolation_mz + isolation_width / 2``.
+  - `.mz_range` -> `tuple[float, float]`: ``(mz_begin, mz_end)``.
+  - `.ook0_begin` -> `float`: 1/K0 (V·s/cm²) at ``scan_num_begin``.
+  - `.ook0_end` -> `float`: 1/K0 (V·s/cm²) at ``scan_num_end``.
+  - `.ook0_range` -> `tuple[float, float]`: ``(ook0_begin, ook0_end)``. Scan numbers run high to low 1/K0, so begin > end.
+  - `.peaks` -> `NDArray[numpy.float64]`: Centroided MS/MS peaks, one ``(N, 2)`` ``[m/z, intensity]`` array.
+  - `.raw_peaks(*, exclude: ChargeStateRegion | None = None, smooth: Smooth | None = None, noise: NoiseSpec = None, ion_mobility_type: Literal['ook0', 'ccs', 'voltage'] = 'ook0') -> NDArray[numpy.float64]`: Raw peaks as one ``(N, 3)`` ``[m/z, intensity, ion_mobility]`` array.
+  - `.scan_num_range` -> `tuple[int, int]`: ``(scan_num_begin, scan_num_end)``, end exclusive.
+  - `.scan_peaks() -> list[NDArray[numpy.float64]]`: Raw peaks, one ``(N_i, 2)`` ``[m/z, intensity]`` float64 array per mobility scan.
+  - `.unique_id` -> `tuple[int, int | None]`: ``(frame_id, precursor_id)``. Warns when ``precursor_id`` is ``None``.
+  - `.voltage_begin` -> `float`: TIMS voltage (V) at ``scan_num_begin``.
+  - `.voltage_end` -> `float`: TIMS voltage (V) at ``scan_num_end``.
+  - `.voltage_range` -> `tuple[float, float]`: ``(voltage_begin, voltage_end)``.
 
 ==============================================================================
 # docs/api/windows.md
@@ -856,30 +868,34 @@ the targeted transitions acquired in the same run.
 # DIA Windows
 
 **dataclass `DiaWindow`** (subclass of DiaWindowGroup)
-  A DIA isolation window bound to a specific frame.
+  A DIA isolation window in one specific MS/MS frame.
   - fields: `frame_id: int`, `rt: float`, `polarity: Polarity`
   - returned by the readers; do not construct directly
-  - `.ccs_begin` -> `float`
-  - `.ccs_end` -> `float`
-  - `.ccs_range` -> `tuple[float, float]`
-  - `.centroid(*, exclude: ChargeStateRegion | None = None, smooth: Smooth | None = None, noise: NoiseSpec = None, ion_mobility_type: Literal['ook0', 'ccs', 'voltage'] = 'ook0', centroid: Centroider | None = None) -> np.ndarray`: Centroid the spectrum for this DIA window — restricted to the window's scan range ``[scan_num_begin, scan_num_end)``.
-  - `.ook0_begin` -> `float`
-  - `.ook0_end` -> `float`
-  - `.ook0_range` -> `tuple[float, float]`
-  - `.peaks` -> `list[NDArray[numpy.float64]]`: Read raw peaks for this DIA window and return as list of (mz, intensity) arrays.
-  - `.raw_peaks(*, exclude: ChargeStateRegion | None = None, smooth: Smooth | None = None, noise: NoiseSpec = None, ion_mobility_type: Literal['ook0', 'ccs', 'voltage'] = 'ook0') -> np.ndarray`: Return raw peaks for this DIA window — restricted to the window's scan range ``[scan_num_begin, scan_num_end)``.
-  - `.voltage_begin` -> `float`
-  - `.voltage_end` -> `float`
-  - `.voltage_range` -> `tuple[float, float]`
+  - `.ccs_begin` -> `float`: CCS (Å²) at ``ook0_begin``, for charge 1 at ``isolation_mz``.
+  - `.ccs_end` -> `float`: CCS (Å²) at ``ook0_end``, for charge 1 at ``isolation_mz``.
+  - `.ccs_range` -> `tuple[float, float]`: ``(ccs_begin, ccs_end)``.
+  - `.centroid(*, exclude: ChargeStateRegion | None = None, smooth: Smooth | None = None, noise: NoiseSpec = None, ion_mobility_type: Literal['ook0', 'ccs', 'voltage'] = 'ook0', centroid: Centroider | None = None) -> NDArray[numpy.float64]`: Centroided peaks as one ``(N, 3)`` ``[m/z, intensity, ion_mobility]`` array.
+  - `.mz_begin` -> `float`: Lower isolation edge, ``isolation_mz - isolation_width / 2``.
+  - `.mz_end` -> `float`: Upper isolation edge, ``isolation_mz + isolation_width / 2``.
+  - `.mz_range` -> `tuple[float, float]`: ``(mz_begin, mz_end)``.
+  - `.ook0_begin` -> `float`: 1/K0 (V·s/cm²) at ``scan_num_begin``.
+  - `.ook0_end` -> `float`: 1/K0 (V·s/cm²) at ``scan_num_end``.
+  - `.ook0_range` -> `tuple[float, float]`: ``(ook0_begin, ook0_end)``. Scan numbers run high to low 1/K0, so begin > end.
+  - `.raw_peaks(*, exclude: ChargeStateRegion | None = None, smooth: Smooth | None = None, noise: NoiseSpec = None, ion_mobility_type: Literal['ook0', 'ccs', 'voltage'] = 'ook0') -> NDArray[numpy.float64]`: Raw peaks as one ``(N, 3)`` ``[m/z, intensity, ion_mobility]`` array.
+  - `.scan_num_range` -> `tuple[int, int]`: ``(scan_num_begin, scan_num_end)``, end exclusive.
+  - `.scan_peaks() -> list[NDArray[numpy.float64]]`: Raw peaks, one ``(N_i, 2)`` ``[m/z, intensity]`` float64 array per mobility scan.
+  - `.voltage_begin` -> `float`: TIMS voltage (V) at ``scan_num_begin``.
+  - `.voltage_end` -> `float`: TIMS voltage (V) at ``scan_num_end``.
+  - `.voltage_range` -> `tuple[float, float]`: ``(voltage_begin, voltage_end)``.
   - inherits all fields and methods of DiaWindowGroup
 
 **dataclass `DiaWindowGroup`**
-  A DIA isolation window definition (shared across frames in the same group).
-  - fields: `window_index: int`, `window_group: int`, `scan_num_begin: int`, `scan_num_end: int`, `isolation_mz: float`, `isolation_width: float`, `collision_energy: float`
-  - `.mz_begin` -> `float`
-  - `.mz_end` -> `float`
-  - `.mz_range` -> `tuple[float, float]`
-  - `.scan_num_range` -> `tuple[int, int]`
+  One window of a DIA window group, shared by every frame that uses the group.
+  - fields: `window_index: int`, `window_group_id: int`, `scan_num_begin: int`, `scan_num_end: int`, `isolation_mz: float`, `isolation_width: float`, `collision_energy: float`
+  - `.mz_begin` -> `float`: Lower isolation edge, ``isolation_mz - isolation_width / 2``.
+  - `.mz_end` -> `float`: Upper isolation edge, ``isolation_mz + isolation_width / 2``.
+  - `.mz_range` -> `tuple[float, float]`: ``(mz_begin, mz_end)``.
+  - `.scan_num_range` -> `tuple[int, int]`: ``(scan_num_begin, scan_num_end)``, end exclusive.
 
 ==============================================================================
 # docs/api/prm.md
@@ -910,8 +926,8 @@ with PRM("experiment.d") as prm:
             f"Target {target.target_id}: "
             f"{target.monoisotopic_mz:.4f} m/z, "
             f"charge {target.charge}, "
-            f"RT {target.time:.1f} s, "
-            f"1/K0 {target.one_over_k0:.3f}"
+            f"RT {target.rt:.1f} s, "
+            f"1/K0 {target.ook0:.3f}"
         )
         # All transitions collected for this target
         for tr in target.transitions:
@@ -920,7 +936,7 @@ with PRM("experiment.d") as prm:
 
 **dataclass `PrmTarget`**
   A predefined PRM target ion from the `PrmTargets` table.
-  - fields: `target_id: int`, `external_id: str | None`, `time: float`, `one_over_k0: float`, `monoisotopic_mz: float`, `charge: int`, `description: str`, `transitions: tuple['PrmTransition', ...]` = ()
+  - fields: `target_id: int`, `external_id: str | None`, `rt: float`, `ook0: float`, `monoisotopic_mz: float`, `charge: int`, `description: str`, `transitions: tuple['PrmTransition', ...]` = ()
 
 ---
 
@@ -930,7 +946,7 @@ A `PrmTransition` represents a single MS2 acquisition event for a PRM target —
 isolation window applied to a specific frame and mobility scan range. Multiple transitions
 are collected for each target as the analyte elutes across time.
 
-`PrmTransition` provides `.peaks` for raw scan data and `.centroid()` for processed spectra,
+`PrmTransition` provides `.scan_peaks()` for raw per-scan data and `.centroid()` for processed spectra,
 consistent with the `DiaWindow` and `PasefFrameMsmsInfo` APIs.
 
 ```python
@@ -950,25 +966,25 @@ with PRM("experiment.d") as prm:
 ```
 
 **dataclass `PrmTransition`**
-  A PRM isolation window bound to a specific frame.
+  A PRM isolation window in one specific MS/MS frame.
   - fields: `frame_id: int`, `scan_num_begin: int`, `scan_num_end: int`, `isolation_mz: float`, `isolation_width: float`, `collision_energy: float`, `target: PrmTarget`, `rt: float`, `polarity: Polarity`
   - returned by the readers; do not construct directly
-  - `.ccs_begin` -> `float`
-  - `.ccs_end` -> `float`
-  - `.ccs_range` -> `tuple[float, float]`
-  - `.centroid(*, exclude: ChargeStateRegion | None = None, smooth: Smooth | None = None, noise: NoiseSpec = None, ion_mobility_type: Literal['ook0', 'ccs', 'voltage'] = 'ook0', centroid: Centroider | None = None) -> np.ndarray`: Centroid the spectrum for this PRM transition — restricted to its scan range ``[scan_num_begin, scan_num_end)``.
-  - `.mz_begin` -> `float`
-  - `.mz_end` -> `float`
-  - `.mz_range` -> `tuple[float, float]`
-  - `.ook0_begin` -> `float`
-  - `.ook0_end` -> `float`
-  - `.ook0_range` -> `tuple[float, float]`
-  - `.peaks` -> `list[NDArray[numpy.float64]]`: Read raw peaks for this PRM transition and return as list of (mz, intensity) arrays.
-  - `.raw_peaks(*, exclude: ChargeStateRegion | None = None, smooth: Smooth | None = None, noise: NoiseSpec = None, ion_mobility_type: Literal['ook0', 'ccs', 'voltage'] = 'ook0') -> np.ndarray`: Return raw peaks for this PRM transition — restricted to its scan range ``[scan_num_begin, scan_num_end)``.
-  - `.scan_num_range` -> `tuple[int, int]`
-  - `.voltage_begin` -> `float`
-  - `.voltage_end` -> `float`
-  - `.voltage_range` -> `tuple[float, float]`
+  - `.ccs_begin` -> `float`: CCS (Å²) at ``ook0_begin``, for charge 1 at ``isolation_mz``.
+  - `.ccs_end` -> `float`: CCS (Å²) at ``ook0_end``, for charge 1 at ``isolation_mz``.
+  - `.ccs_range` -> `tuple[float, float]`: ``(ccs_begin, ccs_end)``.
+  - `.centroid(*, exclude: ChargeStateRegion | None = None, smooth: Smooth | None = None, noise: NoiseSpec = None, ion_mobility_type: Literal['ook0', 'ccs', 'voltage'] = 'ook0', centroid: Centroider | None = None) -> NDArray[numpy.float64]`: Centroided peaks as one ``(N, 3)`` ``[m/z, intensity, ion_mobility]`` array.
+  - `.mz_begin` -> `float`: Lower isolation edge, ``isolation_mz - isolation_width / 2``.
+  - `.mz_end` -> `float`: Upper isolation edge, ``isolation_mz + isolation_width / 2``.
+  - `.mz_range` -> `tuple[float, float]`: ``(mz_begin, mz_end)``.
+  - `.ook0_begin` -> `float`: 1/K0 (V·s/cm²) at ``scan_num_begin``.
+  - `.ook0_end` -> `float`: 1/K0 (V·s/cm²) at ``scan_num_end``.
+  - `.ook0_range` -> `tuple[float, float]`: ``(ook0_begin, ook0_end)``. Scan numbers run high to low 1/K0, so begin > end.
+  - `.raw_peaks(*, exclude: ChargeStateRegion | None = None, smooth: Smooth | None = None, noise: NoiseSpec = None, ion_mobility_type: Literal['ook0', 'ccs', 'voltage'] = 'ook0') -> NDArray[numpy.float64]`: Raw peaks as one ``(N, 3)`` ``[m/z, intensity, ion_mobility]`` array.
+  - `.scan_num_range` -> `tuple[int, int]`: ``(scan_num_begin, scan_num_end)``, end exclusive.
+  - `.scan_peaks() -> list[NDArray[numpy.float64]]`: Raw peaks, one ``(N_i, 2)`` ``[m/z, intensity]`` float64 array per mobility scan.
+  - `.voltage_begin` -> `float`: TIMS voltage (V) at ``scan_num_begin``.
+  - `.voltage_end` -> `float`: TIMS voltage (V) at ``scan_num_end``.
+  - `.voltage_range` -> `tuple[float, float]`: ``(voltage_begin, voltage_end)``.
 
 ==============================================================================
 # docs/api/metadata.md
@@ -977,8 +993,8 @@ with PRM("experiment.d") as prm:
 # Metadata
 
 **dataclass `MetaData`**
-  Example GlobalMetaData table keys:
-  - fields: `df: DataFrame`
+  The `GlobalMetadata` table as a read-only mapping of key to value.
+  - fields: `table: Mapping[str, str | int | float | None]`
   - `.acquisition_datetime` -> `datetime`: Acquisition date and time.
   - `.acquisition_firmware_version` -> `str`: Acquisition firmware version.
   - `.acquisition_software` -> `str`: Acquisition software name.
@@ -999,9 +1015,9 @@ with PRM("experiment.d") as prm:
   - `.mz_acq_range` -> `tuple[float, float]`: M/z acquisition range as (lower, upper) tuple.
   - `.mz_acq_range_lower` -> `float`: Lower m/z acquisition range.
   - `.mz_acq_range_upper` -> `float`: Upper m/z acquisition range.
-  - `.one_over_k0_acq_range` -> `tuple[float, float]`: 1/K0 acquisition range as (lower, upper) tuple.
-  - `.one_over_k0_acq_range_lower` -> `float`: Lower 1/K0 acquisition range.
-  - `.one_over_k0_acq_range_upper` -> `float`: Upper 1/K0 acquisition range.
+  - `.ook0_acq_range` -> `tuple[float, float]`: 1/K0 acquisition range as (lower, upper) tuple.
+  - `.ook0_acq_range_lower` -> `float`: Lower 1/K0 acquisition range.
+  - `.ook0_acq_range_upper` -> `float`: Upper 1/K0 acquisition range.
   - `.operator_name` -> `str`: Operator name.
   - `.peak_list_index_scale_factor` -> `int`: Peak list index scale factor.
   - `.sample_name` -> `str`: Sample name.
@@ -1011,22 +1027,22 @@ with PRM("experiment.d") as prm:
   - `.tims_compression_type` -> `int`: TIMS data compression type.
 
 **dataclass `Calibration`**
-  Example Calibration table keys:
-  - fields: `df: DataFrame`
-  - `.date` -> `datetime`
-  - `.mobility_calibration_date` -> `datetime`
-  - `.mobility_calibration_user` -> `str`
-  - `.mobility_standard_deviation_percent` -> `float`
-  - `.mode` -> `str`
-  - `.reference_masses` -> `str`
-  - `.reference_mobility_list` -> `str`
-  - `.software` -> `str`
-  - `.software_version` -> `str`
-  - `.std_ppm` -> `float`
-  - `.user` -> `str`
+  The `CalibrationInfo` table as a read-only mapping of key to value.
+  - fields: `table: Mapping[str, str | int | float | None]`
+  - `.date` -> `datetime`: Mass calibration date (`CalibrationDateTime`).
+  - `.mobility_calibration_date` -> `datetime`: Mobility calibration date.
+  - `.mobility_calibration_user` -> `str`: User who ran the mobility calibration.
+  - `.mobility_standard_deviation_percent` -> `float`: Mobility calibration standard deviation in percent.
+  - `.mode` -> `str`: m/z calibration mode (`MzCalibrationMode`), as text.
+  - `.reference_masses` -> `str`: Reference mass list name.
+  - `.reference_mobility_list` -> `str`: Reference mobility list name.
+  - `.software` -> `str`: Calibration software name.
+  - `.software_version` -> `str`: Calibration software version.
+  - `.std_ppm` -> `float`: m/z calibration standard deviation in ppm.
+  - `.user` -> `str`: User who ran the calibration.
 
 **class `Polarity(*values)`** (subclass of StrEnum)
-  Enum where members are also (and must be) strings
+  Ion polarity of a frame.
 
 ==============================================================================
 # docs/api/lookup.md
@@ -1048,32 +1064,28 @@ support:
 
 ## MS1 Frame Lookup
 
-**class `Ms1FrameLookup(frames: dict[int, T])`**
-  A class to perform lookups on MS1 frames. Can be iterated over to yield all frames. Can be indexed by frame ID.
-  - `.__getitem__(frame_id: int) -> T`: Get a frame by its ID.
-  - `.__iter__() -> Iterator[T]`: Iterate over all frames.
-  - `.__len__() -> int`: 
-  - `.get(frame_id: int, default=None)`: Return the frame with the given ID, or `default` if not found.
+**class `Ms1FrameLookup(frames: Mapping[int, T])`**
+  MS1 frames of a reader, indexed by frame ID.
+  - `.get(key: int, default: object = None) -> object`: Return the entry for ``key``, or ``default`` (``None``) if it is not present.
+  - `.ids() -> tuple[int, ...]`: Every ID this lookup is indexed by, in insertion order.
 
 ---
 
 ## Precursor Lookup
 
-**class `PrecursorLookup(precursors: dict[int, Precursor])`**
-  A class to perform lookups on precursors. Can be iterated over to yield all precursors. Can be indexed by precursor ID. Provides methods to query by m/z and retention time.
-  - `.__getitem__(precursor_id: int) -> Precursor`: Get a precursor by its ID.
-  - `.__iter__() -> Iterator[Precursor]`: Iterate over all precursors.
-  - `.__len__() -> int`: 
-  - `.get(precursor_id: int, default=None)`: Return the precursor with the given ID, or `default` if not found.
-  - `.query(mz: float | None = None, rt: float | None = None, mz_tolerance: float = 20.0, mz_tolerance_type: Literal['ppm', 'da'] = 'ppm', rt_tolerance: float = 30.0) -> Iterator[Precursor]`: Query precursors by m/z and/or retention time.
-  - `.query_range(mz_range: tuple[float, float] | None = None, rt_range: tuple[float, float] | None = None) -> Iterator[Precursor]`: Query precursors by m/z and/or retention time ranges.
+**class `PrecursorLookup(precursors: Mapping[int, Precursor])`**
+  DDA precursors, indexed by precursor ID, with m/z and RT queries.
+  - `.get(key: int, default: object = None) -> object`: Return the entry for ``key``, or ``default`` (``None``) if it is not present.
+  - `.ids() -> tuple[int, ...]`: Every ID this lookup is indexed by, in insertion order.
+  - `.query(*, mz: float | None = None, rt: float | None = None, mz_tolerance: float = 20.0, mz_tolerance_type: Literal['ppm', 'da'] = 'ppm', rt_tolerance: float = 30.0) -> Iterator[Precursor]`: Precursors within a tolerance of ``mz`` and/or ``rt``.
+  - `.query_range(*, mz_range: tuple[float, float] | None = None, rt_range: tuple[float, float] | None = None) -> Iterator[Precursor]`: Precursors inside m/z and/or RT ranges (inclusive).
 
 ---
 
 ## DIA Window Lookup
 
-`DiaWindowLookup` groups windows by `window_group`. Because a single window group
-definition repeats across many frames, indexing by `window_group_id` returns a **list**
+`DiaWindowLookup` groups windows by `window_group_id`. Because a single window group
+definition repeats across many frames, indexing by `window_group_id` returns a **tuple**
 of `DiaWindow` objects — one per frame that used that group.
 
 ```python
@@ -1089,21 +1101,19 @@ with DIA("experiment.d") as dia:
 
     # Query by retention time (rt_tolerance defaults to 30 s)
     for window in dia.windows.query(rt=600.0, rt_tolerance=15.0):
-        print(window.window_group, window.isolation_mz)
+        print(window.window_group_id, window.isolation_mz)
 
     # Query by window group AND retention time
-    for window in dia.windows.query(window_group_index=5, rt=600.0, rt_tolerance=10.0):
+    for window in dia.windows.query(window_group=5, rt=600.0, rt_tolerance=10.0):
         peaks = window.centroid()
 ```
 
-**class `DiaWindowLookup(windows: list[DiaWindow])`**
-  A class to perform lookups on DIA windows. Can be iterated over to yield all windows. Can be indexed by window ID (which is equivalent to window_group).
-  - `.__getitem__(window_group_id: int) -> list[DiaWindow]`: Get windows by window_group ID. Returns a list as multiple frames can share a window group.
-  - `.__iter__() -> Iterator[DiaWindow]`: Iterate over all windows.
-  - `.__len__() -> int`: 
-  - `.get(window_group_id: int, default=None)`: Return windows for the given window group ID, or `default` if not found.
-  - `.query(window_group_index: int | DiaWindowGroup | None = None, rt: float | None = None, rt_tolerance: float = 30.0) -> Iterator[DiaWindow]`: Query windows by retention time.
-  - `.query_range(window_group_index: int | DiaWindowGroup | None = None, rt_range: tuple[float, float] | None = None) -> Iterator[DiaWindow]`: Query windows by window group and/or retention time range.
+**class `DiaWindowLookup(windows: Iterable[DiaWindow])`**
+  Per-frame DIA windows, indexed by window group ID.
+  - `.get(key: int, default: object = None) -> object`: Return the entry for ``key``, or ``default`` (``None``) if it is not present.
+  - `.ids() -> tuple[int, ...]`: Every ID this lookup is indexed by, in insertion order.
+  - `.query(*, window_group: int | DiaWindowGroup | None = None, rt: float | None = None, rt_tolerance: float = 30.0) -> Iterator[DiaWindow]`: Windows in a window group and/or within ``rt_tolerance`` of ``rt``.
+  - `.query_range(*, window_group: int | DiaWindowGroup | None = None, rt_range: tuple[float, float] | None = None) -> Iterator[DiaWindow]`: Windows in a window group and/or retention time range.
 
 ---
 
@@ -1132,7 +1142,7 @@ with PRM("experiment.d") as prm:
 
     # Access a specific target by ID
     t = prm.targets[1]
-    print(t.description, t.time, t.one_over_k0)
+    print(t.description, t.rt, t.ook0)
 
     # Query by m/z (20 ppm window)
     for target in prm.targets.query(mz=565.3189, mz_tolerance=20.0):
@@ -1144,33 +1154,31 @@ with PRM("experiment.d") as prm:
 
     # Query by 1/K0 (ion mobility)
     for target in prm.targets.query(ook0=0.92, ook0_tolerance=0.05):
-        print(target.target_id, target.one_over_k0)
+        print(target.target_id, target.ook0)
 ```
 
-**class `PrmTargetLookup(targets: dict[int, PrmTarget])`**
-  Lookup for PRM targets by target ID, m/z, RT, and 1/K0.
-  - `.__getitem__(target_id: int) -> PrmTarget`: 
-  - `.__iter__() -> Iterator[PrmTarget]`: 
-  - `.__len__() -> int`: 
-  - `.get(target_id: int, default=None)`: Return the target with the given ID, or `default` if not found.
-  - `.query(mz: float | None = None, rt: float | None = None, ook0: float | None = None, mz_tolerance: float = 20.0, mz_tolerance_type: Literal['ppm', 'da'] = 'ppm', rt_tolerance: float = 30.0, ook0_tolerance: float = 0.05) -> Iterator[PrmTarget]`: Query targets by m/z, RT, and/or 1/K0 with tolerances.
-  - `.query_range(mz_range: tuple[float, float] | None = None, rt_range: tuple[float, float] | None = None, ook0_range: tuple[float, float] | None = None) -> Iterator[PrmTarget]`: Query targets by m/z, RT, and/or 1/K0 ranges.
+**class `PrmTargetLookup(targets: Mapping[int, PrmTarget])`**
+  PRM targets, indexed by target ID, with m/z, RT and 1/K0 queries.
+  - `.get(key: int, default: object = None) -> object`: Return the entry for ``key``, or ``default`` (``None``) if it is not present.
+  - `.ids() -> tuple[int, ...]`: Every ID this lookup is indexed by, in insertion order.
+  - `.query(*, mz: float | None = None, rt: float | None = None, ook0: float | None = None, mz_tolerance: float = 20.0, mz_tolerance_type: Literal['ppm', 'da'] = 'ppm', rt_tolerance: float = 30.0, ook0_tolerance: float = 0.05) -> Iterator[PrmTarget]`: Targets within a tolerance of ``mz``, ``rt`` and/or ``ook0``.
+  - `.query_range(*, mz_range: tuple[float, float] | None = None, rt_range: tuple[float, float] | None = None, ook0_range: tuple[float, float] | None = None) -> Iterator[PrmTarget]`: Targets inside m/z, RT and/or 1/K0 ranges (inclusive).
 
 ### PRM Transition Lookup
 
 `PrmTransitionLookup` gives access to `PrmTransition` objects — the individual MS2
-acquisitions captured during the run. Indexing by `target_id` returns a **list** of all
+acquisitions captured during the run. Indexing by `target_id` returns a **tuple** of all
 transitions collected for that target across the chromatographic run.
 
 ```python
 from tdfpy import PRM
 
 with PRM("experiment.d") as prm:
-    # All transitions for target 1 (list — one per MS2 frame)
+    # All transitions for target 1 (tuple — one per MS2 frame)
     transitions = prm.transitions[1]
     for t in transitions:
         print(t.frame_id, t.rt, t.collision_energy)
-        peaks = t.peaks  # list of (mz, intensity) arrays per mobility scan
+        peaks = t.scan_peaks()  # list of (N, 2) [m/z, intensity] arrays, one per mobility scan
 
     # Query transitions for a specific target near a retention time
     for tr in prm.transitions.query(target=1, rt=480.0, rt_tolerance=30.0):
@@ -1178,18 +1186,16 @@ with PRM("experiment.d") as prm:
 
     # Query using a PrmTarget object directly
     target = prm.targets[1]
-    for tr in prm.transitions.query(target=target, rt=target.time, rt_tolerance=20.0):
+    for tr in prm.transitions.query(target=target, rt=target.rt, rt_tolerance=20.0):
         print(tr.frame_id, tr.isolation_mz)
 ```
 
-**class `PrmTransitionLookup(transitions: list[PrmTransition])`**
-  Lookup for PRM transitions by target ID and RT.
-  - `.__getitem__(target_id: int) -> list[PrmTransition]`: Get transitions by target ID. Returns a list as multiple frames target the same ion.
-  - `.__iter__() -> Iterator[PrmTransition]`: 
-  - `.__len__() -> int`: 
-  - `.get(target_id: int, default=None)`: Return transitions for the given target ID, or `default` if not found.
-  - `.query(target: int | PrmTarget | None = None, rt: float | None = None, rt_tolerance: float = 30.0) -> Iterator[PrmTransition]`: Query transitions by target and/or retention time.
-  - `.query_range(target: int | PrmTarget | None = None, rt_range: tuple[float, float] | None = None) -> Iterator[PrmTransition]`: Query transitions by target and/or retention time range.
+**class `PrmTransitionLookup(transitions: Iterable[PrmTransition])`**
+  PRM transitions, indexed by target ID.
+  - `.get(key: int, default: object = None) -> object`: Return the entry for ``key``, or ``default`` (``None``) if it is not present.
+  - `.ids() -> tuple[int, ...]`: Every ID this lookup is indexed by, in insertion order.
+  - `.query(*, target: int | PrmTarget | None = None, rt: float | None = None, rt_tolerance: float = 30.0) -> Iterator[PrmTransition]`: Transitions of one target and/or within ``rt_tolerance`` of ``rt``.
+  - `.query_range(*, target: int | PrmTarget | None = None, rt_range: tuple[float, float] | None = None) -> Iterator[PrmTransition]`: Transitions of one target and/or inside an RT range.
 
 ==============================================================================
 # docs/api/centroiding.md
@@ -1741,7 +1747,7 @@ the `viz` extra:
 pip install 'tdfpy[viz]'
 ```
 
-**`plot_centroiding(td: 'TimsData', frame_id: 'int', ion_mobility_type: "Literal['ook0', 'ccs', 'voltage']" = 'ook0', mz_tolerance: 'float | None' = None, mz_tolerance_type: "Literal['ppm', 'da'] | None" = None, im_tolerance: 'float | None' = None, im_tolerance_type: "Literal['relative', 'absolute'] | None" = None, min_peaks: 'int | None' = None, max_peaks: 'int | None' = None, noise: 'NoiseSpec' = None, mz_range: 'tuple[float, float] | None' = None, im_range: 'tuple[float, float] | None' = None, *, centroid: 'Centroider | None' = None) -> 'Figure'`**
+**`plot_centroiding(td: 'TimsData', frame_id: 'int', *, ion_mobility_type: "Literal['ook0', 'ccs', 'voltage']" = 'ook0', noise: 'NoiseSpec' = None, mz_range: 'tuple[float, float] | None' = None, im_range: 'tuple[float, float] | None' = None, centroid: 'Centroider | None' = None) -> 'Figure'`**
   Visualize centroiding quality for a single frame.
 
 ==============================================================================
@@ -1785,39 +1791,41 @@ SQLite metadata into pandas DataFrames, and `TimsData` decodes frames from
   - `.segments` -> `DataFrame`: The 'Segments' table as a pandas DataFrame. :return: table as a pandas DataFrame
   - `.tims_calibration` -> `DataFrame`: The 'TimsCalibration' table as a pandas DataFrame. :return: table as a pandas DataFrame
 
-**class `TimsData(analysis_directory: 'str | os.PathLike[str]', use_recalibrated_state: 'bool' = False, pressure_compensation_strategy: 'PressureCompensationStrategy' = <PressureCompensationStrategy.NoPressureCompensation: 0>) -> 'None'`**
+**class `TimsData(analysis_directory: 'str | os.PathLike[str]', *, use_recalibrated_state: 'bool' = False, pressure_compensation_strategy: 'PressureCompensationStrategy' = <PressureCompensationStrategy.NoPressureCompensation: 0>) -> 'None'`**
   Random-access reader for a Bruker ``.d`` folder.
-  - `.calibration_key(frame_id: 'int') -> 'tuple'`: Identify the effective m/z and mobility conversions for caching.
-  - `.close() -> 'None'`: 
+  - `.calibration_key(frame_id: 'int') -> 'tuple[tuple[float, ...], TimsCalibration]'`: Identify the effective m/z and mobility conversions for caching.
+  - `.close() -> 'None'`: Close ``analysis.tdf_bin`` and the SQLite connection. Safe to call twice.
   - `.frame_ids` -> `tuple[int, ...]`: Frame IDs in acquisition ID order. Requires an open reader.
   - `.frame_metadata(frame_id: 'int') -> 'FrameMetadata'`: Read eagerly loaded metadata without accessing SQLite.
-  - `.indexToMz(frame_id: 'int', indices: 'npt.ArrayLike') -> 'npt.NDArray[np.float64]'`: Convert TOF sample indices to m/z for ``frame_id``.
+  - `.index_to_mz(frame_id: 'int', indices: 'npt.ArrayLike') -> 'npt.NDArray[np.float64]'`: Convert TOF sample indices to m/z for ``frame_id``.
   - `.metadata_table(name: 'str') -> 'tuple[sqlite3.Row, ...]'`: Read an immutable snapshot of a gate metadata table.
-  - `.mzToIndex(frame_id: 'int', mzs: 'npt.ArrayLike') -> 'npt.NDArray[np.float64]'`: Convert m/z to (fractional) TOF sample indices for ``frame_id``.
   - `.mz_calibration_key(frame_id: 'int') -> 'tuple[float, ...]'`: Identify the effective m/z conversion, including temperature drift.
-  - `.oneOverK0ToScanNum(frame_id: 'int', mobilities: 'npt.ArrayLike') -> 'npt.NDArray[np.float64]'`: Convert 1/K0 to (fractional) scan numbers.
-  - `.readScans(frame_id: 'int', scan_begin: 'int', scan_end: 'int') -> 'list[tuple[npt.NDArray[np.uint32], npt.NDArray[np.uint32]]]'`: Read scans ``[scan_begin, scan_end)`` of a frame.
+  - `.mz_to_index(frame_id: 'int', mzs: 'npt.ArrayLike') -> 'npt.NDArray[np.float64]'`: Convert m/z to (fractional) TOF sample indices for ``frame_id``.
+  - `.ook0_to_scan_num(frame_id: 'int', ook0: 'npt.ArrayLike') -> 'npt.NDArray[np.float64]'`: Convert 1/K0 (V·s/cm²) to (fractional) scan numbers.
   - `.read_frame_arrays(frame_id: 'int', scan_begin: 'int' = 0, scan_end: 'int | None' = None) -> 'tuple[npt.NDArray[np.int64], npt.NDArray[np.uint32], npt.NDArray[np.uint32]]'`: Read scans ``[scan_begin, scan_end)`` as three flat, parallel arrays.
-  - `.scanNumToOneOverK0(frame_id: 'int', scan_nums: 'npt.ArrayLike') -> 'npt.NDArray[np.float64]'`: Convert scan numbers to inverse reduced mobility (1/K0).
-  - `.scanNumToVoltage(frame_id: 'int', scan_nums: 'npt.ArrayLike') -> 'npt.NDArray[np.float64]'`: Convert scan numbers to TIMS ramp voltage.
-  - `.voltageToScanNum(frame_id: 'int', voltages: 'npt.ArrayLike') -> 'npt.NDArray[np.float64]'`: Convert TIMS ramp voltage to (fractional) scan numbers.
+  - `.read_scans(frame_id: 'int', scan_begin: 'int', scan_end: 'int') -> 'list[tuple[npt.NDArray[np.uint32], npt.NDArray[np.uint32]]]'`: Read scans ``[scan_begin, scan_end)`` of a frame.
+  - `.scan_num_to_ook0(frame_id: 'int', scan_nums: 'npt.ArrayLike') -> 'npt.NDArray[np.float64]'`: Convert scan numbers to inverse reduced mobility 1/K0 (V·s/cm²).
+  - `.scan_num_to_voltage(frame_id: 'int', scan_nums: 'npt.ArrayLike') -> 'npt.NDArray[np.float64]'`: Convert scan numbers to TIMS ramp voltage.
+  - `.voltage_to_scan_num(frame_id: 'int', voltages: 'npt.ArrayLike') -> 'npt.NDArray[np.float64]'`: Convert TIMS ramp voltage to (fractional) scan numbers.
 
 **`timsdata_connect(analysis_dir: 'str | os.PathLike[str]') -> 'Iterator[TimsData]'`**
   Open a :class:`TimsData` and close it on exit.
 
 **dataclass `FrameMetadata`**
-  Immutable frame metadata loaded when the reader opens. Time is in seconds.
-  - fields: `frame_id: int`, `time: float`, `msms_type: int`, `polarity: str`, `num_scans: int`, `num_peaks: int`, `property_group: int | None`, `mz_calibration: int`, `tims_calibration: int`, `t1: float`, `t2: float`
+  Immutable per-frame metadata, loaded from the ``Frames`` table when the reader opens.
+  - fields: `frame_id: int`, `rt: float`, `msms_type: int`, `polarity: str`, `num_scans: int`, `num_peaks: int`, `property_group_id: int | None`, `mz_calibration_id: int`, `tims_calibration_id: int`, `t1: float`, `t2: float`
 
 ## Errors
 
 Unsupported or unvalidated formats raise instead of returning approximate values.
 
-**exception `UnsupportedTdfError`** (subclass of NotImplementedError)
-  Raised for a ``.d`` folder this reader has not been validated against.
+**exception `UnsupportedTdfError`** (subclass of TdfpyError, NotImplementedError)
+  A ``.d`` folder this reader has not been validated against, or a corrupt one.
+  - inherits all fields and methods of TdfpyError, NotImplementedError
 
-**exception `UnsupportedCalibrationError`** (subclass of NotImplementedError)
-  Raised for a calibration model type that has not been validated.
+**exception `UnsupportedCalibrationError`** (subclass of TdfpyError, NotImplementedError)
+  A calibration model type that has not been validated.
+  - inherits all fields and methods of TdfpyError, NotImplementedError
 
 ==============================================================================
 # docs/citation.md
@@ -1847,3 +1855,33 @@ The citation metadata lives in
 [`CITATION.cff`](https://github.com/tacular-omics/tdfpy/blob/main/CITATION.cff). GitHub's
 "Cite this repository" button on the
 [repository page](https://github.com/tacular-omics/tdfpy) reads it and exports APA or BibTeX.
+
+==============================================================================
+# Other public names (exported from tdfpy, not on a docs page)
+==============================================================================
+
+**exception `TdfpyError`** (subclass of ValueError)
+  Base class of every tdfpy error.
+
+**exception `TdfpyKeyError`** (subclass of TdfpyError, KeyError)
+  An ID or key that is not in the acquisition.
+  - inherits all fields and methods of TdfpyError, KeyError
+
+**exception `ReaderClosedError`** (subclass of TdfpyError, RuntimeError)
+  Spectral data was requested after the reader was closed.
+  - inherits all fields and methods of TdfpyError, RuntimeError
+
+**class `AcquisitionType(*values)`** (subclass of StrEnum)
+  Acquisition mode of a `.d` folder, returned by :func:`get_acquisition_type`.
+
+**class `MsMsType(*values)`** (subclass of IntEnum)
+  The ``MsMsType`` column of the ``Frames`` table.
+
+**`ook0_to_ccs(ook0: 'float', charge: 'int', mz: 'float') -> 'float'`**
+  Convert 1/K0 to a collision cross section via the Mason-Schamp equation.
+
+**`ccs_to_ook0(ccs: 'float', charge: 'int', mz: 'float') -> 'float'`**
+  Inverse of :func:`ook0_to_ccs`.
+
+**`MetaValue`** = `str | int | float | None`
+
