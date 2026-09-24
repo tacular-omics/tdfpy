@@ -134,14 +134,14 @@ class PasefFrameMsmsInfo(_TdfData):
 
     | Field | Type | Description |
     |---|---|---|
-    | `frame_id` | `int` | Parent MS1 frame ID |
+    | `frame_id` | `int` | MS/MS frame the window was acquired in (not the parent MS1 frame) |
     | `scan_num_begin` | `int` | First mobility scan (inclusive) |
     | `scan_num_end` | `int` | Mobility scan range end (exclusive) — the range is `[scan_num_begin, scan_num_end)` |
     | `isolation_mz` | `float` | Isolation window center m/z |
     | `isolation_width` | `float` | Isolation window width in Th |
     | `collision_energy` | `float` | Collision energy in eV |
     | `precursor` | `int \\| None` | Associated precursor ID |
-    | `rt` | `float` | Retention time in seconds (from parent frame) |
+    | `rt` | `float` | Retention time in seconds of that MS/MS frame |
     | `polarity` | `Polarity` | Ion polarity |
     """
 

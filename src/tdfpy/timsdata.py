@@ -319,7 +319,13 @@ class TimsData:
         self._read_lock = threading.Lock()
         #: Open binary file object, or ``None`` once :meth:`close` has run.
         #: Callers use this only to test whether the reader is still open.
-        self.handle: Any = open(bin_path, "rb")
+        try:
+            self.handle: Any = open(bin_path, "rb")
+        except BaseException:
+            self.conn.close()
+            self.conn = None
+            self.handle = None
+            raise
         self._fd: int = self.handle.fileno()
 
     # -- setup ------------------------------------------------------------
