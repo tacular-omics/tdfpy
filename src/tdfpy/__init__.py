@@ -75,7 +75,7 @@ from .timsdata import FrameMetadata, TimsData, UnsupportedTdfError, timsdata_con
 from .validation import ValidationIssue, ValidationReport, validate_acquisition
 from .viz import plot_centroiding
 
-__version__ = "4.1.0"
+__version__ = "4.1.1"
 
 __all__ = [
     "FrameMetadata",
