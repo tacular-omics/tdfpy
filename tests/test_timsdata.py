@@ -543,3 +543,34 @@ def test_index_to_mz_domain_covers_every_real_tof_index() -> None:
                 _, tof, _ = td.read_frame_arrays(fid)
                 if tof.size:
                     assert td.indexToMz(fid, tof.astype(np.float64)).min() > 0
+
+
+def test_sqlite_connection_closed_when_binary_cannot_be_opened(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """If opening analysis.tdf_bin fails, the already-open sqlite connection must be closed.
+
+    Before the fix the connection stayed open until the half-built object was
+    garbage collected, which on Windows keeps analysis.tdf locked.
+    """
+    d = _copy_fixture(tmp_path)
+    opened: list[sqlite3.Connection] = []
+    real_connect = sqlite3.connect
+
+    def recording_connect(*args, **kwargs):
+        conn = real_connect(*args, **kwargs)
+        opened.append(conn)
+        return conn
+
+    monkeypatch.setattr(timsdata.sqlite3, "connect", recording_connect)
+    (d / "analysis.tdf_bin").unlink()
+    (d / "analysis.tdf_bin").mkdir()  # exists, but open(..., "rb") fails
+
+    # Check while the exception (whose traceback still references the half-built
+    # TimsData) is alive: TimsData.__del__ must not be what closes the connection.
+    try:
+        TimsData(str(d))
+    except OSError:
+        assert len(opened) == 1
+        with pytest.raises(sqlite3.ProgrammingError):
+            opened[0].execute("SELECT 1")
+    else:
+        pytest.fail("TimsData opened a directory as analysis.tdf_bin")

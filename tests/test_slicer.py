@@ -1,4 +1,5 @@
 import os
+import shutil
 import sqlite3
 import struct
 from contextlib import closing
@@ -224,3 +225,36 @@ def test_slice_failure_removes_partial_dest(tmp_path):
         slice_d_folder(src, dest, frame_start=1, frame_end=5)
 
     assert not dest.exists()
+
+
+PRM_DATA = Path("tests/data/example_prm.d")
+
+
+@pytest.mark.skipif(not PRM_DATA.exists(), reason="Test data not available")
+def test_slice_filters_frame_msms_info_and_ce_sweeping(tmp_path):
+    """FrameMsMsInfo and CollisionEnergySweepingInfo rows for dropped frames must go.
+
+    The bundled fixtures leave both tables empty, so rows are added here for every
+    frame. Before the fix the slicer kept all of them, pointing at deleted frames.
+    """
+    src = tmp_path / "src.d"
+    shutil.copytree(PRM_DATA, src)
+    with closing(sqlite3.connect(src / "analysis.tdf")) as conn, conn:
+        frame_ids = [r[0] for r in conn.execute("SELECT Id FROM Frames")]
+        conn.executemany(
+            "INSERT INTO FrameMsMsInfo (Frame, Parent, TriggerMass, IsolationWidth, PrecursorCharge, CollisionEnergy) VALUES (?, ?, 500.0, 2.0, 2, 30.0)",
+            [(f, max(f - 1, 1)) for f in frame_ids],
+        )
+        conn.executemany(
+            "INSERT INTO CollisionEnergySweepingInfo (Frame, CollisionId, CollisionEnergy, CollisionEnergyPercent) VALUES (?, ?, 30.0, 50.0)",
+            [(f, c) for f in frame_ids for c in (1, 2)],
+        )
+
+    dest = tmp_path / "sliced.d"
+    slice_d_folder(src, dest, frame_start=5, frame_end=9)
+
+    with closing(sqlite3.connect(dest / "analysis.tdf")) as conn:
+        kept = [r[0] for r in conn.execute("SELECT Frame FROM FrameMsMsInfo ORDER BY Frame")]
+        sweeping = conn.execute("SELECT DISTINCT Frame FROM CollisionEnergySweepingInfo ORDER BY Frame").fetchall()
+    assert kept == [5, 6, 7, 8, 9]
+    assert [r[0] for r in sweeping] == [5, 6, 7, 8, 9]

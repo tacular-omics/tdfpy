@@ -5,12 +5,12 @@ from pathlib import Path
 import tdfpy
 from tdfpy import DDA
 from tdfpy.centroiding import get_raw_peaks, merge_peaks
-from tdfpy.noise import estimate_noise_level
+from tdfpy.noise import IntensityThreshold, coerce_filters
 from tdfpy.viz import plot_centroiding
 
 REPO_ROOT = Path(__file__).parent.parent
 DATA_PATH = REPO_ROOT / "tests" / "data" / "example_dda.d"
-PLOTS_DIR = REPO_ROOT / "plots"
+PLOTS_DIR = Path(sys.argv[1]) if len(sys.argv) > 1 else REPO_ROOT / "plots"
 
 METHODS = [None, "mad", "percentile", "histogram", "baseline", "iterative_median"]
 
@@ -47,7 +47,9 @@ def main():
 
             # stats
             if method is not None and len(all_centroids) > 0:
-                threshold = estimate_noise_level(all_centroids[:, 1], method=method)
+                (noise_filter,) = coerce_filters(method)
+                assert isinstance(noise_filter, IntensityThreshold)
+                threshold = noise_filter.compute_threshold(all_centroids[:, 1])
                 kept_mask = all_centroids[:, 1] >= threshold
                 kept = all_centroids[kept_mask]
                 rejected = all_centroids[~kept_mask]

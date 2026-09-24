@@ -21,6 +21,8 @@ TDF_BIN_FILE = "analysis.tdf_bin"
 # Each entry is (table_name, column_name_referencing_frame_id).
 _FRAME_DEPENDENT_TABLES = [
     ("FrameProperties", "Frame"),
+    ("FrameMsMsInfo", "Frame"),
+    ("CollisionEnergySweepingInfo", "Frame"),
     ("PasefFrameMsMsInfo", "Frame"),
     ("DiaFrameMsMsInfo", "Frame"),
     ("PrmFrameMsMsInfo", "Frame"),
