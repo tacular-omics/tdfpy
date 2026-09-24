@@ -3,7 +3,7 @@ import pathlib
 import numpy as np
 import pytest
 
-from tdfpy import PRM, PrmTarget, PrmTransition, get_acquisition_type
+from tdfpy import PRM, PrmTarget, PrmTransition, ReaderClosedError, get_acquisition_type
 
 D_PATH = "tests/data/example_prm.d"
 SKIP_NO_DATA = pytest.mark.skipif(not pathlib.Path(D_PATH).exists(), reason="Test data not available")
@@ -244,12 +244,18 @@ def test_prm_transition_mobility_range():
         tr = next(t for t in prm.transitions[1] if t.frame_id == 275)
 
         ook0_begin, ook0_end = tr.ook0_range
-        # Scan number and 1/K0 run in opposite directions.
-        assert ook0_begin > ook0_end > 0.0
+        # Scan number and 1/K0 run in opposite directions, but ranges are
+        # always (low, high) to match mz_range and query_range(ook0_range=).
+        assert 0.0 < ook0_begin < ook0_end
         assert tr.ook0_range == (tr.ook0_begin, tr.ook0_end)
+        high_scan_ook0 = float(prm.timsdata.scan_num_to_ook0(tr.frame_id, [tr.scan_num_end])[0])
+        assert ook0_begin == pytest.approx(high_scan_ook0)
 
         ccs_begin, ccs_end = tr.ccs_range
-        assert ccs_begin > ccs_end > 0.0
+        assert 0.0 < ccs_begin < ccs_end
+        assert tr.ccs_range == (tr.ccs_begin, tr.ccs_end)
+        v_begin, v_end = tr.voltage_range
+        assert v_begin <= v_end
 
 
 @SKIP_NO_DATA
@@ -280,9 +286,10 @@ def test_prm_access_after_close():
     with pytest.raises(RuntimeError, match="closed"):
         _ = prm.transitions
 
-    # Current behaviour: metadata is read from the SQLite file on demand and
-    # does not depend on the TimsData handle, so it stays available.
-    assert isinstance(prm.metadata.instrument_name, str)
+    # 5.0: everything that reads the file raises once the reader is closed.
+    for name in ("metadata", "calibration", "pandas_tdf", "timsdata"):
+        with pytest.raises(ReaderClosedError):
+            getattr(prm, name)
 
 
 if __name__ == "__main__":

@@ -27,6 +27,7 @@ from .elems import (
     PrmTransition,
 )
 from .errors import (
+    AcquisitionTypeError,
     ReaderClosedError,
     TdfpyError,
     TdfpyKeyError,
@@ -101,6 +102,7 @@ __all__ = [
     # Errors
     "TdfpyError",
     "TdfpyKeyError",
+    "AcquisitionTypeError",
     "ReaderClosedError",
     "UnsupportedTdfError",
     "UnsupportedCalibrationError",

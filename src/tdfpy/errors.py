@@ -11,6 +11,7 @@ may raise :class:`TypeError`.
 """
 
 __all__ = [
+    "AcquisitionTypeError",
     "ReaderClosedError",
     "TdfpyError",
     "TdfpyKeyError",
@@ -38,6 +39,14 @@ class TdfpyKeyError(TdfpyError, KeyError):
     def __str__(self) -> str:
         # KeyError.__str__ wraps the message in quotes; show it plainly.
         return str(self.args[0]) if self.args else ""
+
+
+class AcquisitionTypeError(TdfpyError):
+    """A reader was opened on a ``.d`` folder of another acquisition type.
+
+    For example ``DDA("run.d")`` on a diaPASEF run. Check the type first with
+    :func:`~tdfpy.get_acquisition_type`.
+    """
 
 
 class ReaderClosedError(TdfpyError, RuntimeError):

@@ -11,14 +11,18 @@ Peak array shapes, the same on every element:
 * ``centroid()`` -> one ``(N, 3)`` float64 array of ``[m/z, intensity, ion_mobility]``.
 * ``scan_peaks()`` -> a ``list`` with one ``(N_i, 2)`` ``[m/z, intensity]`` raw
   array per mobility scan.
-* ``Precursor.peaks`` / ``PasefFrameMsmsInfo.peaks`` -> one ``(N, 2)``
-  ``[m/z, intensity]`` array, mobility-collapsed and centroided.
+* ``Precursor.merged_peaks()`` / ``PasefFrameMsmsInfo.merged_peaks()`` -> one
+  ``(N, 2)`` ``[m/z, intensity]`` array, mobility-collapsed by a greedy merge.
+  This is the most expensive accessor; call it once and keep the result.
+
+Every spectral accessor is a method, so each call visibly reads and decodes
+the frame; nothing is cached on the element.
 """
 
 import datetime
 import logging
 import warnings
-from collections.abc import Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass, field
 from enum import IntEnum, StrEnum
 from typing import Literal
@@ -153,7 +157,11 @@ class _Spectrum(_TdfData):
         """
         td = self.timsdata
         bounds = self._scan_bounds()
-        begin, end = bounds if bounds is not None else (0, td.frame_metadata(self.frame_id).num_scans)
+        num_scans = td.frame_metadata(self.frame_id).num_scans
+        begin, end = bounds if bounds is not None else (0, num_scans)
+        begin, end = max(0, begin), min(end, num_scans)
+        if begin >= end:
+            return []
         arrays = []
         for index_array, int_array in td.read_scans(self.frame_id, begin, end):
             mz_array = td.index_to_mz(self.frame_id, index_array)
@@ -254,50 +262,58 @@ class _MobilityWindow(_IsolationWindow, _Spectrum):
     def _scan_bounds(self) -> tuple[int, int] | None:
         return (self.scan_num_begin, self.scan_num_end)
 
-    @property
-    def ook0_begin(self) -> float:
-        """1/K0 (V·s/cm²) at ``scan_num_begin``."""
-        return float(self.timsdata.scan_num_to_ook0(self.frame_id, [self.scan_num_begin])[0])
-
-    @property
-    def ook0_end(self) -> float:
-        """1/K0 (V·s/cm²) at ``scan_num_end``."""
-        return float(self.timsdata.scan_num_to_ook0(self.frame_id, [self.scan_num_end])[0])
+    def _edge_values(self, convert: Callable[[int, npt.ArrayLike], npt.NDArray[np.float64]]) -> tuple[float, float]:
+        """``(low, high)`` of ``convert`` at the two scan edges. Scan order runs high to low 1/K0."""
+        values = convert(self.frame_id, [self.scan_num_begin, self.scan_num_end])
+        a, b = float(values[0]), float(values[1])
+        return (a, b) if a <= b else (b, a)
 
     @property
     def ook0_range(self) -> tuple[float, float]:
-        """``(ook0_begin, ook0_end)``. Scan numbers run high to low 1/K0, so begin > end."""
-        return (self.ook0_begin, self.ook0_end)
+        """``(ook0_begin, ook0_end)``: lowest and highest 1/K0 (V·s/cm²) of the scan range, low first."""
+        return self._edge_values(self.timsdata.scan_num_to_ook0)
 
     @property
-    def ccs_begin(self) -> float:
-        """CCS (Å²) at ``ook0_begin``, for charge 1 at ``isolation_mz``."""
-        return ook0_to_ccs(self.ook0_begin, 1, self.isolation_mz)
+    def ook0_begin(self) -> float:
+        """Lowest 1/K0 (V·s/cm²) of the scan range."""
+        return self.ook0_range[0]
 
     @property
-    def ccs_end(self) -> float:
-        """CCS (Å²) at ``ook0_end``, for charge 1 at ``isolation_mz``."""
-        return ook0_to_ccs(self.ook0_end, 1, self.isolation_mz)
+    def ook0_end(self) -> float:
+        """Highest 1/K0 (V·s/cm²) of the scan range."""
+        return self.ook0_range[1]
 
     @property
     def ccs_range(self) -> tuple[float, float]:
-        """``(ccs_begin, ccs_end)``."""
-        return (self.ccs_begin, self.ccs_end)
+        """``(ccs_begin, ccs_end)``: CCS (Å²) range for charge 1 at ``isolation_mz``, low first."""
+        lo, hi = self.ook0_range
+        a, b = ook0_to_ccs(lo, 1, self.isolation_mz), ook0_to_ccs(hi, 1, self.isolation_mz)
+        return (a, b) if a <= b else (b, a)
 
     @property
-    def voltage_begin(self) -> float:
-        """TIMS voltage (V) at ``scan_num_begin``."""
-        return float(self.timsdata.scan_num_to_voltage(self.frame_id, [self.scan_num_begin])[0])
+    def ccs_begin(self) -> float:
+        """Lowest CCS (Å²) of the scan range, for charge 1 at ``isolation_mz``."""
+        return self.ccs_range[0]
 
     @property
-    def voltage_end(self) -> float:
-        """TIMS voltage (V) at ``scan_num_end``."""
-        return float(self.timsdata.scan_num_to_voltage(self.frame_id, [self.scan_num_end])[0])
+    def ccs_end(self) -> float:
+        """Highest CCS (Å²) of the scan range, for charge 1 at ``isolation_mz``."""
+        return self.ccs_range[1]
 
     @property
     def voltage_range(self) -> tuple[float, float]:
-        """``(voltage_begin, voltage_end)``."""
-        return (self.voltage_begin, self.voltage_end)
+        """``(voltage_begin, voltage_end)``: TIMS voltage (V) range of the scan range, low first."""
+        return self._edge_values(self.timsdata.scan_num_to_voltage)
+
+    @property
+    def voltage_begin(self) -> float:
+        """Lowest TIMS voltage (V) of the scan range."""
+        return self.voltage_range[0]
+
+    @property
+    def voltage_end(self) -> float:
+        """Highest TIMS voltage (V) of the scan range."""
+        return self.voltage_range[1]
 
 
 def _timsdata_field() -> TimsData:
@@ -352,14 +368,15 @@ class PasefFrameMsmsInfo(_MobilityWindow):
             )
         return (self.frame_id, self.precursor_id)
 
-    @property
-    def peaks(self) -> npt.NDArray[np.float64]:
-        """Centroided MS/MS peaks, one ``(N, 2)`` ``[m/z, intensity]`` array.
+    def merged_peaks(self) -> npt.NDArray[np.float64]:
+        """Mobility-collapsed MS/MS spectrum, one ``(N, 2)`` ``[m/z, intensity]`` array.
 
-        The window's scans are summed (mobility collapsed), then centroided by
-        greedy m/z merging. See
-        :func:`~tdfpy.get_mobility_collapsed_spectrum`. For per-scan raw peaks
-        use :meth:`scan_peaks`.
+        Sums the window's scans (dropping ion mobility), then merges peaks
+        greedily in m/z (30 ppm). This decodes and merges every scan, so it is
+        the most expensive accessor; call it once and keep the result. For
+        per-scan raw peaks use :meth:`scan_peaks`; for an ``(N, 3)`` spectrum
+        that keeps ion mobility use :meth:`centroid`. See
+        :func:`~tdfpy.get_mobility_collapsed_spectrum`.
 
         Raises:
             ReaderClosedError: If the reader was closed.
@@ -417,12 +434,13 @@ class Precursor(_TdfData):
         """TIMS voltage (V) at ``scan_number`` in the parent frame."""
         return float(self.timsdata.scan_num_to_voltage(self.parent_frame_id, [self.scan_number])[0])
 
-    @property
-    def peaks(self) -> npt.NDArray[np.float64]:
-        """Centroided MS/MS peaks, one ``(N, 2)`` ``[m/z, intensity]`` array.
+    def merged_peaks(self) -> npt.NDArray[np.float64]:
+        """Mobility-collapsed MS/MS spectrum, one ``(N, 2)`` ``[m/z, intensity]`` array.
 
         Sums every PASEF window of this precursor (which may span several
-        frames), collapses mobility, then centroids by greedy m/z merging. See
+        frames), drops ion mobility, then merges peaks greedily in m/z
+        (30 ppm). This decodes every window, so it is the most expensive
+        accessor; call it once and keep the result. See
         :func:`~tdfpy.get_mobility_collapsed_spectrum`.
 
         Raises:
@@ -433,10 +451,13 @@ class Precursor(_TdfData):
             [(info.frame_id, info.scan_num_begin, info.scan_num_end) for info in self.pasef_frame_msms_infos],
         )
 
-    @property
-    def pasef_peaks(self) -> list[npt.NDArray[np.float64]]:
-        """``.peaks`` of each PASEF window, one ``(N_i, 2)`` array per window."""
-        return [pasef_info.peaks for pasef_info in self.pasef_frame_msms_infos]
+    def pasef_merged_peaks(self) -> list[npt.NDArray[np.float64]]:
+        """:meth:`PasefFrameMsmsInfo.merged_peaks` of each PASEF window, one ``(N_i, 2)`` array per window.
+
+        Raises:
+            ReaderClosedError: If the reader was closed.
+        """
+        return [pasef_info.merged_peaks() for pasef_info in self.pasef_frame_msms_infos]
 
     def _single_value[T](self, values: set[T], attr: str) -> T | None:
         if len(values) == 1:
@@ -552,22 +573,6 @@ class Frame(_Spectrum):
     def _scan_bounds(self) -> tuple[int, int] | None:
         return None
 
-    def scan_peaks(self) -> list[npt.NDArray[np.float64]]:
-        """Raw peaks, one ``(N_i, 2)`` ``[m/z, intensity]`` float64 array per mobility scan.
-
-        The list has ``num_scans`` entries in scan order; empty scans give a
-        ``(0, 2)`` array.
-
-        Raises:
-            ReaderClosedError: If the reader was closed.
-        """
-        td = self.timsdata
-        arrays = []
-        for index_array, int_array in td.read_scans(self.frame_id, 0, self.num_scans):
-            mz_array = td.index_to_mz(self.frame_id, index_array)
-            arrays.append(np.stack((mz_array, int_array), axis=-1).astype(np.float64))
-        return arrays
-
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class DDAMs1Frame(Frame):
@@ -634,14 +639,9 @@ class DiaWindow(DiaWindowGroup, _MobilityWindow):
 class DIAMs1Frame(Frame):
     """An MS1 frame from a DIA acquisition.
 
-    Inherits all fields from `Frame`. `dia_windows` holds windows whose frame
-    ID equals this frame's ID. DIA windows belong to MS/MS frames, so on
-    normal data this tuple is empty; use `reader.windows` for isolation
-    windows. It does not associate acquisition cycles.
+    Inherits all fields from `Frame`. DIA isolation windows belong to MS/MS
+    frames; use the reader's `windows` lookup for them.
     """
-
-    dia_windows: tuple[DiaWindow, ...]
-    """DIA windows with this frame's ID (normally empty)."""
 
 
 # ---------------------------------------------------------------------------
@@ -715,12 +715,9 @@ class PrmTransition(_MobilityWindow):
 class PRMMs1Frame(Frame):
     """An MS1 frame from a PRM acquisition.
 
-    Inherits all fields from `Frame`. `prm_transitions` holds transitions
-    whose frame ID equals this frame's ID.
+    Inherits all fields from `Frame`. PRM transitions belong to MS/MS frames;
+    use the reader's `transitions` lookup for them.
     """
-
-    prm_transitions: tuple[PrmTransition, ...]
-    """PRM transitions with this frame's ID."""
 
 
 # ---------------------------------------------------------------------------

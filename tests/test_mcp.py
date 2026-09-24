@@ -176,7 +176,7 @@ def test_precursor_uses_existing_picker_and_rejects_ignored_options(service, con
     selection = SpectrumSelection.model_validate(row["selection"])
     peaks, metadata = service.spectrum("example_dda.d", selection, Processing())
     with DDA(DATA / "example_dda.d") as reader:
-        np.testing.assert_array_equal(peaks, reader.precursors[selection.id].peaks)
+        np.testing.assert_array_equal(peaks, reader.precursors[selection.id].merged_peaks())
     assert metadata["columns"] == ["mz", "intensity"]
     with pytest.raises(ValueError, match="Omit processing overrides"):
         service.spectrum("example_dda.d", selection, config)

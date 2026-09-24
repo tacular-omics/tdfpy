@@ -426,7 +426,7 @@ class AcquisitionService:
                     obj = reader.precursors[selection.id]
                     ids = list(dict.fromkeys(info.frame_id for info in obj.pasef_frame_msms_infos))
                     self.frame_budget(reader.timsdata, ids)
-                    peaks = obj.peaks
+                    peaks = obj.merged_peaks()
                 else:
                     windows = list(getattr(reader, "windows" if required == "DIA" else "transitions"))
                     if selection.id >= len(windows):

@@ -9,7 +9,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from tdfpy import calibration, timsdata
+from tdfpy import TdfpyError, calibration, timsdata
 from tdfpy.calibration import MzCalibration, UnsupportedCalibrationError
 from tdfpy.timsdata import (
     PressureCompensationStrategy,
@@ -304,7 +304,7 @@ def test_zero_scan_count_with_a_payload_is_rejected(tmp_path: Path) -> None:
     _set_num_scans(d, 1, 0)  # keep the metadata consistent so this guard is reached
     with timsdata.timsdata_connect(str(d)) as td:
         with pytest.raises(UnsupportedTdfError, match=r"Frame 1: Frames.NumScans is 0"):
-            td.read_scans(1, 0, 10)
+            td.read_frame_arrays(1)
 
 
 def test_payload_shorter_than_the_scan_header_is_rejected(tmp_path: Path) -> None:
@@ -581,3 +581,31 @@ def test_sqlite_connection_closed_when_binary_cannot_be_opened(tmp_path: Path, m
             opened[0].execute("SELECT 1")
     else:
         pytest.fail("TimsData opened a directory as analysis.tdf_bin")
+
+
+def test_missing_required_metadata_is_unsupported_tdf_error(tmp_path: Path) -> None:
+    """A GlobalMetadata key the decoder needs surfaces as UnsupportedTdfError, not KeyError."""
+    d = _copy_fixture(tmp_path)
+    with closing(sqlite3.connect(d / "analysis.tdf")) as conn:
+        conn.execute("DELETE FROM GlobalMetadata WHERE Key = 'DigitizerNumSamples'")
+        conn.commit()
+    with pytest.raises(UnsupportedTdfError, match="DigitizerNumSamples"):
+        timsdata.TimsData(str(d))
+
+
+@pytest.mark.parametrize(("begin", "end"), [(-1, 5), (5, 5), (10, 3), (0, 10_000)])
+def test_read_scans_rejects_bad_bounds(begin: int, end: int) -> None:
+    if not Path(TDF_PATH).is_dir():
+        pytest.skip("Test data not found")
+    with timsdata.timsdata_connect(TDF_PATH) as td:
+        with pytest.raises(TdfpyError, match="invalid scan range"):
+            td.read_scans(1, begin, end)
+
+
+def test_read_scans_accepts_the_full_frame() -> None:
+    if not Path(TDF_PATH).is_dir():
+        pytest.skip("Test data not found")
+    with timsdata.timsdata_connect(TDF_PATH) as td:
+        num_scans = td.frame_metadata(1).num_scans
+        assert len(td.read_scans(1, 0, num_scans)) == num_scans
+        assert len(td.read_scans(1, num_scans - 1, num_scans)) == 1

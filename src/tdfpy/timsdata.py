@@ -669,7 +669,18 @@ class TimsData:
 
         See :meth:`read_frame_arrays` for a flat-array alternative that avoids
         materialising one array pair per scan.
+
+        Raises:
+            TdfpyError: If ``scan_begin < 0``, ``scan_begin >= scan_end``, or
+                ``scan_end`` exceeds the frame's scan count.
+            TdfpyKeyError: If ``frame_id`` is not in the Frames table.
         """
+        _, num_scans, *_ = self._frame(frame_id)
+        scan_begin, scan_end = int(scan_begin), int(scan_end)
+        if scan_begin < 0 or scan_begin >= scan_end or scan_end > num_scans:
+            raise TdfpyError(
+                f"Frame {frame_id}: invalid scan range [{scan_begin}, {scan_end}); need 0 <= scan_begin < scan_end <= {num_scans} (the frame's scan count)."
+            )
         decoded = self._decode(frame_id)
         if decoded is None:
             return [(_EMPTY_U32, _EMPTY_U32) for _ in range(scan_begin, scan_end)]
@@ -677,7 +688,7 @@ class TimsData:
 
         result = []
         for i in range(scan_begin, scan_end):
-            if i < 0 or i >= scan_count:
+            if i >= scan_count:
                 result.append((_EMPTY_U32, _EMPTY_U32))
                 continue
             start = int(starts[i])

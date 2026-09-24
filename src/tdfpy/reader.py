@@ -21,7 +21,7 @@ from .elems import (
     PrmTarget,
     PrmTransition,
 )
-from .errors import ReaderClosedError, TdfpyError
+from .errors import AcquisitionTypeError, ReaderClosedError, TdfpyError
 from .lookup import (
     DiaWindowLookup,
     Ms1FrameLookup,
@@ -46,7 +46,7 @@ class AcquisitionType(StrEnum):
     DDA = "DDA"
     DIA = "DIA"
     PRM = "PRM"
-    UNKNOWN = "Unknown"
+    UNKNOWN = "unknown"
 
 
 def _frame_fields(row: pd.Series, timsdata: TimsData) -> dict:
@@ -90,6 +90,21 @@ def _unrecognised_msms_type(msms_type: int, frame_id: int) -> TdfpyError:
     )
 
 
+def _acquisition_type_of(msms_types: set[int]) -> AcquisitionType:
+    """Acquisition type from the set of ``MsMsType`` values in the ``Frames`` table."""
+    for acq, msms in ((AcquisitionType.DDA, MsMsType.DDA_MS2), (AcquisitionType.DIA, MsMsType.DIA_MS2), (AcquisitionType.PRM, MsMsType.PRM_MS2)):
+        if msms.value in msms_types:
+            return acq
+    return AcquisitionType.UNKNOWN
+
+
+def _require_acquisition_type(frames_df: pd.DataFrame, expected: AcquisitionType) -> None:
+    """Raise :class:`AcquisitionTypeError` if the frames are not an ``expected`` acquisition."""
+    found = _acquisition_type_of({int(t) for t in frames_df["MsMsType"].unique()})
+    if found not in (expected, AcquisitionType.UNKNOWN):
+        raise AcquisitionTypeError(f"not a {expected} acquisition (found {found}); use tdfpy.get_acquisition_type()")
+
+
 def get_acquisition_type(analysis_dir: str | Path) -> AcquisitionType:
     """
     Determine the acquisition type (DDA, DIA, or PRM) of a .d folder by
@@ -112,23 +127,13 @@ def get_acquisition_type(analysis_dir: str | Path) -> AcquisitionType:
     pandas_tdf = PandasTdf(str(analysis_tdf_path))
     frames_df = pandas_tdf.frames
 
-    # Get unique MsMsType values
-    msms_types = set(frames_df["MsMsType"].unique())
-
-    # Check for DDA (MS2 type 8)
-    if MsMsType.DDA_MS2.value in msms_types:
-        return AcquisitionType.DDA
-
-    # Check for DIA (MS2 type 9)
-    if MsMsType.DIA_MS2.value in msms_types:
-        return AcquisitionType.DIA
-
-    # Check for PRM (MS2 type 10)
-    if MsMsType.PRM_MS2.value in msms_types:
-        return AcquisitionType.PRM
+    msms_types = {int(t) for t in frames_df["MsMsType"].unique()}
+    acq = _acquisition_type_of(msms_types)
+    if acq is not AcquisitionType.UNKNOWN:
+        return acq
 
     logger.warning(
-        "get_acquisition_type(%s): no known MS2 MsMsType found (present: %s); returning 'Unknown'. Expected one of DDA_MS2=8, DIA_MS2=9, PRM_MS2=10.",
+        "get_acquisition_type(%s): no known MS2 MsMsType found (present: %s); returning 'unknown'. Expected one of DDA_MS2=8, DIA_MS2=9, PRM_MS2=10.",
         analysis_dir,
         sorted(msms_types),
     )
@@ -155,26 +160,52 @@ class _DFolder:
         self._metadata = None
         self._calibration = None
 
+    def _raise_if_closed(self) -> None:
+        if self._closed:
+            raise ReaderClosedError(f"{type(self).__name__} reader has been closed. Open a new one, and read inside its `with` block.")
+
     @property
     def timsdata(self) -> TimsData:
+        """The open :class:`TimsData` handle on ``analysis.tdf_bin``.
+
+        Raises:
+            ReaderClosedError: If the reader was closed.
+        """
+        self._raise_if_closed()
         if self._timsdata is None:
             self._timsdata = TimsData(str(self.analysis_path))
         return self._timsdata
 
     @property
     def pandas_tdf(self) -> PandasTdf:
+        """A :class:`PandasTdf` view of ``analysis.tdf``.
+
+        Raises:
+            ReaderClosedError: If the reader was closed.
+        """
+        self._raise_if_closed()
         return PandasTdf(str(self.analysis_tdf_path))
 
     @property
     def metadata(self) -> MetaData:
-        """Global metadata about the acquisition."""
+        """Global metadata about the acquisition.
+
+        Raises:
+            ReaderClosedError: If the reader was closed.
+        """
+        self._raise_if_closed()
         if self._metadata is None:
             self._metadata = MetaData(MappingProxyType(self.pandas_tdf.global_metadata.set_index("Key")["Value"].to_dict()))
         return self._metadata
 
     @property
     def calibration(self) -> Calibration:
-        """Calibration information."""
+        """Calibration information.
+
+        Raises:
+            ReaderClosedError: If the reader was closed.
+        """
+        self._raise_if_closed()
         if self._calibration is None:
             self._calibration = Calibration(MappingProxyType(self.pandas_tdf.calibration_info.set_index("KeyName")["Value"].to_dict()))
         return self._calibration
@@ -193,8 +224,7 @@ class _DFolder:
 
     def _check_open(self) -> None:
         """Raise ``ReaderClosedError`` if the reader or its ``TimsData`` is closed."""
-        if self._closed:
-            raise ReaderClosedError(f"{type(self).__name__} reader has been closed. Open a new one, and read inside its `with` block.")
+        self._raise_if_closed()
         if self.timsdata.handle is None:
             raise ReaderClosedError(f"The TimsData of this {type(self).__name__} reader was closed.")
 
@@ -230,6 +260,7 @@ class DDA(_DFolder):
 
     Raises:
         FileNotFoundError: If the `.d` folder or required files are missing.
+        AcquisitionTypeError: If the folder holds a DIA or PRM acquisition.
         TdfpyError: If a frame has an MsMsType other than MS1 or DDA MS/MS.
 
     Note:
@@ -251,6 +282,7 @@ class DDA(_DFolder):
 
         tdf = PandasTdf(str(self.analysis_tdf_path))
         frames_df = tdf.frames
+        _require_acquisition_type(frames_df, AcquisitionType.DDA)
         frame_id_to_rt, frame_id_to_polarity = _frame_rt_and_polarity(frames_df)
         timsdata = self.timsdata
 
@@ -356,6 +388,7 @@ class DIA(_DFolder):
 
     Raises:
         FileNotFoundError: If the `.d` folder or required files are missing.
+        AcquisitionTypeError: If the folder holds a DDA or PRM acquisition.
         TdfpyError: If a frame has an MsMsType other than MS1 or DIA MS/MS.
 
     Example:
@@ -373,6 +406,7 @@ class DIA(_DFolder):
 
         tdf = PandasTdf(str(self.analysis_tdf_path))
         frames_df = tdf.frames
+        _require_acquisition_type(frames_df, AcquisitionType.DIA)
         frame_id_to_rt, frame_id_to_polarity = _frame_rt_and_polarity(frames_df)
         timsdata = self.timsdata
 
@@ -391,7 +425,6 @@ class DIA(_DFolder):
 
         # One DiaWindow per (frame, window-group row): each MS/MS frame repeats
         # every window of its group.
-        frame_to_windows: dict[int, list[DiaWindow]] = {}
         all_windows: list[DiaWindow] = []
         for _, row in tdf.dia_frame_msms_info.iterrows():
             frame_id = int(row["Frame"])
@@ -409,7 +442,6 @@ class DIA(_DFolder):
                     rt=frame_id_to_rt[frame_id],
                     polarity=frame_id_to_polarity[frame_id],
                 )
-                frame_to_windows.setdefault(frame_id, []).append(window)
                 all_windows.append(window)
 
         ms1_frames: dict[int, DIAMs1Frame] = {}
@@ -417,10 +449,7 @@ class DIA(_DFolder):
             frame_id = int(row["Id"])
             msms_type = int(row["MsMsType"])
             if msms_type == MsMsType.MS1:
-                ms1_frames[frame_id] = DIAMs1Frame(
-                    **_frame_fields(row, timsdata),
-                    dia_windows=tuple(frame_to_windows.get(frame_id, [])),
-                )
+                ms1_frames[frame_id] = DIAMs1Frame(**_frame_fields(row, timsdata))
             elif msms_type != MsMsType.DIA_MS2:
                 raise _unrecognised_msms_type(msms_type, frame_id)
 
@@ -467,6 +496,7 @@ class PRM(_DFolder):
 
     Raises:
         FileNotFoundError: If the `.d` folder or required files are missing.
+        AcquisitionTypeError: If the folder holds a DDA or DIA acquisition.
         TdfpyError: If a frame has an MsMsType other than MS1 or PRM MS/MS.
 
     Example:
@@ -484,6 +514,7 @@ class PRM(_DFolder):
 
         tdf = PandasTdf(str(self.analysis_tdf_path))
         frames_df = tdf.frames
+        _require_acquisition_type(frames_df, AcquisitionType.PRM)
         frame_id_to_rt, frame_id_to_polarity = _frame_rt_and_polarity(frames_df)
         timsdata = self.timsdata
 
@@ -501,7 +532,6 @@ class PRM(_DFolder):
             )
 
         all_transitions: list[PrmTransition] = []
-        frame_to_transitions: dict[int, list[PrmTransition]] = {}
         target_to_transitions: dict[int, list[PrmTransition]] = {}
         for _, row in tdf.prm_frame_msms_info.iterrows():
             frame_id = int(row["Frame"])
@@ -519,7 +549,6 @@ class PRM(_DFolder):
                 polarity=frame_id_to_polarity[frame_id],
             )
             all_transitions.append(transition)
-            frame_to_transitions.setdefault(frame_id, []).append(transition)
             target_to_transitions.setdefault(target_id, []).append(transition)
 
         # Targets are frozen; the back-reference is set once, here, before any
@@ -532,10 +561,7 @@ class PRM(_DFolder):
             frame_id = int(row["Id"])
             msms_type = int(row["MsMsType"])
             if msms_type == MsMsType.MS1:
-                ms1_frames[frame_id] = PRMMs1Frame(
-                    **_frame_fields(row, timsdata),
-                    prm_transitions=tuple(frame_to_transitions.get(frame_id, [])),
-                )
+                ms1_frames[frame_id] = PRMMs1Frame(**_frame_fields(row, timsdata))
             elif msms_type != MsMsType.PRM_MS2:
                 raise _unrecognised_msms_type(msms_type, frame_id)
 

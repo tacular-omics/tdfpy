@@ -34,6 +34,9 @@ def convert_table_to_df(db_path: str | Path, table_name: str) -> pd.DataFrame:
         FileNotFoundError: If the database file does not exist.
         TdfpyError: If the table name is not a recognized TDF table, or SQLite fails to read it.
     """
+    # Normalise enum members to their plain value so messages read "'Frames'",
+    # not "<TableNames.FRAMES: 'Frames'>".
+    table_name = table_name.value if isinstance(table_name, TableNames) else str(table_name)
     valid_names = {tn.value for tn in TableNames}
     if table_name not in valid_names:
         raise TdfpyError(f"Invalid table name: {table_name!r}. Must be one of: {sorted(valid_names)}")

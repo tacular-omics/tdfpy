@@ -2,7 +2,7 @@ import pathlib
 
 import pytest
 
-from tdfpy import DIA, DIAMs1Frame, DiaWindow, DiaWindowGroup, get_acquisition_type
+from tdfpy import DIA, DIAMs1Frame, DiaWindow, DiaWindowGroup, ReaderClosedError, get_acquisition_type
 
 D_PATH = "tests/data/example_dia.d"
 SKIP_NO_DATA = pytest.mark.skipif(not pathlib.Path(D_PATH).exists(), reason="Test data not available")
@@ -150,15 +150,11 @@ def test_dia_ms1_frame_lookup():
         assert dia.ms1.get(1) is f1
 
 
-def test_dia_ms1_frame_dia_windows_attr():
-    """Test that DIAMs1Frame exposes a dia_windows tuple."""
+def test_dia_ms1_frame_has_no_dia_windows_field():
+    """The always-empty ``dia_windows`` field was removed in 5.0."""
     with DIA(D_PATH) as dia:
         f1 = dia.ms1[1]
-        # dia_windows holds windows whose Frame ID equals the MS1 frame ID.
-        # In this dataset, DIA windows live on the adjacent MS2 frames, so
-        # the MS1 frame itself has no associated dia_windows.
-        assert isinstance(f1.dia_windows, tuple)
-        assert len(f1.dia_windows) == 0
+        assert not hasattr(f1, "dia_windows")
 
 
 def test_dia_ms1_frame_centroid():
@@ -216,9 +212,10 @@ def test_dia_access_after_close():
     with pytest.raises(RuntimeError, match="closed"):
         _ = dia.windows
 
-    # Current behaviour: metadata is read from the SQLite file on demand and
-    # does not depend on the TimsData handle, so it stays available.
-    assert isinstance(dia.metadata.instrument_name, str)
+    # 5.0: everything that reads the file raises once the reader is closed.
+    for name in ("metadata", "calibration", "pandas_tdf", "timsdata"):
+        with pytest.raises(ReaderClosedError):
+            getattr(dia, name)
 
 
 if __name__ == "__main__":
