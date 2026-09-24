@@ -14,10 +14,13 @@ Breaking API cleanup for 5.0. [docs/migration.md](docs/migration.md) has the ful
 - `plot_centroiding` tolerance keywords `mz_tolerance`, `mz_tolerance_type`, `im_tolerance`, `im_tolerance_type`, `min_peaks`, `max_peaks` (deprecated in 4.1). Pass `centroid=MergePeaksCentroider(...)`.
 - camelCase names with no alias: `TimsData.indexToMz`, `mzToIndex`, `scanNumToOneOverK0`, `oneOverK0ToScanNum`, `scanNumToVoltage`, `voltageToScanNum`, `readScans`; `tdfpy.timsdata.oneOverK0ToCCSforMz`, `ccsToOneOverK0forMz`, `ccsToOneOverK0ToCCSforMz`.
 - `tdfpy.centroiding.batch_iterator`, `calculate_nmass`, `get_tdf_df` and `Peak`, unused helpers outside the documented API.
+- `DIAMs1Frame.dia_windows` and `PRMMs1Frame.prm_transitions`, which were always empty. Use `DIA.windows` / `PRM.transitions`.
+- The duplicate `Frame.scan_peaks` override (the shared implementation is unchanged).
 
 ### Added
 
-- `tdfpy.errors`: `TdfpyError(ValueError)` base, `TdfpyKeyError` (+`KeyError`), `ReaderClosedError` (+`RuntimeError`). All exported from `tdfpy`.
+- `tdfpy.errors`: `TdfpyError(ValueError)` base, `TdfpyKeyError` (+`KeyError`), `ReaderClosedError` (+`RuntimeError`), `AcquisitionTypeError`. All exported from `tdfpy`.
+- Opening a `DDA`, `DIA` or `PRM` reader on another acquisition type raises `AcquisitionTypeError` ("not a DDA acquisition (found DIA); use tdfpy.get_acquisition_type()"). It used to open and return empty or wrong elements.
 - `AcquisitionType` (`StrEnum`), `MsMsType`, `Polarity`, `MetaValue`, `ook0_to_ccs` and `ccs_to_ook0` exported from `tdfpy`.
 - `scan_peaks()`, `raw_peaks()` and `centroid()` on `PasefFrameMsmsInfo`.
 - Lookups: `ids()`, `id in lookup`, and `get(id, default)` on every lookup.
@@ -27,7 +30,13 @@ Breaking API cleanup for 5.0. [docs/migration.md](docs/migration.md) has the ful
 ### Changed
 
 - Renamed, no alias: `.time` -> `.rt` (`Frame`, `PrmTarget`); `PrmTarget.one_over_k0` -> `ook0`; `Frame.mz_calibration`, `tims_calibration`, `property_group` -> `*_id`; `Precursor.parent_frame` -> `parent_frame_id`; `PasefFrameMsmsInfo.precursor` -> `precursor_id`; `window_group` -> `window_group_id` on `DiaWindowGroup` / `DiaWindow`; `MetaData.one_over_k0_acq_range*` -> `ook0_acq_range*`; `TimsCalibration.scan_to_one_over_k0` / `one_over_k0_to_scan` -> `scan_to_ook0` / `ook0_to_scan`; `tdfpy.calibration.one_over_k0_to_ccs` / `ccs_to_one_over_k0` -> `ook0_to_ccs` / `ccs_to_ook0`; camelCase `TimsData` methods -> snake_case (`index_to_mz`, `mz_to_index`, `scan_num_to_ook0`, `ook0_to_scan_num`, `scan_num_to_voltage`, `voltage_to_scan_num`, `read_scans`).
-- The per-scan `.peaks` property of `Frame`, `DiaWindow` and `PrmTransition` is now the `scan_peaks()` method. `Precursor.peaks` / `PasefFrameMsmsInfo.peaks` (one merged `(N, 2)` spectrum) are unchanged.
+- Every spectral accessor is a method. The per-scan `.peaks` property of `Frame`, `DiaWindow` and `PrmTransition` is now `scan_peaks()`. `Precursor.peaks` and `PasefFrameMsmsInfo.peaks` (one mobility-collapsed `(N, 2)` spectrum, the most expensive accessor) are now `merged_peaks()`, and `Precursor.pasef_peaks` is `pasef_merged_peaks()`.
+- Mobility ranges are `(low, high)`, like `mz_range`, `ook0_acq_range` and `query_range(ook0_range=)`. `ook0_range`, `ccs_range` and `voltage_range` on `PasefFrameMsmsInfo`, `Precursor`, `DiaWindow` and `PrmTransition` used to come out high-to-low because scan number and 1/K0 run in opposite directions; `*_begin` is now the low value and `*_end` the high one.
+- `FrameMetadata` (exported from `tdfpy`) renamed its fields to match `Frame`: `time` -> `rt`, `mz_calibration` -> `mz_calibration_id`, `tims_calibration` -> `tims_calibration_id`, `property_group` -> `property_group_id`.
+- `TimsData(path, *, use_recalibrated_state=..., pressure_compensation_strategy=...)`: the options are keyword-only.
+- After a reader closes, `reader.timsdata`, `metadata`, `calibration` and `pandas_tdf` raise `ReaderClosedError`, as do `Precursor.ook0` / `ccs` and the mobility ranges. `timsdata` used to hand back the closed handle and `metadata` kept reading the file.
+- `AcquisitionType.UNKNOWN` is `"unknown"` (was `"Unknown"`).
+- `TimsData.read_scans` raises `TdfpyError` unless `0 <= scan_begin < scan_end <= num_scans`. It used to pad out-of-range scans with empty arrays.
 - Every error is a `TdfpyError`. Lookup misses and missing `MetaData` / `Calibration` keys raise `TdfpyKeyError`; spectral access after close raises `ReaderClosedError`; SQLite errors in `PandasTdf`, `convert_table_to_df` and `slice_d_folder` raise `TdfpyError` (`convert_table_to_df` raised `RuntimeError`). `PandasTdf.get_table_names` opens the database read-only.
 - `get_acquisition_type` returns `AcquisitionType`; `Frame.msms_type` is `MsMsType`. Both still compare equal to the old `str` / `int` values.
 - Elements are frozen, slotted, keyword-only dataclasses. `PrmTarget` equality and hashing ignore `transitions`.

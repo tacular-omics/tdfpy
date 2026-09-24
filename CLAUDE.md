@@ -93,7 +93,7 @@ src/tdfpy/
 
 Data flow: reader opens `analysis.tdf` (all frame/precursor/window metadata loaded
 eagerly into dataclasses and lookups) and a `TimsData` handle on `analysis.tdf_bin`.
-Spectral access (`.peaks`, `.scan_peaks()`, `.raw_peaks()`, `.centroid()`) decodes on demand through
+Spectral access (`.merged_peaks()`, `.scan_peaks()`, `.raw_peaks()`, `.centroid()`) decodes on demand through
 `read_spectrum → subset_scans → exclude_region → smooth → apply_noise → centroider`,
 all in integer (scan, TOF-index) space; `convert` maps to m/z and 1/K0 once at the end.
 
@@ -132,12 +132,16 @@ All names below are exported from `tdfpy` (`__all__`); add new exports there.
 - Low level: `PandasTdf`, `TimsData`, `timsdata_connect`, `ook0_to_ccs`, `ccs_to_ook0`
 - Errors (`errors.py`): `TdfpyError(ValueError)` is the base; `TdfpyKeyError` (+`KeyError`)
   for a missing id or key, `ReaderClosedError` (+`RuntimeError`) for spectral access
-  after close, `UnsupportedTdfError` / `UnsupportedCalibrationError`
+  or `reader.timsdata` / `metadata` / `calibration` / `pandas_tdf` after close,
+  `AcquisitionTypeError` for opening the wrong reader for the run (e.g. `DDA` on DIA
+  data), `UnsupportedTdfError` / `UnsupportedCalibrationError`
   (+`NotImplementedError`). SQLite errors are wrapped as `TdfpyError`.
 
 Output shapes: `raw_peaks()` / `centroid()` return `(N, 3)` `[m/z, intensity,
-ion_mobility]`; `Precursor.peaks` is `(N, 2)`; `scan_peaks()` (Frame, DiaWindow, PrmTransition, PasefFrameMsmsInfo) is a *list* of
-per-scan `(N, 2)` arrays.
+ion_mobility]`; `Precursor.merged_peaks()` is `(N, 2)`; `scan_peaks()` (Frame, DiaWindow, PrmTransition, PasefFrameMsmsInfo) is a *list* of
+per-scan `(N, 2)` arrays. Every spectral accessor is a method; `merged_peaks()` is the
+expensive one (greedy m/z merge). Every `*_range` (m/z, 1/K0, CCS, voltage, RT) is
+`(low, high)`, whatever the scan order.
 
 ## Conventions
 

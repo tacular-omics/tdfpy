@@ -15,7 +15,16 @@ SQLite metadata into pandas DataFrames, and `TimsData` decodes frames from
 
 ## Errors
 
-Unsupported or unvalidated formats raise instead of returning approximate values.
+Every tdfpy error subclasses `TdfpyError` (a `ValueError`). Unsupported or unvalidated
+formats raise instead of returning approximate values.
+
+::: tdfpy.TdfpyError
+
+::: tdfpy.TdfpyKeyError
+
+::: tdfpy.ReaderClosedError
+
+::: tdfpy.AcquisitionTypeError
 
 ::: tdfpy.UnsupportedTdfError
 

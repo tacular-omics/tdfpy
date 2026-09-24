@@ -12,7 +12,7 @@ tdfpy provides these convenience functions:
 - **`get_raw_peaks`**: the same pipeline without the centroider. Returns every raw peak.
 - **`get_mobility_collapsed_spectrum`**: sums intensities per TOF index across one or more
   scan ranges (collapsing ion mobility) and merges them by m/z. This is how DDA
-  precursor MS2 spectra (`Precursor.peaks`) are built.
+  precursor MS2 spectra (`Precursor.merged_peaks()`) are built.
 - **`merge_peaks`**: low-level. Centroids pre-assembled NumPy arrays of m/z, intensity, and
   ion mobility values. Use this when you already have the raw arrays or need fine-grained
   control.

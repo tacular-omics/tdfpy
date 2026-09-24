@@ -24,7 +24,7 @@ Before loading data, you can inspect the acquisition type of a `.d` folder:
 from tdfpy import get_acquisition_type
 
 acq_type = get_acquisition_type(D_PATH)
-# Returns one of: "DDA", "DIA", "PRM", "Unknown"
+# Returns one of: "DDA", "DIA", "PRM", "unknown"
 print(acq_type)
 ```
 
@@ -46,7 +46,7 @@ with DDA(D_PATH) as dda:
     for precursor in dda.precursors:
         print(f"Precursor {precursor.precursor_id}: {precursor.largest_peak_mz:.4f} m/z")
         # MS2 peaks centroided by tdfpy (ion mobility collapsed, merged at 30 ppm)
-        peaks = precursor.peaks
+        peaks = precursor.merged_peaks()
         break
 ```
 
@@ -140,7 +140,7 @@ When you open a `DDA`, `DIA` or `PRM` reader, it immediately:
 
 The objects you get back — `Frame`, `Precursor`, `DiaWindow`, etc. — all hold a reference
 to that open connection. Their fields (`frame_id`, `rt`, `monoisotopic_mz`, etc.) are
-available immediately. **Spectral data is fetched lazily**: calling `.peaks`, `.scan_peaks()` or `.centroid()`
+available immediately. **Spectral data is fetched lazily**: calling `.merged_peaks()`, `.scan_peaks()` or `.centroid()`
 reads from the binary file at that moment.
 
 This means objects cannot be used after the reader closes:
@@ -153,6 +153,7 @@ with DDA(D_PATH) as dda:
     peaks = frame.centroid()  # The connection is open
 
 # peaks = frame.centroid()  # ReaderClosedError (a RuntimeError subclass)
+# dda.metadata              # also ReaderClosedError: read metadata inside the block
 ```
 
 ## Development
