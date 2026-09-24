@@ -524,3 +524,11 @@ def test_sliced_read_does_not_check_tof_outside_the_slice(dda_td, monkeypatch):
     assert arr_tof.size == int(counts[low_scan])
     with pytest.raises(TdfpyError, match="DigitizerNumSamples"):
         dda_td.read_frame_arrays(frame_id)
+
+
+def test_merge_peaks_unsigned_input_matches_float():
+    """uint32 arrays are converted to float64 first, so the order check cannot wrap."""
+    mz, intensity, im = np.array([300, 100, 200, 100], np.uint32), np.array([5, 9, 7, 9], np.uint32), np.array([2, 1, 3, 4], np.uint32)
+    np.testing.assert_array_equal(
+        merge_peaks(mz, intensity, im, min_peaks=1), merge_peaks(mz.astype(float), intensity.astype(float), im.astype(float), min_peaks=1)
+    )

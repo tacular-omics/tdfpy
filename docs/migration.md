@@ -32,7 +32,7 @@ the sections after it cover changes of type or behaviour.
 | `tdfpy.calibration.one_over_k0_to_ccs`, `ccs_to_one_over_k0` | `ook0_to_ccs`, `ccs_to_ook0` |
 | `TimsCalibration.scan_to_one_over_k0`, `one_over_k0_to_scan` | `scan_to_ook0`, `ook0_to_scan` |
 | MCP tool `query_dia_windows(window_group=...)` | `window_group_id=` |
-| MCP tools `query_precursors`, `query_dia_windows`, `query_prm_targets`, `query_prm_transitions`: `rt=` | `rt_range=` |
+| MCP tools `query_frames`, `query_precursors`, `query_dia_windows`, `query_prm_targets`, `query_prm_transitions`: `rt=` | `rt_range=` |
 | MCP `query_precursors` / `query_prm_targets`: `mz=` | `precursor_mz_range=` |
 | MCP `query_dia_windows` / `query_prm_transitions`: `mz=` | `isolation_mz_range=` (matched on the isolation center) |
 | `PasefFrameMsmsInfo.mz_range`, `DiaWindow.mz_range`, `PrmTransition.mz_range`, `Precursor.mz_range` | `.isolation_mz_range` |

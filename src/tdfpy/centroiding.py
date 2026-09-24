@@ -385,6 +385,10 @@ def merge_peaks(
         peak_noise_end_fraction,
     )
     arrays(mz_array, intensity_array, ion_mobility_array)
+    # float64 up front: unsigned differences in the order check would wrap.
+    mz_array = np.asarray(mz_array, dtype=np.float64)
+    intensity_array = np.asarray(intensity_array, dtype=np.float64)
+    ion_mobility_array = np.asarray(ion_mobility_array, dtype=np.float64)
     if np.any(mz_array < 0) or np.any(intensity_array < 0):
         raise TdfpyError("m/z and intensities must be nonnegative.")
     if _HAS_NUMBA and use_numba:

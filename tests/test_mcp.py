@@ -328,6 +328,21 @@ def test_protocol_tool_schemas_errors_resources_and_prompts(tmp_path):
     asyncio.run(run())
 
 
+def test_query_frames_takes_rt_range(tmp_path):
+    async def run():
+        server = create_server([DATA], tmp_path / "output")
+        async with Client(server, read_timeout_seconds=15) as client:
+            schema = {t.name: t for t in (await client.list_tools()).tools}["query_frames"].input_schema["properties"]
+            assert "rt_range" in schema and "rt" not in schema
+            everything = await client.call_tool("query_frames", {"acquisition": "example_dda.d", "limit": 5})
+            first_rt = everything.structured_content["rows"][0]["Time"]
+            hit = await client.call_tool("query_frames", {"acquisition": "example_dda.d", "rt_range": {"lower": first_rt, "upper": first_rt + 1e-6}})
+            assert not hit.is_error
+            assert [row["Time"] for row in hit.structured_content["rows"]] == [first_rt]
+
+    asyncio.run(run())
+
+
 @pytest.mark.parametrize(
     ("tool", "acquisition", "mz_name", "mz_attr"),
     [
