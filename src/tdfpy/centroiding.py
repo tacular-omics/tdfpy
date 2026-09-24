@@ -26,6 +26,7 @@ from .pipeline import (
 )
 from .regions import ChargeStateRegion
 from .timsdata import TimsData
+from .types import ToleranceUnit
 
 # Try to import Numba for JIT-accelerated implementation
 try:
@@ -263,9 +264,9 @@ def _merge_peaks_numba(
     intensity_array: np.ndarray,
     ion_mobility_array: np.ndarray,
     mz_tolerance: float = 8.0,
-    mz_tolerance_type: Literal["ppm", "da"] = "ppm",
+    mz_tolerance_unit: ToleranceUnit = "ppm",
     im_tolerance: float = 0.1,
-    im_tolerance_type: Literal["relative", "absolute"] = "relative",
+    im_tolerance_unit: Literal["relative", "absolute"] = "relative",
     min_peaks: int = 3,
     max_peaks: int | None = None,
     peak_noise_filter: bool = False,
@@ -275,8 +276,8 @@ def _merge_peaks_numba(
     """Numba JIT-accelerated implementation of merge_peaks."""
     if len(mz_array) == 0:
         return np.empty((0, 3), dtype=np.float64)
-    mz_is_ppm = 1 if mz_tolerance_type == "ppm" else 0
-    im_is_relative = 1 if im_tolerance_type == "relative" else 0
+    mz_is_ppm = 1 if mz_tolerance_unit == "ppm" else 0
+    im_is_relative = 1 if im_tolerance_unit == "relative" else 0
     mz_tol_factor = mz_tolerance / 1e6 if mz_is_ppm else 0.0
     mz_tol_abs = 0.0 if mz_is_ppm else mz_tolerance
     mob_tol_factor = im_tolerance if im_is_relative else 0.0
@@ -318,9 +319,9 @@ def merge_peaks(
     intensity_array: np.ndarray,
     ion_mobility_array: np.ndarray,
     mz_tolerance: float = 8.0,
-    mz_tolerance_type: Literal["ppm", "da"] = "ppm",
+    mz_tolerance_unit: ToleranceUnit = "ppm",
     im_tolerance: float = 0.1,
-    im_tolerance_type: Literal["relative", "absolute"] = "relative",
+    im_tolerance_unit: Literal["relative", "absolute"] = "relative",
     min_peaks: int = 3,
     max_peaks: int | None = None,
     peak_noise_filter: bool = False,
@@ -340,9 +341,9 @@ def merge_peaks(
         intensity_array: Array of intensity values
         ion_mobility_array: Array of ion mobility values (1/K0 or CCS)
         mz_tolerance: Tolerance for m/z matching during centroiding
-        mz_tolerance_type: Type of m/z tolerance - "ppm" or "da" (daltons)
+        mz_tolerance_unit: Type of m/z tolerance - "ppm" or "da" (daltons)
         im_tolerance: Tolerance for ion mobility matching during centroiding
-        im_tolerance_type: Type of ion mobility tolerance - "relative" or "absolute"
+        im_tolerance_unit: Type of ion mobility tolerance - "relative" or "absolute"
         min_peaks: Minimum number of nearby raw peaks required to form a centroid.
                   Set to 0 or 1 to keep all peaks (no filtering).
         max_peaks: Maximum centroids in descending raw seed intensity order.
@@ -371,14 +372,14 @@ def merge_peaks(
         mz = np.array([100.0, 100.001, 200.0])
         intensity = np.array([1000.0, 500.0, 2000.0])
         im = np.array([0.8, 0.8, 0.9])
-        peaks = merge_peaks(mz, intensity, im, mz_tolerance=10, mz_tolerance_type="ppm")
+        peaks = merge_peaks(mz, intensity, im, mz_tolerance=10, mz_tolerance_unit="ppm")
         ```
     """
     merge_config(
         mz_tolerance,
-        mz_tolerance_type,
+        mz_tolerance_unit,
         im_tolerance,
-        im_tolerance_type,
+        im_tolerance_unit,
         min_peaks,
         max_peaks,
         peak_noise_window,
@@ -398,9 +399,9 @@ def merge_peaks(
                 intensity_array,
                 ion_mobility_array,
                 mz_tolerance=mz_tolerance,
-                mz_tolerance_type=mz_tolerance_type,
+                mz_tolerance_unit=mz_tolerance_unit,
                 im_tolerance=im_tolerance,
-                im_tolerance_type=im_tolerance_type,
+                im_tolerance_unit=im_tolerance_unit,
                 min_peaks=min_peaks,
                 max_peaks=max_peaks,
                 peak_noise_filter=peak_noise_filter,
@@ -421,9 +422,9 @@ def merge_peaks(
         intensity_array,
         ion_mobility_array,
         mz_tolerance,
-        mz_tolerance_type,
+        mz_tolerance_unit,
         im_tolerance,
-        im_tolerance_type,
+        im_tolerance_unit,
         min_peaks,
         max_peaks,
         peak_noise_filter,
@@ -437,9 +438,9 @@ def _merge_peaks_python(
     intensity_array: np.ndarray,
     ion_mobility_array: np.ndarray,
     mz_tolerance: float = 8.0,
-    mz_tolerance_type: Literal["ppm", "da"] = "ppm",
+    mz_tolerance_unit: ToleranceUnit = "ppm",
     im_tolerance: float = 0.1,
-    im_tolerance_type: Literal["relative", "absolute"] = "relative",
+    im_tolerance_unit: Literal["relative", "absolute"] = "relative",
     min_peaks: int = 3,
     max_peaks: int | None = None,
     peak_noise_filter: bool = False,
@@ -451,9 +452,9 @@ def _merge_peaks_python(
         "Centroiding %d raw peaks with mz_tol=%s %s, im_tol=%s %s, min_peaks=%d, max_peaks=%s",
         len(mz_array),
         mz_tolerance,
-        mz_tolerance_type,
+        mz_tolerance_unit,
         im_tolerance,
-        im_tolerance_type,
+        im_tolerance_unit,
         min_peaks,
         max_peaks,
     )
@@ -463,14 +464,14 @@ def _merge_peaks_python(
         return np.empty((0, 3), dtype=np.float64)
 
     # Pre-compute tolerances
-    if mz_tolerance_type == "ppm":
+    if mz_tolerance_unit == "ppm":
         mz_tol_factor = mz_tolerance / 1e6
         mz_tol_abs = 0.0
     else:
         mz_tol_abs = mz_tolerance
         mz_tol_factor = 0.0
 
-    if im_tolerance_type == "relative":
+    if im_tolerance_unit == "relative":
         mobility_tol_factor = im_tolerance
         mobility_tol_abs = 0.0
     else:
@@ -502,7 +503,7 @@ def _merge_peaks_python(
         mobility_peak = ion_mobility_array[peak_idx]
 
         # Calculate tolerances
-        mz_tol = mz_peak * mz_tol_factor if mz_tolerance_type == "ppm" else mz_tol_abs
+        mz_tol = mz_peak * mz_tol_factor if mz_tolerance_unit == "ppm" else mz_tol_abs
 
         # Binary search for mz range
         left_mz = mz_peak - mz_tol
@@ -531,12 +532,12 @@ def _merge_peaks_python(
                     continue
                 im_i = float(mobility_window[i])
                 if im_i < im_lo:
-                    expand = im_lo * mobility_tol_factor if im_tolerance_type == "relative" else mobility_tol_abs
+                    expand = im_lo * mobility_tol_factor if im_tolerance_unit == "relative" else mobility_tol_abs
                     if im_lo - im_i <= expand * 1.0000001:
                         im_lo = im_i
                         changed = True
                 elif im_i > im_hi:
-                    expand = im_hi * mobility_tol_factor if im_tolerance_type == "relative" else mobility_tol_abs
+                    expand = im_hi * mobility_tol_factor if im_tolerance_unit == "relative" else mobility_tol_abs
                     if im_i - im_hi <= expand * 1.0000001:
                         im_hi = im_i
                         changed = True
@@ -788,7 +789,7 @@ def get_mobility_collapsed_spectrum(
     scan_ranges: Sequence[tuple[int, int, int]],
     *,
     mz_tolerance: float = COLLAPSED_MZ_TOLERANCE_PPM,
-    mz_tolerance_type: Literal["ppm", "da"] = "ppm",
+    mz_tolerance_unit: ToleranceUnit = "ppm",
     use_numba: bool = True,
 ) -> np.ndarray:
     """Centroid a set of scan ranges with the mobility dimension summed away.
@@ -804,7 +805,7 @@ def get_mobility_collapsed_spectrum(
         scan_ranges: ``(frame_id, scan_begin, scan_end)`` triples, summed
             together. A PASEF precursor is typically spread over several frames.
         mz_tolerance: Merge tolerance for the greedy centroider.
-        mz_tolerance_type: ``"ppm"`` or ``"da"``.
+        mz_tolerance_unit: ``"ppm"`` or ``"da"``.
         use_numba: Use the JIT-compiled merge kernel when available.
 
     Returns:
@@ -825,7 +826,7 @@ def get_mobility_collapsed_spectrum(
         scan_ranges,
         lambda frame_id, begin, end: td.read_frame_arrays(frame_id, begin, end)[1:],
         mz_tolerance=mz_tolerance,
-        mz_tolerance_type=mz_tolerance_type,
+        mz_tolerance_unit=mz_tolerance_unit,
         use_numba=use_numba,
     )
 
@@ -836,7 +837,7 @@ def _collapsed_spectrum(
     read: Callable[[int, int, int], tuple[np.ndarray, np.ndarray]],
     *,
     mz_tolerance: float = COLLAPSED_MZ_TOLERANCE_PPM,
-    mz_tolerance_type: Literal["ppm", "da"] = "ppm",
+    mz_tolerance_unit: ToleranceUnit = "ppm",
     use_numba: bool = True,
 ) -> np.ndarray:
     """:func:`get_mobility_collapsed_spectrum` with the raw-peak source injected.
@@ -879,10 +880,10 @@ def _collapsed_spectrum(
         intensity_array,
         np.zeros_like(mz_array),
         mz_tolerance=mz_tolerance,
-        mz_tolerance_type=mz_tolerance_type,
+        mz_tolerance_unit=mz_tolerance_unit,
         # Mobility is already summed away, so no peak may be split by it.
         im_tolerance=0.0,
-        im_tolerance_type="absolute",
+        im_tolerance_unit="absolute",
         # Each merged peak is a real ion even when it occupies a single TOF bin;
         # requiring more would discard most of the spectrum.
         min_peaks=1,

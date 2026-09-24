@@ -122,9 +122,9 @@ are marked as used and skipped in subsequent iterations.
 | Parameter | Default | Notes |
 |---|---|---|
 | `mz_tolerance` | `8.0` | Width of the m/z matching window |
-| `mz_tolerance_type` | `"ppm"` | `"ppm"` or `"da"` |
+| `mz_tolerance_unit` | `"ppm"` | `"ppm"` or `"da"` |
 | `im_tolerance` | `0.1` | Width of the ion mobility window |
-| `im_tolerance_type` | `"relative"` | `"relative"` (fraction of 1/K0) or `"absolute"` |
+| `im_tolerance_unit` | `"relative"` | `"relative"` (fraction of 1/K0) or `"absolute"` |
 | `min_peaks` | `3` | Raw peaks required to form a centroid; set to `0` or `1` to keep all |
 | `max_peaks` | `None` | Cap on output peaks by raw seed intensity, not final summed intensity |
 | `peak_noise_filter` | `False` | Suppress weak satellite points around each centroid so they cannot seed their own centroids |

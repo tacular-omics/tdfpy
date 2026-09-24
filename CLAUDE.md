@@ -85,6 +85,7 @@ src/tdfpy/
 ├── calibration.py   TOF index <-> m/z and scan <-> 1/K0 models (no I/O),
 │                    UnsupportedCalibrationError
 ├── constants.py     physical constants, table names
+├── types.py         Polarity, ToleranceUnit (same as tacular.types)
 ├── _validation.py   shared argument checks before array ops / JIT kernels
 ├── _diagnostics.py  internal pipeline instrumentation, no stable API
 └── mcp/             optional MCP server (models, service, server); importing
@@ -112,7 +113,7 @@ All names below are exported from `tdfpy` (`__all__`); add new exports there.
 - Frame elements (returned by readers, not constructed by users): `Frame`,
   `DDAMs1Frame`, `DIAMs1Frame`, `PRMMs1Frame`, `Precursor`, `PasefFrameMsmsInfo`,
   `DiaWindow`, `DiaWindowGroup`, `PrmTarget`, `PrmTransition`, `MetaData`,
-  `Calibration`, `FrameMetadata`, plus `MsMsType`, `Polarity` (a `Literal`), `MetaValue`. Elements are
+  `Calibration`, `FrameMetadata`, plus `MsMsType`, `Polarity` and `ToleranceUnit` (`Literal`s in `types.py`, same as `tacular.types`), `MetaValue`. Elements are
   frozen, slotted, keyword-only dataclasses; ids end in `_id`, retention time is `rt`,
   ion mobility (1/K0) is `ook0`
 - Lookups: `Ms1FrameLookup`, `PrecursorLookup`, `DiaWindowLookup`,

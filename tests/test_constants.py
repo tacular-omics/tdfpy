@@ -1,11 +1,9 @@
-import pytest
-
 from tdfpy.constants import PROTON_MASS, TableNames
 
 
 class TestProtonMass:
     def test_value(self):
-        assert PROTON_MASS == pytest.approx(1.007276466, rel=1e-6)
+        assert PROTON_MASS == 1.007276466621
 
     def test_type(self):
         assert isinstance(PROTON_MASS, float)

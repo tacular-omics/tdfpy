@@ -20,7 +20,6 @@ from .elems import (
     MetaValue,
     MsMsType,
     PasefFrameMsmsInfo,
-    Polarity,
     Precursor,
     PRMMs1Frame,
     PrmTarget,
@@ -84,6 +83,7 @@ from .regions import ChargeStateRegion
 from .slicer import slice_d_folder
 from .tdf import PandasTdf
 from .timsdata import FrameMetadata, TimsData, timsdata_connect
+from .types import Polarity, ToleranceUnit
 from .validation import ValidationIssue, ValidationReport, validate_acquisition
 from .viz import plot_centroiding
 
@@ -115,7 +115,9 @@ __all__ = [
     "slice_d_folder",
     # Enums
     "MsMsType",
+    # Shared type aliases (same as tacular.types)
     "Polarity",
+    "ToleranceUnit",
     # Unit conversion
     "ook0_to_ccs",
     "ccs_to_ook0",

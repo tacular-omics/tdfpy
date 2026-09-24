@@ -62,7 +62,7 @@ def test_centroid_kwarg(td, frame_id, centroider):
     assert _centroid_count(fig) == len(get_centroided_spectrum(td, frame_id, centroid=centroider))
 
 
-@pytest.mark.parametrize("kwarg", ["mz_tolerance", "mz_tolerance_type", "im_tolerance", "im_tolerance_type", "min_peaks", "max_peaks"])
+@pytest.mark.parametrize("kwarg", ["mz_tolerance", "mz_tolerance_unit", "im_tolerance", "im_tolerance_unit", "min_peaks", "max_peaks"])
 def test_removed_tolerance_kwargs_raise(td, frame_id, kwarg):
     """5.0 removed the deprecated tolerance kwargs; pass ``centroid=`` instead."""
     with pytest.raises(TypeError, match=kwarg):

@@ -61,7 +61,7 @@ def test_collapsed_spectrum_uses_each_frames_calibration(tmp_path):
             np.zeros(len(mz)),
             mz_tolerance=30,
             min_peaks=1,
-            im_tolerance_type="absolute",
+            im_tolerance_unit="absolute",
             im_tolerance=0,
         )[:, :2]
         actual = get_mobility_collapsed_spectrum(td, ranges)
@@ -178,8 +178,8 @@ def test_gate_cache_respects_later_frame_calibration(tmp_path):
 @pytest.mark.parametrize(
     "kwargs",
     [
-        {"mz_tolerance_type": "PPM"},
-        {"im_tolerance_type": "fraction"},
+        {"mz_tolerance_unit": "PPM"},
+        {"im_tolerance_unit": "fraction"},
         {"mz_tolerance": float("nan")},
         {"im_tolerance": -1},
         {"max_peaks": 1.5},

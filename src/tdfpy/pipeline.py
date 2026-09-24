@@ -33,6 +33,7 @@ from .errors import TdfpyError
 from .noise import NoiseFilter, NoiseSpec, coerce_filters
 from .regions import ChargeStateRegion
 from .timsdata import TimsData
+from .types import ToleranceUnit
 
 logger = logging.getLogger(__name__)
 
@@ -308,9 +309,9 @@ class MergePeaksCentroider(Centroider):
     """
 
     mz_tolerance: float = 8.0
-    mz_tolerance_type: Literal["ppm", "da"] = "ppm"
+    mz_tolerance_unit: ToleranceUnit = "ppm"
     im_tolerance: float = 0.1
-    im_tolerance_type: Literal["relative", "absolute"] = "relative"
+    im_tolerance_unit: Literal["relative", "absolute"] = "relative"
     min_peaks: int = 3
     max_peaks: int | None = None
     peak_noise_filter: bool = False
@@ -321,9 +322,9 @@ class MergePeaksCentroider(Centroider):
     def __post_init__(self) -> None:
         merge_config(
             self.mz_tolerance,
-            self.mz_tolerance_type,
+            self.mz_tolerance_unit,
             self.im_tolerance,
-            self.im_tolerance_type,
+            self.im_tolerance_unit,
             self.min_peaks,
             self.max_peaks,
             self.peak_noise_window,
@@ -357,9 +358,9 @@ class MergePeaksCentroider(Centroider):
             peaks[:, 1],
             peaks[:, 2],
             mz_tolerance=self.mz_tolerance,
-            mz_tolerance_type=self.mz_tolerance_type,
+            mz_tolerance_unit=self.mz_tolerance_unit,
             im_tolerance=self.im_tolerance,
-            im_tolerance_type=self.im_tolerance_type,
+            im_tolerance_unit=self.im_tolerance_unit,
             min_peaks=self.min_peaks,
             max_peaks=self.max_peaks,
             peak_noise_filter=self.peak_noise_filter,
@@ -1018,9 +1019,9 @@ def centroid_peaks(peaks: np.ndarray, centroider: MergePeaksCentroider) -> np.nd
         peaks[:, 1],
         peaks[:, 2],
         mz_tolerance=centroider.mz_tolerance,
-        mz_tolerance_type=centroider.mz_tolerance_type,
+        mz_tolerance_unit=centroider.mz_tolerance_unit,
         im_tolerance=centroider.im_tolerance,
-        im_tolerance_type=centroider.im_tolerance_type,
+        im_tolerance_unit=centroider.im_tolerance_unit,
         min_peaks=centroider.min_peaks,
         max_peaks=centroider.max_peaks,
         peak_noise_filter=centroider.peak_noise_filter,

@@ -28,6 +28,8 @@ the sections after it cover changes of type or behaviour.
 | `TimsData.scanNumToVoltage`, `voltageToScanNum` | `scan_num_to_voltage`, `voltage_to_scan_num` |
 | `TimsData.readScans` | `TimsData.read_scans` |
 | `tdfpy.timsdata.oneOverK0ToCCSforMz` | `tdfpy.ook0_to_ccs` |
+| `mz_tolerance_type=` (`merge_peaks`, `get_mobility_collapsed_spectrum`, `MergePeaksCentroider`, `PrecursorLookup.query`, `PrmTargetLookup.query`) | `mz_tolerance_unit=` (same values, `"da"` / `"ppm"`) |
+| `im_tolerance_type=` (`merge_peaks`, `MergePeaksCentroider`) | `im_tolerance_unit=` (same values, `"relative"` / `"absolute"`) |
 | `tdfpy.timsdata.ccsToOneOverK0forMz`, `ccsToOneOverK0ToCCSforMz` | `tdfpy.ccs_to_ook0` |
 | `tdfpy.calibration.one_over_k0_to_ccs`, `ccs_to_one_over_k0` | `ook0_to_ccs`, `ccs_to_ook0` |
 | `TimsCalibration.scan_to_one_over_k0`, `one_over_k0_to_scan` | `scan_to_ook0`, `ook0_to_scan` |
@@ -91,7 +93,7 @@ Every spectral accessor is now a method, so each call visibly decodes the frame:
 - **`get_acquisition_type`** returns `AcquisitionType`, a `StrEnum`, so
   `get_acquisition_type(p) == "DDA"` still holds.
 - **`Frame.msms_type`** is a `MsMsType` (an `IntEnum`), not a plain `int`.
-  `MsMsType` and `Polarity` are exported from `tdfpy`.
+  `MsMsType`, `Polarity` and `ToleranceUnit` are exported from `tdfpy`.
 - **`Polarity`** is `Literal["positive", "negative"]` (was a `StrEnum` with the same
   values). Every `polarity` field is `Polarity | None`: a `Polarity` column value
   other than `+` / `-` gives `None` and one warning per file, and
@@ -101,7 +103,7 @@ Every spectral accessor is now a method, so each call visibly decodes the frame:
 - **Lookup keywords.** A `(low, high)` tuple is always `*_range` and goes to
   `query_range`; a point is `rt=` / `precursor_mz=` / `ook0=` plus a `*_tolerance` and goes
   to `query`, as in mzmlpy 0.10. `query(mz=...)` is now `query(precursor_mz=...)`
-  and the range is `precursor_mz_range=`; `mz_tolerance` / `mz_tolerance_type` are unchanged.
+  and the range is `precursor_mz_range=`; `mz_tolerance_type` is now `mz_tolerance_unit` (see the table).
 - **MS1 centroids.** `MergePeaksCentroider` now sorts on the integer TOF index
   before converting to m/z, and `merge_peaks` orders its input by m/z, then
   descending 1/K0 (TOF, then scan), then intensity, and seeds equal-intensity

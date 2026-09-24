@@ -1183,9 +1183,9 @@ def build_pipeline_ui(
                         pn_win, pn_end = 0.1, 0.1
                 centroider = MergePeaksCentroider(
                     mz_tolerance=mz_tol,
-                    mz_tolerance_type=mz_unit,  # type: ignore[arg-type]
+                    mz_tolerance_unit=mz_unit,  # type: ignore[arg-type]
                     im_tolerance=im_tol,
-                    im_tolerance_type=im_unit,  # type: ignore[arg-type]
+                    im_tolerance_unit=im_unit,  # type: ignore[arg-type]
                     min_peaks=min_peaks,
                     max_peaks=max_peaks,
                     peak_noise_filter=peak_noise,
