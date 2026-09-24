@@ -450,8 +450,7 @@ def test_merge_peaks_equal_intensities_are_order_independent(mz_pool, n, levels,
     kwargs = {"mz_tolerance": 0.01, "mz_tolerance_type": "da", "min_peaks": 1}
     for use_numba in (True, False):
         results = [
-            merge_peaks(mz_arr[idx], intensity[idx], im[idx], use_numba=use_numba, **kwargs)
-            for idx in (rng.permutation(n), rng.permutation(n), canonical)
+            merge_peaks(mz_arr[idx], intensity[idx], im[idx], use_numba=use_numba, **kwargs) for idx in (rng.permutation(n), rng.permutation(n), canonical)
         ]
         np.testing.assert_array_equal(results[0], results[2])
         np.testing.assert_array_equal(results[1], results[2])

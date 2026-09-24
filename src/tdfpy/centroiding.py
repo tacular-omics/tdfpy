@@ -239,9 +239,7 @@ def _tof_order(tof_indices: np.ndarray) -> np.ndarray:
     return np.argsort(tof_indices, kind="stable")
 
 
-def _canonical_peak_order(
-    mz_array: np.ndarray, intensity_array: np.ndarray, ion_mobility_array: np.ndarray
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+def _canonical_peak_order(mz_array: np.ndarray, intensity_array: np.ndarray, ion_mobility_array: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Order peaks by m/z, then descending ion mobility, then intensity.
 
     This is the (TOF, scan) order the reader produces (1/K0 falls as the scan
