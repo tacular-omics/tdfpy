@@ -592,3 +592,35 @@ def test_precursor_query_range_is_inclusive_rt_filter(dda_precursors, lo, span):
     got = list(dda_precursors.query_range(rt_range=(lo, lo + span)))
     assert all(lo <= p.rt <= lo + span for p in got)
     assert len(got) == sum(lo <= p.rt <= lo + span for p in dda_precursors)
+
+
+# -- window scan ranges must fit their frame ---------------------------------------
+
+
+def test_window_scan_range_past_frame_raises():
+    """Corrupt metadata raises on every spectral accessor instead of being clipped."""
+    with DDA(DDA_PATH) as dda:
+        precursor = next(iter(dda.precursors))
+        info = precursor.pasef_frame_msms_infos[0]
+        n = dda.timsdata.frame_metadata(info.frame_id).num_scans
+        bad = dataclasses.replace(info, scan_num_end=n + 100)
+        bad_precursor = dataclasses.replace(precursor, pasef_frame_msms_infos=(bad,))
+        for call in (bad.scan_peaks, bad.raw_peaks, bad.centroid, bad.merged_peaks, bad_precursor.merged_peaks):
+            with pytest.raises(TdfpyError, match="does not fit"):
+                call()
+        # An end equal to num_scans is legal: the end is exclusive.
+        edge = dataclasses.replace(info, scan_num_begin=n - 1, scan_num_end=n)
+        assert len(edge.scan_peaks()) == 1
+        assert edge.raw_peaks().shape[1] == 3
+
+
+def test_dia_window_scan_range_past_frame_raises():
+    with DIA(DIA_PATH) as dia:
+        window = next(iter(dia.windows))
+        n = dia.timsdata.frame_metadata(window.frame_id).num_scans
+        bad = dataclasses.replace(window, scan_num_begin=-1)
+        with pytest.raises(TdfpyError, match="does not fit"):
+            bad.centroid()
+        bad = dataclasses.replace(window, scan_num_end=n + 100)
+        with pytest.raises(TdfpyError, match="does not fit"):
+            bad.raw_peaks()

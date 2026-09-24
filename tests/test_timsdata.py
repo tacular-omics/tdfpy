@@ -232,11 +232,38 @@ def test_read_frame_arrays_matches_read_scans(
             )
 
 
-def test_read_frame_arrays_clamps_out_of_range_scans() -> None:
+@pytest.mark.parametrize("method", ["read_scans", "read_frame_arrays"])
+@pytest.mark.parametrize(("begin", "end"), [(-1, 5), (10, 3), (0, "n+50"), (10_000, 10_050)])
+def test_scan_range_out_of_bounds_raises(method: str, begin: int, end: int | str) -> None:
+    """read_scans and read_frame_arrays share one policy: out-of-range raises."""
     _require_fixture()
     with timsdata.timsdata_connect(TDF_PATH) as td:
-        scan_indices, tof, intensity = td.read_frame_arrays(1, 10_000, 10_050)
-        assert scan_indices.size == tof.size == intensity.size == 0
+        n = td.frame_metadata(1).num_scans
+        stop = n + 50 if end == "n+50" else end
+        with pytest.raises(TdfpyError, match="invalid scan range"):
+            getattr(td, method)(1, begin, stop)
+
+
+@pytest.mark.parametrize("method", ["read_scans", "read_frame_arrays"])
+@pytest.mark.parametrize(("begin", "end"), [(2.7, 5), (0, 5.0), (True, 5), ("0", 5)])
+def test_scan_range_rejects_non_int_bounds(method: str, begin: object, end: object) -> None:
+    _require_fixture()
+    with timsdata.timsdata_connect(TDF_PATH) as td:
+        with pytest.raises(TdfpyError, match="must be an integer"):
+            getattr(td, method)(1, begin, end)
+
+
+def test_scan_range_empty_is_valid() -> None:
+    _require_fixture()
+    with timsdata.timsdata_connect(TDF_PATH) as td:
+        n = td.frame_metadata(1).num_scans
+        for b in (0, 7, n):
+            assert td.read_scans(1, b, b) == []
+            arrays = td.read_frame_arrays(1, b, b)
+            assert all(a.size == 0 for a in arrays)
+        # numpy integers are integers too
+        assert len(td.read_scans(1, np.int64(0), np.int32(3))) == 3
+        assert td.read_frame_arrays(1, 0, None)[0].size == td.read_frame_arrays(1)[0].size
 
 
 def test_use_after_close_raises() -> None:
@@ -385,6 +412,22 @@ def test_empty_frame_reads_as_no_peaks(tmp_path: Path) -> None:
 
         scan_indices, tof, intensity = td.read_frame_arrays(1)
         assert scan_indices.size == tof.size == intensity.size == 0
+
+
+def test_zero_scan_empty_frame_reads_as_nothing(tmp_path: Path) -> None:
+    """NumScans == 0 with an empty packet is valid: the full range [0, 0) is empty."""
+    d = _copy_fixture(tmp_path)
+    offset, _ = _frame_header(d)
+    _patch_bin_header(d, offset, byte_count=8, scan_count=0)
+    _set_num_scans(d, 1, 0)
+    with closing(sqlite3.connect(d / "analysis.tdf")) as conn:
+        conn.execute("UPDATE Frames SET NumPeaks=0 WHERE Id=1")
+        conn.commit()
+    with timsdata.timsdata_connect(str(d)) as td:
+        assert td.read_scans(1, 0, 0) == []
+        assert all(a.size == 0 for a in td.read_frame_arrays(1))
+        with pytest.raises(TdfpyError, match="invalid scan range"):
+            td.read_scans(1, 0, 1)
 
 
 # --------------------------------------------------------------------------
@@ -593,7 +636,7 @@ def test_missing_required_metadata_is_unsupported_tdf_error(tmp_path: Path) -> N
         timsdata.TimsData(str(d))
 
 
-@pytest.mark.parametrize(("begin", "end"), [(-1, 5), (5, 5), (10, 3), (0, 10_000)])
+@pytest.mark.parametrize(("begin", "end"), [(-1, 5), (10, 3), (0, 10_000)])
 def test_read_scans_rejects_bad_bounds(begin: int, end: int) -> None:
     if not Path(TDF_PATH).is_dir():
         pytest.skip("Test data not found")

@@ -15,7 +15,6 @@ Breaking API cleanup for 5.0. [docs/migration.md](docs/migration.md) has the ful
 - camelCase names with no alias: `TimsData.indexToMz`, `mzToIndex`, `scanNumToOneOverK0`, `oneOverK0ToScanNum`, `scanNumToVoltage`, `voltageToScanNum`, `readScans`; `tdfpy.timsdata.oneOverK0ToCCSforMz`, `ccsToOneOverK0forMz`, `ccsToOneOverK0ToCCSforMz`.
 - `tdfpy.centroiding.batch_iterator`, `calculate_nmass`, `get_tdf_df` and `Peak`, unused helpers outside the documented API.
 - `DIAMs1Frame.dia_windows` and `PRMMs1Frame.prm_transitions`, which were always empty. Use `DIA.windows` / `PRM.transitions`.
-- The duplicate `Frame.scan_peaks` override (the shared implementation is unchanged).
 
 ### Added
 
@@ -36,7 +35,8 @@ Breaking API cleanup for 5.0. [docs/migration.md](docs/migration.md) has the ful
 - `TimsData(path, *, use_recalibrated_state=..., pressure_compensation_strategy=...)`: the options are keyword-only.
 - After a reader closes, `reader.timsdata`, `metadata`, `calibration` and `pandas_tdf` raise `ReaderClosedError`, as do `Precursor.ook0` / `ccs` and the mobility ranges. `timsdata` used to hand back the closed handle and `metadata` kept reading the file.
 - `AcquisitionType.UNKNOWN` is `"unknown"` (was `"Unknown"`).
-- `TimsData.read_scans` raises `TdfpyError` unless `0 <= scan_begin < scan_end <= num_scans`. It used to pad out-of-range scans with empty arrays.
+- `TimsData.read_scans` and `read_frame_arrays` raise `TdfpyError` for a non-integer bound or a range outside `0 <= scan_begin <= scan_end <= num_scans`; an empty range (`begin == end`) is valid and reads nothing. `read_scans` used to pad out-of-range scans with empty arrays and `read_frame_arrays` clamped them.
+- Window accessors (`scan_peaks`, `raw_peaks`, `centroid`, `merged_peaks`) raise `TdfpyError` when a PASEF/DIA window's scan range does not fit its frame (a corrupt file). `scan_peaks` used to clamp it silently.
 - Every error is a `TdfpyError`. Lookup misses and missing `MetaData` / `Calibration` keys raise `TdfpyKeyError`; spectral access after close raises `ReaderClosedError`; SQLite errors in `PandasTdf`, `convert_table_to_df` and `slice_d_folder` raise `TdfpyError` (`convert_table_to_df` raised `RuntimeError`). `PandasTdf.get_table_names` opens the database read-only.
 - `get_acquisition_type` returns `AcquisitionType`; `Frame.msms_type` is `MsMsType`. Both still compare equal to the old `str` / `int` values.
 - Elements are frozen, slotted, keyword-only dataclasses. `PrmTarget` equality and hashing ignore `transitions`.

@@ -154,14 +154,11 @@ class _Spectrum(_TdfData):
 
         Raises:
             ReaderClosedError: If the reader was closed.
+            TdfpyError: If a window's scan range does not fit its frame (corrupt file).
         """
         td = self.timsdata
         bounds = self._scan_bounds()
-        num_scans = td.frame_metadata(self.frame_id).num_scans
-        begin, end = bounds if bounds is not None else (0, num_scans)
-        begin, end = max(0, begin), min(end, num_scans)
-        if begin >= end:
-            return []
+        begin, end = bounds if bounds is not None else (0, td.frame_metadata(self.frame_id).num_scans)
         arrays = []
         for index_array, int_array in td.read_scans(self.frame_id, begin, end):
             mz_array = td.index_to_mz(self.frame_id, index_array)
@@ -183,6 +180,7 @@ class _Spectrum(_TdfData):
 
         Raises:
             ReaderClosedError: If the reader was closed.
+            TdfpyError: If a window's scan range does not fit its frame (corrupt file).
         """
         return get_raw_peaks(
             self.timsdata,
@@ -211,6 +209,7 @@ class _Spectrum(_TdfData):
 
         Raises:
             ReaderClosedError: If the reader was closed.
+            TdfpyError: If a window's scan range does not fit its frame (corrupt file).
         """
         return get_centroided_spectrum(
             self.timsdata,
@@ -260,7 +259,26 @@ class _MobilityWindow(_IsolationWindow, _Spectrum):
     __slots__ = ()
 
     def _scan_bounds(self) -> tuple[int, int] | None:
-        return (self.scan_num_begin, self.scan_num_end)
+        return self._window_scans()
+
+    def _window_scans(self) -> tuple[int, int]:
+        """The window's ``[scan_num_begin, scan_num_end)``, checked against its frame.
+
+        Every spectral accessor (``scan_peaks``, ``raw_peaks``, ``centroid``,
+        ``merged_peaks``) goes through here, so a window whose scan range does
+        not fit its frame raises instead of being silently clipped.
+
+        Raises:
+            TdfpyError: If the range is outside ``0 <= begin <= end <= num_scans``.
+        """
+        num_scans = self.timsdata.frame_metadata(self.frame_id).num_scans
+        begin, end = self.scan_num_begin, self.scan_num_end
+        if not 0 <= begin <= end <= num_scans:
+            raise TdfpyError(
+                f"{type(self).__name__} in frame {self.frame_id}: scan range [{begin}, {end}) does not fit the frame's "
+                f"{num_scans} scans; the Frames and MS/MS tables disagree, so the file may be corrupt."
+            )
+        return (begin, end)
 
     def _edge_values(self, convert: Callable[[int, npt.ArrayLike], npt.NDArray[np.float64]]) -> tuple[float, float]:
         """``(low, high)`` of ``convert`` at the two scan edges. Scan order runs high to low 1/K0."""
@@ -380,11 +398,10 @@ class PasefFrameMsmsInfo(_MobilityWindow):
 
         Raises:
             ReaderClosedError: If the reader was closed.
+            TdfpyError: If a window's scan range does not fit its frame (corrupt file).
         """
-        return get_mobility_collapsed_spectrum(
-            self.timsdata,
-            [(self.frame_id, self.scan_num_begin, self.scan_num_end)],
-        )
+        begin, end = self._window_scans()
+        return get_mobility_collapsed_spectrum(self.timsdata, [(self.frame_id, begin, end)])
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -445,10 +462,11 @@ class Precursor(_TdfData):
 
         Raises:
             ReaderClosedError: If the reader was closed.
+            TdfpyError: If a window's scan range does not fit its frame (corrupt file).
         """
         return get_mobility_collapsed_spectrum(
             self.timsdata,
-            [(info.frame_id, info.scan_num_begin, info.scan_num_end) for info in self.pasef_frame_msms_infos],
+            [(info.frame_id, *info._window_scans()) for info in self.pasef_frame_msms_infos],
         )
 
     def pasef_merged_peaks(self) -> list[npt.NDArray[np.float64]]:
@@ -456,6 +474,7 @@ class Precursor(_TdfData):
 
         Raises:
             ReaderClosedError: If the reader was closed.
+            TdfpyError: If a window's scan range does not fit its frame (corrupt file).
         """
         return [pasef_info.merged_peaks() for pasef_info in self.pasef_frame_msms_infos]
 

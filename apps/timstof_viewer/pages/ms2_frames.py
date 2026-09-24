@@ -18,6 +18,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from _shared import (
+    UNKNOWN_ACQUISITION,
     MS_MS_TYPE_LABELS,
     build_pipeline_ui,
     fetch_centroided,
@@ -35,7 +36,7 @@ from _shared import (
 st.title("MS2 frames")
 
 analysis_dir = require_analysis_dir()
-acquisition = st.session_state.get("acquisition", "Unknown")
+acquisition = st.session_state.get("acquisition", UNKNOWN_ACQUISITION)
 BAND_NOUN = {"DDA": "precursor", "DIA": "window", "PRM": "transition"}.get(acquisition, "band")
 ms2_frames = list_ms2_frames(analysis_dir)
 if not ms2_frames:

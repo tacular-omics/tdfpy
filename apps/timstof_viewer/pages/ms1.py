@@ -17,6 +17,7 @@ import streamlit as st
 from plotly.colors import sample_colorscale
 
 from _shared import (
+    UNKNOWN_ACQUISITION,
     build_pipeline_ui,
     dia_windows_ook0,
     fetch_centroided,
@@ -33,7 +34,7 @@ from _shared import (
 )
 
 analysis_dir = require_analysis_dir()
-acquisition = st.session_state.get("acquisition", "Unknown")
+acquisition = st.session_state.get("acquisition", UNKNOWN_ACQUISITION)
 
 OVERLAY_NOUN = {"DDA": "precursor", "PRM": "target"}.get(acquisition)
 st.title(

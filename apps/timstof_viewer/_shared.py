@@ -182,13 +182,17 @@ def run_summary(analysis_dir: str) -> dict:
     }
 
 
+#: Label for a run whose acquisition mode is not DDA, DIA or PRM (or unreadable).
+UNKNOWN_ACQUISITION = str(tdfpy.AcquisitionType.UNKNOWN)
+
+
 @st.cache_data(show_spinner=False)
 def acquisition_type(analysis_dir: str) -> str:
-    """Detected acquisition mode: ``"DDA"`` / ``"DIA"`` / ``"PRM"`` / ``"Unknown"``."""
+    """Detected acquisition mode: ``"DDA"`` / ``"DIA"`` / ``"PRM"`` / ``"unknown"``."""
     try:
         return str(get_acquisition_type(analysis_dir))
     except Exception:  # noqa: BLE001
-        return "Unknown"
+        return UNKNOWN_ACQUISITION
 
 
 @st.cache_data(show_spinner=False)

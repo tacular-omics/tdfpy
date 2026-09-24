@@ -92,8 +92,12 @@ Every spectral accessor is now a method, so each call visibly decodes the frame:
 - **`AcquisitionType.UNKNOWN`** is `"unknown"` (was `"Unknown"`).
 - **`TimsData`** takes its options by keyword: `TimsData(path, use_recalibrated_state=True)`.
   `FrameMetadata` is exported from `tdfpy` and its fields follow `Frame` (`rt`, `*_id`).
-- **`TimsData.read_scans`** raises `TdfpyError` for a range outside
-  `0 <= scan_begin < scan_end <= num_scans` (it padded with empty arrays).
+- **`TimsData.read_scans` and `read_frame_arrays`** raise `TdfpyError` for a
+  non-integer bound or a range outside `0 <= scan_begin <= scan_end <= num_scans`.
+  `read_scans` padded with empty arrays and `read_frame_arrays` clamped; an empty
+  range (`begin == end`) is valid and reads nothing.
+- **Window accessors** (`scan_peaks`, `raw_peaks`, `centroid`, `merged_peaks`) raise
+  `TdfpyError` when a window's scan range does not fit its frame, instead of clamping.
 
 ## Downstream code
 

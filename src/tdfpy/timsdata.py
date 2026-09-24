@@ -42,6 +42,7 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import Enum
+from numbers import Integral
 from pathlib import Path
 from typing import Any
 
@@ -627,6 +628,26 @@ class TimsData:
 
         return scan_count, starts, counts, tof, intensity
 
+    def _scan_range(self, frame_id: int, scan_begin: int, scan_end: int | None) -> tuple[int, int]:
+        """Validate a half-open scan range against the frame's scan count.
+
+        One policy for every reader method: bounds must be integers with
+        ``0 <= scan_begin <= scan_end <= num_scans``; ``scan_end=None`` means
+        ``num_scans``. An empty range (``scan_begin == scan_end``) is valid.
+        """
+        _, num_scans, *_ = self._frame(frame_id)
+        if scan_end is None:
+            scan_end = num_scans
+        for name, value in (("scan_begin", scan_begin), ("scan_end", scan_end)):
+            if isinstance(value, bool) or not isinstance(value, Integral):
+                raise TdfpyError(f"Frame {frame_id}: {name} must be an integer, got {value!r}.")
+        begin, end = int(scan_begin), int(scan_end)
+        if not 0 <= begin <= end <= num_scans:
+            raise TdfpyError(
+                f"Frame {frame_id}: invalid scan range [{begin}, {end}); need 0 <= scan_begin <= scan_end <= {num_scans} (the frame's scan count)."
+            )
+        return begin, end
+
     def read_frame_arrays(
         self, frame_id: int, scan_begin: int = 0, scan_end: int | None = None
     ) -> tuple[npt.NDArray[np.int64], npt.NDArray[np.uint32], npt.NDArray[np.uint32]]:
@@ -639,22 +660,19 @@ class TimsData:
 
         Prefer this whenever you were going to concatenate ``read_scans`` output
         back together.
-        """
-        decoded = self._decode(frame_id)
-        if decoded is None:
-            return (
-                np.zeros(0, dtype=np.int64),
-                _EMPTY_U32,
-                _EMPTY_U32,
-            )
-        scan_count, starts, counts, tof, intensity = decoded
 
-        if scan_end is None:
-            scan_end = scan_count
-        begin = max(0, min(int(scan_begin), scan_count))
-        end = max(begin, min(int(scan_end), scan_count))
-        if begin == end:
+        Raises:
+            TdfpyError: If a bound is not an integer, or the range is outside
+                ``0 <= scan_begin <= scan_end <= num_scans``. ``scan_end=None``
+                means ``num_scans``; an empty range returns empty arrays.
+            TdfpyKeyError: If ``frame_id`` is not in the Frames table.
+        """
+        begin, end = self._scan_range(frame_id, scan_begin, scan_end)
+        # Decode even for an empty range so a corrupt frame is still reported.
+        decoded = self._decode(frame_id)
+        if decoded is None or begin == end:
             return np.zeros(0, dtype=np.int64), _EMPTY_U32, _EMPTY_U32
+        _, starts, counts, tof, intensity = decoded
 
         lo = int(starts[begin])
         hi = int(starts[end - 1] + counts[end - 1])
@@ -671,26 +689,20 @@ class TimsData:
         materialising one array pair per scan.
 
         Raises:
-            TdfpyError: If ``scan_begin < 0``, ``scan_begin >= scan_end``, or
-                ``scan_end`` exceeds the frame's scan count.
+            TdfpyError: If a bound is not an integer, or the range is outside
+                ``0 <= scan_begin <= scan_end <= num_scans``. An empty range
+                (``scan_begin == scan_end``) returns ``[]``.
             TdfpyKeyError: If ``frame_id`` is not in the Frames table.
         """
-        _, num_scans, *_ = self._frame(frame_id)
-        scan_begin, scan_end = int(scan_begin), int(scan_end)
-        if scan_begin < 0 or scan_begin >= scan_end or scan_end > num_scans:
-            raise TdfpyError(
-                f"Frame {frame_id}: invalid scan range [{scan_begin}, {scan_end}); need 0 <= scan_begin < scan_end <= {num_scans} (the frame's scan count)."
-            )
+        begin, end = self._scan_range(frame_id, scan_begin, scan_end)
+        # Decode even for an empty range so a corrupt frame is still reported.
         decoded = self._decode(frame_id)
         if decoded is None:
-            return [(_EMPTY_U32, _EMPTY_U32) for _ in range(scan_begin, scan_end)]
-        scan_count, starts, counts, tof, intensity = decoded
+            return [(_EMPTY_U32, _EMPTY_U32) for _ in range(begin, end)]
+        _, starts, counts, tof, intensity = decoded
 
         result = []
-        for i in range(scan_begin, scan_end):
-            if i >= scan_count:
-                result.append((_EMPTY_U32, _EMPTY_U32))
-                continue
+        for i in range(begin, end):
             start = int(starts[i])
             stop = start + int(counts[i])
             result.append((tof[start:stop], intensity[start:stop]))
