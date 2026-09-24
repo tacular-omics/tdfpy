@@ -17,6 +17,7 @@ import streamlit as st
 from plotly.colors import sample_colorscale
 
 from _shared import (
+    UNKNOWN_ACQUISITION,
     build_pipeline_ui,
     dia_windows_ook0,
     fetch_centroided,
@@ -33,7 +34,7 @@ from _shared import (
 )
 
 analysis_dir = require_analysis_dir()
-acquisition = st.session_state.get("acquisition", "Unknown")
+acquisition = st.session_state.get("acquisition", UNKNOWN_ACQUISITION)
 
 OVERLAY_NOUN = {"DDA": "precursor", "PRM": "target"}.get(acquisition)
 st.title(
@@ -245,7 +246,7 @@ if dia_windows and ion_mobility_type == "ook0":
         hx.append(w["isolation_mz"])
         hy.append((w["ook0_begin"] + w["ook0_end"]) / 2)
         htext.append(
-            f"WG{w['window_group']}<br>m/z {w['mz_begin']:.1f}–{w['mz_end']:.1f}<br>"
+            f"WG{w['window_group_id']}<br>m/z {w['mz_begin']:.1f}–{w['mz_end']:.1f}<br>"
             f"1/K0 {min(w['ook0_begin'], w['ook0_end']):.3f}–{max(w['ook0_begin'], w['ook0_end']):.3f}<br>"
             f"CE {w['collision_energy']:.1f}")
     fig.update_layout(shapes=shapes)

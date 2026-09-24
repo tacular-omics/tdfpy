@@ -26,14 +26,14 @@ from __future__ import annotations
 
 import streamlit as st
 
-from _shared import acquisition_type
+from _shared import UNKNOWN_ACQUISITION, acquisition_type
 
 st.set_page_config(page_title="tdfpy — timsTOF viewer", layout="wide")
 
 # The `.d` path is set once on the Data source page and shared via session
 # state; the acquisition mode it implies drives which pages are shown.
 analysis_dir = st.session_state.get("analysis_dir") or ""
-acquisition = acquisition_type(analysis_dir) if analysis_dir else "Unknown"
+acquisition = acquisition_type(analysis_dir) if analysis_dir else UNKNOWN_ACQUISITION
 st.session_state["acquisition"] = acquisition
 
 with st.sidebar:

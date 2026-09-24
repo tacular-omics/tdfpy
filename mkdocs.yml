@@ -45,6 +45,7 @@ nav:
     - Spectrum batches and file checks: analysis.md
     - MCP interface: mcp.md
     - Maintenance: maintenance.md
+    - Migrating to 5.0: migration.md
   - API reference:
     - Readers: api/readers.md
     - Frames: api/frames.md

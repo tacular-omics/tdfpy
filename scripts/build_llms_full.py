@@ -90,7 +90,7 @@ library, works on Linux, macOS and Windows.
 import tdfpy
 from tdfpy import DDA, DIA, PRM, get_acquisition_type, ChargeStateRegion, WatershedCentroider
 
-get_acquisition_type("run.d")          # "DDA" | "DIA" | "PRM" | "Unknown"
+get_acquisition_type("run.d")          # "DDA" | "DIA" | "PRM" | "unknown"
 
 with DDA("run.d") as dda:              # always use the context manager
     frame = dda.ms1[1]                 # Ms1FrameLookup: by frame id, or iterate
@@ -98,8 +98,8 @@ with DDA("run.d") as dda:              # always use the context manager
     cen = frame.centroid()             # (N, 3) float: m/z, intensity, 1/K0
     cen = frame.centroid(noise="mad", exclude=ChargeStateRegion())
     cen = frame.centroid(centroid=WatershedCentroider())
-    for p in dda.precursors.query(mz=652.3, rt=1200.0):   # PrecursorLookup
-        p.peaks                        # (N, 2): MS2 m/z, intensity (mobility collapsed, 30 ppm merge)
+    for p in dda.precursors.query(precursor_mz=652.3, rt=1200.0):   # PrecursorLookup
+        p.merged_peaks()               # (N, 2): MS2 m/z, intensity (mobility collapsed, 30 ppm merge)
 
 with DIA("run.d") as dia:
     for w in dia.windows:              # DiaWindowLookup; also dia.window_groups
@@ -108,7 +108,7 @@ with DIA("run.d") as dia:
 with PRM("run.d") as prm:
     for tr in prm.transitions:         # PrmTransitionLookup; also prm.targets
         tr.centroid()                  # (N, 3)
-        tr.peaks                       # list of (N, 2) arrays, one per mobility scan
+        tr.scan_peaks()                # list of (N, 2) arrays, one per mobility scan
 ```
 
 Return types at a glance:
@@ -116,9 +116,9 @@ Return types at a glance:
 | call | returns |
 |---|---|
 | `Frame.raw_peaks()`, `Frame.centroid()`, `DiaWindow.centroid()`, `PrmTransition.centroid()` | `np.ndarray` shape `(N, 3)`: m/z, intensity, ion mobility (`ion_mobility_type="ook0"` default; also `"ccs"`, `"voltage"`) |
-| `Precursor.peaks` | `np.ndarray` `(N, 2)`: m/z, intensity |
-| `PrmTransition.peaks` | `list[np.ndarray]`, one `(N, 2)` array per mobility scan |
-| `get_acquisition_type(path)` | `"DDA"`, `"DIA"`, `"PRM"` or `"Unknown"` |
+| `Precursor.merged_peaks()` | `np.ndarray` `(N, 2)`: m/z, intensity |
+| `Frame.scan_peaks()`, `DiaWindow.scan_peaks()`, `PrmTransition.scan_peaks()` | `list[np.ndarray]`, one `(N, 2)` array per mobility scan |
+| `get_acquisition_type(path)` | `AcquisitionType` (a `StrEnum`: `"DDA"`, `"DIA"`, `"PRM"` or `"unknown"`) |
 | `validate_acquisition(path, full=False)` | `ValidationReport` (`.valid`, `.issues`) |
 
 Keyword arguments shared by `raw_peaks()` / `centroid()` and the functional
@@ -148,12 +148,12 @@ python -m tdfpy.mcp --data-root DIR --output-dir OUT
 
 - Spectral data is lazy. Frames, precursors, windows and transitions hold the
   reader's open connection; using them after the `with` block raises
-  `RuntimeError: TimsData connection is closed`. Extract arrays inside the block.
+  `ReaderClosedError` (subclasses `RuntimeError`). Extract arrays inside the block.
 - Unsupported formats raise instead of guessing: legacy compression type 1,
   `use_recalibrated_state=True` and pressure compensation raise
   `UnsupportedTdfError`; unknown m/z or mobility calibration model types raise
   `UnsupportedCalibrationError`. Do not catch-and-ignore these.
-- `get_acquisition_type` returns `"Unknown"` for an unrecognised mode but raises
+- `get_acquisition_type` returns `"unknown"` for an unrecognised mode but raises
   `FileNotFoundError` if `analysis.tdf` is missing.
 - DIA and PRM MS2 ion mobility is the precursor's mobility (the TIMS cell sits
   before fragmentation), not a fragment property.
@@ -163,8 +163,11 @@ python -m tdfpy.mcp --data-root DIR --output-dir OUT
   to suppress isolated noise after merging, raise `min_peaks` on the centroider.
 - Algorithm settings (`MergePeaksCentroider`, `WatershedCentroider`, noise filters,
   `ChargeStateRegion`, `Smooth`) are frozen dataclasses: hashable, safe as cache keys.
-- `PrmTransition.peaks` is a list per scan, not one array; use `.centroid()` for a
-  single spectrum.
+- `scan_peaks()` returns a list per mobility scan, not one array; use `.centroid()`
+  for a single spectrum.
+- Every error tdfpy raises subclasses `TdfpyError` (a `ValueError`); a missing id
+  raises `TdfpyKeyError` (also a `KeyError`). Frame elements are frozen and
+  keyword-only; lookup `[]` for DIA windows and PRM transitions returns a tuple.
 
 """
 

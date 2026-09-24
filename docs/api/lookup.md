@@ -26,8 +26,8 @@ support:
 
 ## DIA Window Lookup
 
-`DiaWindowLookup` groups windows by `window_group`. Because a single window group
-definition repeats across many frames, indexing by `window_group_id` returns a **list**
+`DiaWindowLookup` groups windows by `window_group_id`. Because a single window group
+definition repeats across many frames, indexing by `window_group_id` returns a **tuple**
 of `DiaWindow` objects — one per frame that used that group.
 
 ```python
@@ -43,10 +43,10 @@ with DIA("experiment.d") as dia:
 
     # Query by retention time (rt_tolerance defaults to 30 s)
     for window in dia.windows.query(rt=600.0, rt_tolerance=15.0):
-        print(window.window_group, window.isolation_mz)
+        print(window.window_group_id, window.isolation_mz)
 
     # Query by window group AND retention time
-    for window in dia.windows.query(window_group_index=5, rt=600.0, rt_tolerance=10.0):
+    for window in dia.windows.query(window_group=5, rt=600.0, rt_tolerance=10.0):
         peaks = window.centroid()
 ```
 
@@ -75,23 +75,23 @@ from tdfpy import PRM
 with PRM("experiment.d") as prm:
     # Iterate over all targets
     for target in prm.targets:
-        print(target.target_id, target.monoisotopic_mz, target.charge)
+        print(target.target_id, target.precursor_mz, target.charge)
 
     # Access a specific target by ID
     t = prm.targets[1]
-    print(t.description, t.time, t.one_over_k0)
+    print(t.description, t.rt, t.ook0)
 
     # Query by m/z (20 ppm window)
-    for target in prm.targets.query(mz=565.3189, mz_tolerance=20.0):
-        print(target.target_id, target.monoisotopic_mz)
+    for target in prm.targets.query(precursor_mz=565.3189, mz_tolerance=20.0):
+        print(target.target_id, target.precursor_mz)
 
     # Query by m/z and expected RT (±30 s)
-    for target in prm.targets.query(mz=565.3189, rt=480.0, rt_tolerance=30.0):
+    for target in prm.targets.query(precursor_mz=565.3189, rt=480.0, rt_tolerance=30.0):
         print(target.target_id, target.description)
 
     # Query by 1/K0 (ion mobility)
     for target in prm.targets.query(ook0=0.92, ook0_tolerance=0.05):
-        print(target.target_id, target.one_over_k0)
+        print(target.target_id, target.ook0)
 ```
 
 ::: tdfpy.PrmTargetLookup
@@ -99,18 +99,18 @@ with PRM("experiment.d") as prm:
 ### PRM Transition Lookup
 
 `PrmTransitionLookup` gives access to `PrmTransition` objects — the individual MS2
-acquisitions captured during the run. Indexing by `target_id` returns a **list** of all
+acquisitions captured during the run. Indexing by `target_id` returns a **tuple** of all
 transitions collected for that target across the chromatographic run.
 
 ```python
 from tdfpy import PRM
 
 with PRM("experiment.d") as prm:
-    # All transitions for target 1 (list — one per MS2 frame)
+    # All transitions for target 1 (tuple — one per MS2 frame)
     transitions = prm.transitions[1]
     for t in transitions:
         print(t.frame_id, t.rt, t.collision_energy)
-        peaks = t.peaks  # list of (mz, intensity) arrays per mobility scan
+        peaks = t.scan_peaks()  # list of (N, 2) [m/z, intensity] arrays, one per mobility scan
 
     # Query transitions for a specific target near a retention time
     for tr in prm.transitions.query(target=1, rt=480.0, rt_tolerance=30.0):
@@ -118,7 +118,7 @@ with PRM("experiment.d") as prm:
 
     # Query using a PrmTarget object directly
     target = prm.targets[1]
-    for tr in prm.transitions.query(target=target, rt=target.time, rt_tolerance=20.0):
+    for tr in prm.transitions.query(target=target, rt=target.rt, rt_tolerance=20.0):
         print(tr.frame_id, tr.isolation_mz)
 ```
 

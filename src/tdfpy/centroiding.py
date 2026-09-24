@@ -1,20 +1,20 @@
-"""
-Higher-level Pythonic API for working with MS1 spectrum data from Bruker timsTOF files.
+"""Peak extraction and centroiding for timsTOF frames.
 
-This module provides a cleaner interface using NamedTuples and convenience functions
-for reading centroided MS1 spectra with peak clustering/centroiding algorithms.
+``get_raw_peaks`` and ``get_centroided_spectrum`` return ``(N, 3)`` arrays of
+``[m/z, intensity, ion_mobility]``; ``get_mobility_collapsed_spectrum`` returns
+``(N, 2)`` ``[m/z, intensity]``; ``merge_peaks`` is the greedy centroiding
+kernel behind :class:`~tdfpy.MergePeaksCentroider`.
 """
 
 import logging
 import warnings
-from collections.abc import Sequence
-from pathlib import Path
-from typing import Any, Literal, NamedTuple
+from collections.abc import Callable, Sequence
+from typing import Literal
 
 import numpy as np
-import pandas as pd
 
 from ._validation import arrays, merge_config
+from .errors import TdfpyError
 from .noise import NoiseSpec
 from .pipeline import (
     Centroider,
@@ -25,7 +25,6 @@ from .pipeline import (
     read_spectrum,
 )
 from .regions import ChargeStateRegion
-from .tdf import PandasTdf
 from .timsdata import TimsData
 
 # Try to import Numba for JIT-accelerated implementation
@@ -37,28 +36,14 @@ try:
 except ImportError:
     _HAS_NUMBA = False
 
+__all__ = [
+    "get_centroided_spectrum",
+    "get_mobility_collapsed_spectrum",
+    "get_raw_peaks",
+    "merge_peaks",
+]
+
 logger = logging.getLogger(__name__)
-
-
-def batch_iterator(input_list: list[Any], batch_size: int):
-    for i in range(0, len(input_list), batch_size):
-        yield input_list[i : i + batch_size]
-
-
-class Peak(NamedTuple):
-    """Represents a single mass spec peak.
-
-    Attributes:
-        mz: Mass-to-charge ratio
-        intensity: Peak intensity (area)
-        ion_mobility: Ion mobility value - either 1/K0 (reciprocal reduced mobility)
-                     or CCS (collision cross section in Ų) depending on the
-                     ion_mobility_type parameter used during extraction
-    """
-
-    mz: float
-    intensity: float
-    ion_mobility: float
 
 
 if _HAS_NUMBA:
@@ -217,6 +202,62 @@ if _HAS_NUMBA:
         return out_mz[:count], out_intensity[:count], out_im[:count]
 
 
+if _HAS_NUMBA:
+
+    @_njit(cache=True)
+    def _counting_argsort_kernel(keys, lo, width):
+        counts = np.zeros(width + 1, np.int64)
+        for i in range(keys.shape[0]):
+            counts[keys[i] - lo + 1] += 1
+        for j in range(1, counts.shape[0]):
+            counts[j] += counts[j - 1]
+        order = np.empty(keys.shape[0], np.int64)
+        for i in range(keys.shape[0]):
+            k = keys[i] - lo
+            order[counts[k]] = i
+            counts[k] += 1
+        return order
+
+
+def _tof_order(tof_indices: np.ndarray) -> np.ndarray:
+    """Stable ascending order of integer TOF indices.
+
+    Equivalent to ``np.argsort(tof_indices, kind="stable")``. With numba this is
+    a counting sort over the index span, several times faster than a comparison
+    sort on a dense frame; a sparse span (wider than 16 slots per peak) or a
+    missing numba falls back to the comparison sort.
+    """
+    if tof_indices.size < 2:
+        return np.arange(tof_indices.size, dtype=np.int64)
+    lo = int(tof_indices.min())
+    width = int(tof_indices.max()) - lo + 1
+    if _HAS_NUMBA and width <= 16 * tof_indices.size + 4096:
+        try:
+            return _counting_argsort_kernel(np.ascontiguousarray(tof_indices, dtype=np.int64), lo, width)
+        except NumbaError:
+            pass
+    return np.argsort(tof_indices, kind="stable")
+
+
+def _canonical_peak_order(mz_array: np.ndarray, intensity_array: np.ndarray, ion_mobility_array: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Order peaks by m/z, then descending ion mobility, then intensity.
+
+    This is the (TOF, scan) order the reader produces (1/K0 falls as the scan
+    number rises), so frame data passes the O(n) check and is used as is. Any
+    other input is lexsorted into the same order, which makes the greedy merge
+    independent of input order even when many points share one m/z.
+    """
+    if mz_array.size < 2:
+        return mz_array, intensity_array, ion_mobility_array
+    d_mz = mz_array[1:] - mz_array[:-1]
+    d_im = ion_mobility_array[1:] - ion_mobility_array[:-1]
+    in_order = (d_mz > 0) | ((d_mz == 0) & ((d_im < 0) | ((d_im == 0) & (intensity_array[1:] >= intensity_array[:-1]))))
+    if np.all(in_order):
+        return mz_array, intensity_array, ion_mobility_array
+    sort_idx = np.lexsort((intensity_array, -ion_mobility_array, mz_array))
+    return mz_array[sort_idx], intensity_array[sort_idx], ion_mobility_array[sort_idx]
+
+
 def _merge_peaks_numba(
     mz_array: np.ndarray,
     intensity_array: np.ndarray,
@@ -243,11 +284,15 @@ def _merge_peaks_numba(
     # A non-positive (or None) max_peaks means "no limit" — must match the
     # pure-Python kernel, which treats a falsy max_peaks as unlimited.
     _max_peaks = -1 if (max_peaks is None or max_peaks <= 0) else int(max_peaks)
-    sort_idx = np.argsort(mz_array)
-    mz_s = np.ascontiguousarray(mz_array[sort_idx], dtype=np.float64)
-    int_s = np.ascontiguousarray(intensity_array[sort_idx], dtype=np.float64)
-    im_s = np.ascontiguousarray(ion_mobility_array[sort_idx], dtype=np.float64)
-    intensity_order = np.ascontiguousarray(np.argsort(int_s)[::-1].astype(np.int64))
+    # MergePeaksCentroider pre-sorts on the integer TOF index, so frame data
+    # passes an O(n) check instead of an O(n log n) float sort.
+    mz_array, intensity_array, ion_mobility_array = _canonical_peak_order(mz_array, intensity_array, ion_mobility_array)
+    mz_s = np.ascontiguousarray(mz_array, dtype=np.float64)
+    int_s = np.ascontiguousarray(intensity_array, dtype=np.float64)
+    im_s = np.ascontiguousarray(ion_mobility_array, dtype=np.float64)
+    # Stable sort on negated intensity: equal-intensity seeds keep the canonical
+    # (m/z, scan) order, independent of the NumPy version and sort backend.
+    intensity_order = np.ascontiguousarray(np.argsort(-int_s, kind="stable").astype(np.int64))
     out_mz, out_int, out_im = _merge_peaks_numba_kernel(
         mz_s,
         int_s,
@@ -340,8 +385,12 @@ def merge_peaks(
         peak_noise_end_fraction,
     )
     arrays(mz_array, intensity_array, ion_mobility_array)
+    # float64 up front: unsigned differences in the order check would wrap.
+    mz_array = np.asarray(mz_array, dtype=np.float64)
+    intensity_array = np.asarray(intensity_array, dtype=np.float64)
+    ion_mobility_array = np.asarray(ion_mobility_array, dtype=np.float64)
     if np.any(mz_array < 0) or np.any(intensity_array < 0):
-        raise ValueError("m/z and intensities must be nonnegative.")
+        raise TdfpyError("m/z and intensities must be nonnegative.")
     if _HAS_NUMBA and use_numba:
         try:
             return _merge_peaks_numba(
@@ -428,15 +477,13 @@ def _merge_peaks_python(
         mobility_tol_abs = im_tolerance
         mobility_tol_factor = 0.0
 
-    # Sort by mz for binary search
-    sort_idx = np.argsort(mz_array)
-    mz_array = mz_array[sort_idx]
-    intensity_array = intensity_array[sort_idx]
-    ion_mobility_array = ion_mobility_array[sort_idx]
-    logger.debug("Sorted %d peaks by m/z", len(mz_array))
+    # Sort by m/z for binary search, in the same canonical order as the numba
+    # kernel so both see the same peak order.
+    mz_array, intensity_array, ion_mobility_array = _canonical_peak_order(mz_array, intensity_array, ion_mobility_array)
 
-    # Sort by intensity for greedy clustering
-    intensity_order = np.argsort(intensity_array)[::-1]
+    # Sort by intensity for greedy clustering; stable so equal-intensity seeds
+    # keep the canonical (m/z, scan) order.
+    intensity_order = np.argsort(-intensity_array, kind="stable")
     logger.debug("Created intensity-ordered index for greedy clustering")
 
     # Use boolean mask for tracking used peaks
@@ -773,6 +820,31 @@ def get_mobility_collapsed_spectrum(
         On the bundled fixtures the strong peaks agree to ~0.5 ppm and the total
         ion current to within 0.1%, with ~4% more peaks reported.
     """
+    return _collapsed_spectrum(
+        td,
+        scan_ranges,
+        lambda frame_id, begin, end: td.read_frame_arrays(frame_id, begin, end)[1:],
+        mz_tolerance=mz_tolerance,
+        mz_tolerance_type=mz_tolerance_type,
+        use_numba=use_numba,
+    )
+
+
+def _collapsed_spectrum(
+    td: TimsData,
+    scan_ranges: Sequence[tuple[int, int, int]],
+    read: Callable[[int, int, int], tuple[np.ndarray, np.ndarray]],
+    *,
+    mz_tolerance: float = COLLAPSED_MZ_TOLERANCE_PPM,
+    mz_tolerance_type: Literal["ppm", "da"] = "ppm",
+    use_numba: bool = True,
+) -> np.ndarray:
+    """:func:`get_mobility_collapsed_spectrum` with the raw-peak source injected.
+
+    ``read(frame_id, scan_begin, scan_end)`` returns ``(tof_indices,
+    intensities)``; :func:`tdfpy.iter_precursor_spectra` passes one that serves
+    already-decoded frames.
+    """
     if not scan_ranges:
         return np.empty((0, 2), dtype=np.float64)
 
@@ -780,7 +852,7 @@ def get_mobility_collapsed_spectrum(
     # conversions. Frames sharing a calibration row may have different drift.
     groups: dict[tuple, tuple[int, list[np.ndarray], list[np.ndarray]]] = {}
     for frame_id, scan_begin, scan_end in scan_ranges:
-        _, tof, intensity = td.read_frame_arrays(frame_id, scan_begin, scan_end)
+        tof, intensity = read(frame_id, scan_begin, scan_end)
         if tof.size:
             key = td.mz_calibration_key(frame_id)
             if key not in groups:
@@ -794,7 +866,7 @@ def get_mobility_collapsed_spectrum(
     intensity_chunks = []
     for frame_id, tofs, intensities in groups.values():
         bins, sums = _sum_by_tof_index(np.concatenate(tofs), np.concatenate(intensities))
-        mz_chunks.append(td.indexToMz(frame_id, bins))
+        mz_chunks.append(td.index_to_mz(frame_id, bins))
         intensity_chunks.append(sums)
     mz_array = np.concatenate(mz_chunks)
     intensity_array = np.concatenate(intensity_chunks)
@@ -817,49 +889,3 @@ def get_mobility_collapsed_spectrum(
         use_numba=use_numba,
     )
     return np.ascontiguousarray(peaks[:, :2])
-
-
-def calculate_nmass(mz: float, charge: int) -> float:
-    """Calculate neutral mass from m/z and charge state."""
-    return mz * abs(charge) - charge * 1.007276466812  # Subtract charge * proton mass
-
-
-def get_tdf_df(td: TimsData) -> pd.DataFrame:
-    pd_tdf = PandasTdf(Path(td.analysis_directory) / "analysis.tdf")
-
-    merged_df = pd.merge(
-        pd_tdf.precursors,
-        pd_tdf.frames,
-        left_on="Parent",
-        right_on="Id",
-        suffixes=("_Precursor", "_Frame"),
-    )
-
-    pasef_frame_msms_info_df = pd_tdf.pasef_frame_msms_info.drop(["Frame"], axis=1)
-
-    # count the number of items in each group
-    pasef_frame_msms_info_df["count"] = pasef_frame_msms_info_df.groupby("Precursor")["Precursor"].transform("count")
-
-    # keep only the row for each group
-    pasef_frame_msms_info_df = pasef_frame_msms_info_df.drop_duplicates(subset="Precursor", keep="first")
-    if len(pasef_frame_msms_info_df) != len(merged_df):
-        raise ValueError(
-            f"PASEF frame MS/MS info row count ({len(pasef_frame_msms_info_df)}) "
-            f"does not match precursor/frame merge count ({len(merged_df)}). "
-            f"This indicates a data integrity issue in the .tdf file."
-        )
-
-    merged_df = pd.merge(
-        merged_df,
-        pasef_frame_msms_info_df,
-        left_on="Id_Precursor",
-        right_on="Precursor",
-        suffixes=("_Precursor", "_PasefFrameMsmsInfo"),
-    ).drop("Precursor", axis=1)
-
-    merged_df["NeutralMass"] = merged_df.apply(
-        lambda row: calculate_nmass(row["MonoisotopicMz"], row["Charge"]),
-        axis=1,
-    )
-
-    return merged_df

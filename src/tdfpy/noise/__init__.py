@@ -27,6 +27,8 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from ..errors import TdfpyError
+
 if TYPE_CHECKING:
     from ..timsdata import TimsData
 
@@ -113,7 +115,7 @@ def coerce_filters(spec: NoiseSpec) -> tuple[NoiseFilter, ...]:
         try:
             cls = _STRING_ALIASES[spec]
         except KeyError as exc:
-            raise ValueError(f"Unknown noise filter name {spec!r}. Valid names: {sorted(_STRING_ALIASES)}") from exc
+            raise TdfpyError(f"Unknown noise filter name {spec!r}. Valid names: {sorted(_STRING_ALIASES)}") from exc
         return (cls(),)
     if isinstance(spec, (int, float)) and not isinstance(spec, bool):
         return (AbsoluteThreshold(value=float(spec)),)

@@ -85,13 +85,13 @@ For example, `query_dia_windows` accepts:
 ```json
 {
   "acquisition": "sample.d",
-  "rt": {"lower": 300.0, "upper": 330.0},
-  "mz": {"lower": 600.0, "upper": 650.0},
+  "rt_range": {"lower": 300.0, "upper": 330.0},
+  "isolation_mz_range": {"lower": 600.0, "upper": 650.0},
   "limit": 10
 }
 ```
 
-The `mz` condition matches isolation centers. It does not select every window
+The `isolation_mz_range` condition matches isolation centers. It does not select every window
 whose isolation band overlaps the interval. A result contains a selection such
 as `{"kind": "dia_window", "id": 42}`. This ID is the window's zero-based
 position in the full acquisition lookup, not a window group or frame ID. Query

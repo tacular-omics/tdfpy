@@ -108,19 +108,19 @@ def create_server(roots: list[Path], output_dir: Path, max_frame_peaks: int = 5_
     @server.tool(annotations=read)
     def query_frames(
         acquisition: str,
-        rt: Interval | None = None,
+        rt_range: Interval | None = None,
         msms_type: Literal[0, 8, 9, 10] | None = None,
         polarity: Literal["positive", "negative"] | None = None,
         offset: Offset = 0,
         limit: PageSize = 50,
     ) -> dict[str, Any]:
-        "Find frame IDs by half-open RT in seconds, polarity, or MS/MS type (0 MS1, 8 DDA, 9 DIA, 10 PRM). Returned Id is a frame spectrum selection ID."
+        "Find frame IDs by half-open rt_range in seconds, polarity, or MS/MS type (0 MS1, 8 DDA, 9 DIA, 10 PRM). Returned Id is a frame spectrum selection ID."
         filters = []
-        if rt:
+        if rt_range:
             filters.extend(
                 [
-                    Predicate(column="Time", operator="ge", value=rt.lower),
-                    Predicate(column="Time", operator="lt", value=rt.upper),
+                    Predicate(column="Time", operator="ge", value=rt_range.lower),
+                    Predicate(column="Time", operator="lt", value=rt_range.upper),
                 ]
             )
         if msms_type is not None:
@@ -132,49 +132,49 @@ def create_server(roots: list[Path], output_dir: Path, max_frame_peaks: int = 5_
     @server.tool(annotations=read)
     def query_precursors(
         acquisition: str,
-        rt: Interval | None = None,
-        mz: Interval | None = None,
+        rt_range: Interval | None = None,
+        precursor_mz_range: Interval | None = None,
         offset: Offset = 0,
         limit: PageSize = 50,
     ) -> dict[str, Any]:
-        "Find DDA precursors by half-open RT and precursor m/z. Preserve fractional scan coordinates. Return selection IDs and PASEF segment counts."
-        return service.entities(acquisition, "precursor", rt, mz, None, offset, limit)
+        "Find DDA precursors by half-open rt_range and precursor_mz_range. Preserve fractional scan coordinates. Return selection IDs and PASEF segment counts."
+        return service.entities(acquisition, "precursor", rt_range, precursor_mz_range, None, offset, limit)
 
     @server.tool(annotations=read)
     def query_dia_windows(
         acquisition: str,
-        rt: Interval | None = None,
-        mz: Interval | None = None,
-        window_group: int | None = None,
+        rt_range: Interval | None = None,
+        isolation_mz_range: Interval | None = None,
+        window_group_id: int | None = None,
         offset: Offset = 0,
         limit: PageSize = 50,
     ) -> dict[str, Any]:
-        "Find DIA windows by half-open RT, isolation-center m/z, and group. Returned selection IDs identify individual windows across frames."
-        return service.entities(acquisition, "dia_window", rt, mz, window_group, offset, limit)
+        "Find DIA windows by half-open rt_range, isolation_mz_range (isolation center), and window_group_id. Selection IDs identify single windows."
+        return service.entities(acquisition, "dia_window", rt_range, isolation_mz_range, window_group_id, offset, limit)
 
     @server.tool(annotations=read)
     def query_prm_targets(
         acquisition: str,
-        rt: Interval | None = None,
-        mz: Interval | None = None,
+        rt_range: Interval | None = None,
+        precursor_mz_range: Interval | None = None,
         target_id: int | None = None,
         offset: Offset = 0,
         limit: PageSize = 50,
     ) -> dict[str, Any]:
-        "Find PRM target metadata by scheduled RT, target m/z, or target ID. Query transitions to obtain extractable spectrum selections."
-        return service.entities(acquisition, "prm_target", rt, mz, target_id, offset, limit)
+        "Find PRM target metadata by scheduled rt_range, precursor_mz_range, or target ID. Query transitions to obtain extractable spectrum selections."
+        return service.entities(acquisition, "prm_target", rt_range, precursor_mz_range, target_id, offset, limit)
 
     @server.tool(annotations=read)
     def query_prm_transitions(
         acquisition: str,
-        rt: Interval | None = None,
-        mz: Interval | None = None,
+        rt_range: Interval | None = None,
+        isolation_mz_range: Interval | None = None,
         target_id: int | None = None,
         offset: Offset = 0,
         limit: PageSize = 50,
     ) -> dict[str, Any]:
-        "Find PRM transitions by measured RT, isolation-center m/z, or target. Return spectrum selections and their scan bounds."
-        return service.entities(acquisition, "prm_transition", rt, mz, target_id, offset, limit)
+        "Find PRM transitions by measured rt_range, isolation_mz_range (isolation center), or target. Return spectrum selections and their scan bounds."
+        return service.entities(acquisition, "prm_transition", rt_range, isolation_mz_range, target_id, offset, limit)
 
     @server.tool(annotations=read)
     def get_processing_options() -> dict[str, Any]:

@@ -12,7 +12,7 @@ from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 from hypothesis.extra.numpy import arrays
 
-from tdfpy.calibration import ccs_to_one_over_k0, one_over_k0_to_ccs
+from tdfpy.calibration import ccs_to_ook0, ook0_to_ccs
 from tdfpy.centroiding import _HAS_NUMBA, _sum_by_tof_index, merge_peaks
 
 settings.register_profile("default", max_examples=60, deadline=None, suppress_health_check=[HealthCheck.too_slow])
@@ -118,12 +118,12 @@ def test_sum_by_tof_index_sorted_and_conserving(tof, data):
 
 
 @given(
-    one_over_k0=st.floats(0.3, 2.5),
+    ook0=st.floats(0.3, 2.5),
     charge=st.integers(1, 10),
     mz=st.floats(50.0, 5000.0),
 )
-def test_ccs_round_trip_and_monotone(one_over_k0, charge, mz):
-    ccs = one_over_k0_to_ccs(one_over_k0, charge, mz)
+def test_ccs_round_trip_and_monotone(ook0, charge, mz):
+    ccs = ook0_to_ccs(ook0, charge, mz)
     assert ccs > 0
-    assert ccs_to_one_over_k0(ccs, charge, mz) == pytest.approx(one_over_k0, rel=1e-12)
-    assert one_over_k0_to_ccs(one_over_k0 * 1.01, charge, mz) > ccs
+    assert ccs_to_ook0(ccs, charge, mz) == pytest.approx(ook0, rel=1e-12)
+    assert ook0_to_ccs(ook0 * 1.01, charge, mz) > ccs

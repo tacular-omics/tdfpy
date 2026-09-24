@@ -28,9 +28,11 @@ from ._validation import (
     merge_config,
     nonnegative,
 )
+from .calibration import ook0_to_ccs
+from .errors import TdfpyError
 from .noise import NoiseFilter, NoiseSpec, coerce_filters
 from .regions import ChargeStateRegion
-from .timsdata import TimsData, oneOverK0ToCCSforMz
+from .timsdata import TimsData
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +88,7 @@ class RawSpectrum:
     def filter(self, mask: np.ndarray) -> RawSpectrum:
         """Return a new spectrum keeping only points where ``mask`` is True."""
         if mask.dtype != np.bool_ or mask.shape != self.intensities.shape:
-            raise ValueError("A peak mask must be boolean with one entry per peak.")
+            raise TdfpyError("A peak mask must be boolean with one entry per peak.")
         return RawSpectrum(
             scan_indices=self.scan_indices[mask],
             mz_indices=self.mz_indices[mask],
@@ -174,7 +176,7 @@ def subset_scans(
     """Restrict the spectrum to peaks in scans ``[scan_num_begin, scan_num_end)``.
 
     The bounds are half-open: ``begin`` inclusive, ``end`` exclusive — matching
-    Bruker's ``readScans(frame_id, begin, end)`` semantics. The returned
+    Bruker's ``read_scans(frame_id, begin, end)`` semantics. The returned
     ``RawSpectrum`` keeps its ``num_scans`` field (i.e. the parent frame's
     full scan count) so downstream ops still address scans by their original
     index.
@@ -186,7 +188,7 @@ def subset_scans(
     integer("scan_num_begin", scan_num_begin, minimum=None)
     integer("scan_num_end", scan_num_end, minimum=None)
     if scan_num_begin < 0 or scan_num_end < scan_num_begin:
-        raise ValueError(
+        raise TdfpyError(
             f"Invalid scan range [{scan_num_begin}, {scan_num_end}): the bounds are "
             "half-open and require scan_num_begin >= 0 and "
             "scan_num_end >= scan_num_begin."
@@ -254,18 +256,18 @@ def convert(
         return np.empty((0, 3), dtype=np.float64)
 
     ook0_per_scan = np.asarray(
-        td.scanNumToOneOverK0(frame_id, np.arange(spectrum.num_scans))  # type: ignore[call-arg]
+        td.scan_num_to_ook0(frame_id, np.arange(spectrum.num_scans))  # type: ignore[call-arg]
     )
     ion_mobility_array = ook0_per_scan[spectrum.scan_indices]
-    mz_array = td.indexToMz(frame_id, spectrum.mz_indices)
+    mz_array = td.index_to_mz(frame_id, spectrum.mz_indices)
 
     if ion_mobility_type == "ccs":
         ion_mobility_array = np.array(
-            [oneOverK0ToCCSforMz(float(ook0), 1, float(mz)) for ook0, mz in zip(ion_mobility_array, mz_array, strict=True)],
+            [ook0_to_ccs(float(ook0), 1, float(mz)) for ook0, mz in zip(ion_mobility_array, mz_array, strict=True)],
             dtype=np.float64,
         )
     elif ion_mobility_type == "voltage":
-        ion_mobility_array = td.scanNumToVoltage(frame_id, spectrum.scan_indices)
+        ion_mobility_array = td.scan_num_to_voltage(frame_id, spectrum.scan_indices)
 
     return np.column_stack((mz_array, spectrum.intensities, ion_mobility_array))
 
@@ -336,8 +338,17 @@ class MergePeaksCentroider(Centroider):
         *,
         ion_mobility_type: Literal["ook0", "ccs", "voltage"] = "ook0",
     ) -> np.ndarray:
-        from .centroiding import merge_peaks
+        from .centroiding import _tof_order, merge_peaks
 
+        # m/z rises with TOF index, so a stable integer sort here hands
+        # merge_peaks m/z already in order and it skips its float argsort.
+        order = _tof_order(spectrum.mz_indices)
+        spectrum = RawSpectrum(
+            scan_indices=spectrum.scan_indices[order],
+            mz_indices=spectrum.mz_indices[order],
+            intensities=spectrum.intensities[order],
+            num_scans=spectrum.num_scans,
+        )
         peaks = convert(spectrum, td, frame_id, ion_mobility_type=ion_mobility_type)
         if peaks.size == 0:
             return np.empty((0, 3), dtype=np.float64)
@@ -388,7 +399,7 @@ def box_smooth(
         ValueError: if ``mode`` is neither ``"sum"`` nor ``"mean"``.
     """
     if mode not in ("sum", "mean"):
-        raise ValueError(f"box_smooth mode must be 'sum' or 'mean', got {mode!r}.")
+        raise TdfpyError(f"box_smooth mode must be 'sum' or 'mean', got {mode!r}.")
     arrays(scan_indices, mz_indices, intensities)
     integer("scan_half_width", scan_half_width)
     integer("mz_idx_half_width", mz_idx_half_width)
@@ -458,7 +469,7 @@ def smooth(
         ValueError: if ``mode`` is neither ``"sum"`` nor ``"mean"``.
     """
     if mode not in ("sum", "mean"):
-        raise ValueError(f"smooth mode must be 'sum' or 'mean', got {mode!r}.")
+        raise TdfpyError(f"smooth mode must be 'sum' or 'mean', got {mode!r}.")
     if spectrum.empty:
         return spectrum
     new_int = box_smooth(
@@ -500,7 +511,7 @@ class Smooth:
         integer("scan_half_width", self.scan_half_width)
         integer("mz_idx_half_width", self.mz_idx_half_width)
         if self.mode not in ("sum", "mean"):
-            raise ValueError(f"Smooth mode must be 'sum' or 'mean', got {self.mode!r}.")
+            raise TdfpyError(f"Smooth mode must be 'sum' or 'mean', got {self.mode!r}.")
 
     def apply(self, spectrum: RawSpectrum) -> RawSpectrum:
         """Return ``spectrum`` with intensities box-smoothed per this config."""
@@ -1042,7 +1053,7 @@ def _prepare_spectrum(
     record("read")
     if scan_range is not None:
         if len(scan_range) != 2:
-            raise ValueError("scan_range must contain two bounds.")
+            raise TdfpyError("scan_range must contain two bounds.")
         spectrum = subset_scans(spectrum, scan_num_begin=scan_range[0], scan_num_end=scan_range[1])
         record("subset_scans")
     if exclude is not None:

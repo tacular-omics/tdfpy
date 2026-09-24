@@ -139,12 +139,12 @@ def test_convert_ccs_differs_from_ook0(td: timsdata.TimsData, ms1_frame_id: int,
 
 def test_convert_voltage_matches_scannum_mapping(td: timsdata.TimsData, ms1_frame_id: int, ms1_spectrum: RawSpectrum) -> None:
     # Regression for the fixed bug: the voltage branch must map per-peak *scan
-    # numbers* (not 1/K0 values) through scanNumToVoltage. Verify each peak's
+    # numbers* (not 1/K0 values) through scan_num_to_voltage. Verify each peak's
     # voltage equals the ground-truth voltage for its scan number. Feeding 1/K0
     # values in (the old bug) produced entirely different numbers.
     out = convert(ms1_spectrum, td, ms1_frame_id, ion_mobility_type="voltage")
     assert out.shape == (ms1_spectrum.num_peaks, 3)
-    expected = np.asarray(td.scanNumToVoltage(ms1_frame_id, ms1_spectrum.scan_indices))
+    expected = np.asarray(td.scan_num_to_voltage(ms1_frame_id, ms1_spectrum.scan_indices))
     np.testing.assert_allclose(out[:, 2], expected, rtol=1e-9)
 
 

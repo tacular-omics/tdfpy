@@ -62,21 +62,13 @@ def test_centroid_kwarg(td, frame_id, centroider):
     assert _centroid_count(fig) == len(get_centroided_spectrum(td, frame_id, centroid=centroider))
 
 
-def test_legacy_tolerance_kwargs_warn_and_still_apply(td, frame_id):
-    with pytest.warns(DeprecationWarning, match="centroid=MergePeaksCentroider"):
-        fig = plot_centroiding(td, frame_id, mz_tolerance=20.0, im_tolerance=0.05, min_peaks=2)
-    # Unspecified legacy knobs keep their old plot_centroiding defaults.
-    expected = MergePeaksCentroider(mz_tolerance=20.0, im_tolerance=0.05, min_peaks=2)
-    assert _centroid_count(fig) == len(get_centroided_spectrum(td, frame_id, centroid=expected))
+@pytest.mark.parametrize("kwarg", ["mz_tolerance", "mz_tolerance_type", "im_tolerance", "im_tolerance_type", "min_peaks", "max_peaks"])
+def test_removed_tolerance_kwargs_raise(td, frame_id, kwarg):
+    """5.0 removed the deprecated tolerance kwargs; pass ``centroid=`` instead."""
+    with pytest.raises(TypeError, match=kwarg):
+        plot_centroiding(td, frame_id, **{kwarg: 1})
 
 
-def test_legacy_positional_tolerance_still_works(td, frame_id):
-    with pytest.warns(DeprecationWarning):
-        fig = plot_centroiding(td, frame_id, "ook0", 20.0)
-    expected = MergePeaksCentroider(mz_tolerance=20.0, im_tolerance=0.01)
-    assert _centroid_count(fig) == len(get_centroided_spectrum(td, frame_id, centroid=expected))
-
-
-def test_centroid_and_legacy_kwargs_conflict(td, frame_id):
-    with pytest.raises(TypeError, match="centroid"):
-        plot_centroiding(td, frame_id, mz_tolerance=20.0, centroid=MergePeaksCentroider())
+def test_options_are_keyword_only(td, frame_id):
+    with pytest.raises(TypeError, match="positional"):
+        plot_centroiding(td, frame_id, "ook0")  # type: ignore[misc]

@@ -23,7 +23,7 @@ It's for proteomics and mass spec developers who want to script against timsTOF 
 - **One API for DDA, DIA, and PRM** — frames, precursors, isolation windows, targets, and transitions are all typed Python objects
 - **Composable peak pipeline** — chain region exclusion, smoothing, and noise filters before centroiding, or use short-hand defaults
 - **Two centroiders** — a Numba-JIT'd greedy merge in float m/z space, and a watershed region-grower in integer TOF-index space, swappable without touching surrounding code
-- **Lazy spectral access** — frame metadata loads upfront; raw peak data is only decoded when you call `.peaks`, `.raw_peaks()`, or `.centroid()`
+- **Lazy spectral access** — frame metadata loads upfront; raw peak data is only decoded when you call `.merged_peaks()`, `.scan_peaks()`, `.raw_peaks()`, or `.centroid()`
 - **Query by m/z and RT**, not just row index
 
 ## Installation
@@ -49,7 +49,7 @@ from tdfpy import DDA
 with DDA("sample.d") as dda:
     # Iterate over MS1 frames
     for frame in dda.ms1:
-        print(f"Frame {frame.frame_id} at RT {frame.time:.1f}s")
+        print(f"Frame {frame.frame_id} at RT {frame.rt:.1f}s")
         peaks = frame.centroid()  # shape (N, 3): [m/z, intensity, 1/K0]
         print(f"  {len(peaks)} centroided peaks")
         break
@@ -57,7 +57,7 @@ with DDA("sample.d") as dda:
     # Iterate over precursors (MS2)
     for precursor in dda.precursors:
         print(f"Precursor {precursor.precursor_id}: {precursor.largest_peak_mz:.4f} m/z")
-        peaks = precursor.peaks  # MS2 centroided by tdfpy (mobility collapse + merge)
+        peaks = precursor.merged_peaks()  # MS2 centroided by tdfpy (mobility collapse + merge)
         break
 ```
 
@@ -67,7 +67,7 @@ DIA and PRM acquisitions work the same way with `DIA(...)` and `PRM(...)`; see t
 
 | Feature | Example |
 | --- | --- |
-| **Lookups & queries** | `dda.precursors.query(mz=1292.63, mz_tolerance=20.0, rt=2400.0, rt_tolerance=30.0)` — by ID or by m/z/RT window |
+| **Lookups & queries** | `dda.precursors.query(precursor_mz=1292.63, mz_tolerance=20.0, rt=2400.0, rt_tolerance=30.0)` — by ID or by m/z/RT window |
 | **Custom peak pipelines** | `frame.centroid(exclude=ChargeStateRegion(), smooth=Smooth(...), noise=[MadThreshold(k=3), ...], centroid=WatershedCentroider(...))` |
 | **Noise filter shorthand** | `frame.centroid(noise="mad")` or `frame.centroid(noise=500.0)` for common cases |
 | **CLI validation** | `tdfpy validate sample.d --full` checks every binary frame without modifying the acquisition |

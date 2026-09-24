@@ -23,14 +23,16 @@ from dataclasses import dataclass
 import numpy as np
 import numpy.typing as npt
 
+from .errors import TdfpyError, UnsupportedCalibrationError
+
 __all__ = [
     "MZ_MODEL_TYPE",
     "TIMS_MODEL_TYPE",
     "MzCalibration",
     "TimsCalibration",
     "UnsupportedCalibrationError",
-    "ccs_to_one_over_k0",
-    "one_over_k0_to_ccs",
+    "ccs_to_ook0",
+    "ook0_to_ccs",
 ]
 
 #: The only ``MzCalibration.ModelType`` this module implements.
@@ -51,15 +53,6 @@ _CCS_TEMPERATURE = 31.85 + 273.15  # K
 
 # Anything ``np.asarray`` accepts; conversions coerce to float64 on entry.
 ArrayLike = npt.ArrayLike
-
-
-class UnsupportedCalibrationError(NotImplementedError):
-    """Raised for a calibration model type that has not been validated.
-
-    Bruker ships several model types; only those seen on real data are
-    implemented here. Rather than approximate an unknown model, callers are told
-    to fall back to Bruker's native library.
-    """
 
 
 def _as_float_array(values: ArrayLike) -> npt.NDArray[np.float64]:
@@ -150,7 +143,7 @@ class MzCalibration:
         # downstream can detect that, so refuse rather than approximate.
         below = d < 0.0
         if bool(np.any(below)):
-            raise ValueError(
+            raise TdfpyError(
                 f"index_to_mz: {int(np.count_nonzero(below))} of {below.size} TOF "
                 f"index(es) fall below {self.min_tof_index:.6g}, where the modelled "
                 f"flight time is shorter than C0 ({self.c0:.6g}) and the model has "
@@ -224,18 +217,18 @@ class TimsCalibration:
         """Convert TIMS ramp voltage to (fractional) scan numbers."""
         return (_as_float_array(voltage) - self.c2) * self.c1 / (self.c3 - self.c2) + self.c0 + self.c4
 
-    def scan_to_one_over_k0(self, scan: ArrayLike) -> npt.NDArray[np.float64]:
+    def scan_to_ook0(self, scan: ArrayLike) -> npt.NDArray[np.float64]:
         """Convert scan numbers to inverse reduced mobility (1/K0)."""
         v = self.scan_to_voltage(scan)
         return v / (self.c7 + self.c6 * v)
 
-    def one_over_k0_to_scan(self, one_over_k0: ArrayLike) -> npt.NDArray[np.float64]:
+    def ook0_to_scan(self, ook0: ArrayLike) -> npt.NDArray[np.float64]:
         """Convert inverse reduced mobility (1/K0) to (fractional) scan numbers."""
-        y = _as_float_array(one_over_k0)
+        y = _as_float_array(ook0)
         return self.voltage_to_scan(self.c7 * y / (1.0 - self.c6 * y))
 
 
-def one_over_k0_to_ccs(one_over_k0: float, charge: int, mz: float) -> float:
+def ook0_to_ccs(ook0: float, charge: int, mz: float) -> float:
     """Convert 1/K0 to a collision cross section via the Mason-Schamp equation.
 
     Follows Bruker's convention of treating ``mz * charge`` as the ion mass
@@ -244,11 +237,11 @@ def one_over_k0_to_ccs(one_over_k0: float, charge: int, mz: float) -> float:
     """
     mass = mz * charge
     reduced_mass = (mass * _CCS_MASS_GAS) / (mass + _CCS_MASS_GAS)
-    return float(_CCS_K * charge / np.sqrt(reduced_mass * _CCS_TEMPERATURE) * one_over_k0)
+    return float(_CCS_K * charge / np.sqrt(reduced_mass * _CCS_TEMPERATURE) * ook0)
 
 
-def ccs_to_one_over_k0(ccs: float, charge: int, mz: float) -> float:
-    """Inverse of :func:`one_over_k0_to_ccs`."""
+def ccs_to_ook0(ccs: float, charge: int, mz: float) -> float:
+    """Inverse of :func:`ook0_to_ccs`."""
     mass = mz * charge
     reduced_mass = (mass * _CCS_MASS_GAS) / (mass + _CCS_MASS_GAS)
     return float(np.sqrt(reduced_mass * _CCS_TEMPERATURE) * ccs / (_CCS_K * charge))

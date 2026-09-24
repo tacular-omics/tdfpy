@@ -12,6 +12,9 @@ from pathlib import Path
 import pandas as pd
 
 from .constants import TableNames
+from .errors import TdfpyError
+
+__all__ = ["PandasTdf", "convert_table_to_df"]
 
 logger = logging.getLogger(__name__)
 
@@ -29,11 +32,14 @@ def convert_table_to_df(db_path: str | Path, table_name: str) -> pd.DataFrame:
 
     Raises:
         FileNotFoundError: If the database file does not exist.
-        ValueError: If the table name is not a recognized TDF table.
+        TdfpyError: If the table name is not a recognized TDF table, or SQLite fails to read it.
     """
+    # Normalise enum members to their plain value so messages read "'Frames'",
+    # not "<TableNames.FRAMES: 'Frames'>".
+    table_name = table_name.value if isinstance(table_name, TableNames) else str(table_name)
     valid_names = {tn.value for tn in TableNames}
     if table_name not in valid_names:
-        raise ValueError(f"Invalid table name: {table_name!r}. Must be one of: {sorted(valid_names)}")
+        raise TdfpyError(f"Invalid table name: {table_name!r}. Must be one of: {sorted(valid_names)}")
     db_path = Path(db_path)
     if not db_path.exists():
         raise FileNotFoundError(f"TDF database not found: {db_path}")
@@ -44,7 +50,7 @@ def convert_table_to_df(db_path: str | Path, table_name: str) -> pd.DataFrame:
         with closing(sqlite3.connect(db_path.resolve().as_uri() + "?mode=ro", uri=True)) as conn:
             return pd.read_sql_query(f"SELECT * FROM {table_name}", conn)
     except (sqlite3.Error, pd.errors.DatabaseError) as e:
-        raise RuntimeError(f"Failed to read table {table_name!r} from TDF database {db_path}: {e}") from e
+        raise TdfpyError(f"Failed to read table {table_name!r} from TDF database {db_path}: {e}") from e
 
 
 @dataclass
@@ -233,13 +239,19 @@ class PandasTdf:
 
         Returns:
             list[str]: A list of table names in the database.
+
+        Raises:
+            TdfpyError: If SQLite cannot read the database.
         """
         # closing(), not the connection's own context manager, which only ends
         # the transaction and would leave the handle open until GC.
-        with closing(sqlite3.connect(str(self.db_path))) as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
-            table_names = [table[0] for table in cursor.fetchall()]
+        try:
+            with closing(sqlite3.connect(Path(self.db_path).resolve().as_uri() + "?mode=ro", uri=True)) as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
+                table_names = [table[0] for table in cursor.fetchall()]
+        except sqlite3.Error as exc:
+            raise TdfpyError(f"Failed to list tables of TDF database {self.db_path}: {exc}") from exc
         return table_names
 
     @property

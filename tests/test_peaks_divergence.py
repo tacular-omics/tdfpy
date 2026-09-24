@@ -1,6 +1,6 @@
 """Bound how far tdfpy's peak picking may drift from Bruker's.
 
-``Precursor.peaks`` and ``PasefFrameMsmsInfo.peaks`` used to call Bruker's
+``Precursor.merged_peaks()`` and ``PasefFrameMsmsInfo.merged_peaks()`` used to call Bruker's
 proprietary peak picker. tdfpy now sums the mobility dimension away and
 centroids by greedy m/z merging, which is close but deliberately not identical:
 Bruker's algorithm is closed and appears to smooth before picking.
@@ -121,14 +121,14 @@ def test_dia_window_peaks_track_bruker(entry: dict) -> None:
     )
 
 
-def test_precursor_peaks_property_uses_collapsed_spectrum() -> None:
-    """The public property must produce the same peaks as the helper."""
+def test_precursor_merged_peaks_uses_collapsed_spectrum() -> None:
+    """The public method must produce the same peaks as the helper."""
     if not DDA_PATH.is_dir():
         pytest.skip("Test data not found")
     entry = GOLDEN["dda_precursors"][0]
     with DDA(str(DDA_PATH)) as dda:
         precursor = dda.precursors[entry["precursor"]]
-        via_property = precursor.peaks
+        via_property = precursor.merged_peaks()
         via_helper = get_mobility_collapsed_spectrum(dda.timsdata, [tuple(r) for r in entry["scan_ranges"]])
     np.testing.assert_allclose(via_property, via_helper)
 
@@ -140,7 +140,7 @@ def test_collapsed_spectrum_conserves_total_intensity() -> None:
     entry = GOLDEN["dda_precursors"][0]
     ranges = [tuple(r) for r in entry["scan_ranges"]]
     with timsdata_connect(str(DDA_PATH)) as td:
-        raw_total = sum(int(intensities.sum()) for frame_id, begin, end in ranges for _, intensities in td.readScans(frame_id, begin, end))
+        raw_total = sum(int(intensities.sum()) for frame_id, begin, end in ranges for _, intensities in td.read_scans(frame_id, begin, end))
         peaks = get_mobility_collapsed_spectrum(td, ranges)
     assert peaks[:, 1].sum() == pytest.approx(raw_total)
 

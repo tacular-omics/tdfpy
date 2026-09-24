@@ -117,7 +117,7 @@ c1.metric("Precursor", f"P{precursor_id}")
 mono = info.get("monoisotopic_mz")
 c2.metric("Monoisotopic m/z", f"{mono:.4f}" if mono else "—")
 c3.metric("Charge", str(info.get("charge")) if info.get("charge") else "—")
-c4.metric("Parent MS1 frame", str(info.get("parent_frame", "—")))
+c4.metric("Parent MS1 frame", str(info.get("parent_frame_id", "—")))
 
 extra = []
 if info.get("rt_min") is not None:
@@ -130,9 +130,9 @@ if extra:
     st.caption("  ·  ".join(extra))
 
 # Deep-link to the parent MS1 frame on the MS1 page.
-if info.get("parent_frame"):
-    if st.button(f"↳ View parent MS1 frame {info['parent_frame']} with precursor overlay"):
-        st.session_state["ms1_jump_frame"] = int(info["parent_frame"])
+if info.get("parent_frame_id"):
+    if st.button(f"↳ View parent MS1 frame {info['parent_frame_id']} with precursor overlay"):
+        st.session_state["ms1_jump_frame"] = int(info["parent_frame_id"])
         st.switch_page("pages/ms1.py")
 
 

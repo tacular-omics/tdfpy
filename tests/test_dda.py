@@ -29,7 +29,7 @@ def test_dda_precursors():
         assert p1.charge == 2
         assert p1.scan_number == pytest.approx(162.94034090909093)
         assert p1.intensity == pytest.approx(3603.0)
-        assert p1.parent_frame == 1
+        assert p1.parent_frame_id == 1
 
         print(p1)
 
@@ -49,7 +49,7 @@ def test_dda_precursors():
         assert p_last.average_mz == pytest.approx(636.152187)
         assert p_last.charge == 2
         assert p_last.scan_number == pytest.approx(375.340166)
-        assert p_last.parent_frame == 700
+        assert p_last.parent_frame_id == 700
 
 
 def test_dda_frames():
@@ -60,11 +60,11 @@ def test_dda_frames():
         # Frame 1
         # Row 0: 1, 2400.831487, +, 8, 0, 0, 35579, 31546080, 671, 337047, ...
         f1 = next(f for f in ms1_frames if f.frame_id == 1)
-        assert f1.time == pytest.approx(2400.831487)
+        assert f1.rt == pytest.approx(2400.831487)
         assert f1.polarity == "positive"
         assert f1.scan_mode == 8
         assert f1.msms_type == 0
-        assert f1.max_intensity == 35579
+        assert f1.base_peak_intensity == 35579
         assert f1.num_scans == 671
         assert f1.num_peaks == 337047
         assert f1.accumulation_time == pytest.approx(73.03)
@@ -90,7 +90,7 @@ def test_dda_lookup_features():
         # Test Precursor Query by m/z
         # Precursor 1 has monoisotopic_mz 1292.637062
         mz_target = 1292.637062
-        results = list(dda.precursors.query(mz=mz_target, mz_tolerance=0.01, mz_tolerance_type="da"))
+        results = list(dda.precursors.query(precursor_mz=mz_target, mz_tolerance=0.01, mz_tolerance_type="da"))
         found_ids = [p.precursor_id for p in results]
         assert 1 in found_ids
 
@@ -112,10 +112,10 @@ def test_dda_lookup_features():
 
 @SKIP_NO_DATA
 def test_dda_precursor_peaks():
-    """Precursor.peaks returns a native-centroided (N, 2) m/z-sorted array."""
+    """Precursor.merged_peaks() returns a mobility-collapsed (N, 2) array."""
     with DDA(D_PATH) as dda:
         p1 = dda.precursors[1]
-        peaks = p1.peaks
+        peaks = p1.merged_peaks()
 
         assert isinstance(peaks, np.ndarray)
         assert peaks.ndim == 2
@@ -130,17 +130,17 @@ def test_dda_precursor_peaks():
 
 
 @SKIP_NO_DATA
-def test_dda_precursor_pasef_peaks():
-    """pasef_peaks yields one (N, 2) array per PASEF MS/MS window."""
+def test_dda_precursor_pasef_merged_peaks():
+    """pasef_merged_peaks() yields one (N, 2) array per PASEF MS/MS window."""
     with DDA(D_PATH) as dda:
         p1 = dda.precursors[1]
-        pasef_peaks = p1.pasef_peaks
+        per_window = p1.pasef_merged_peaks()
 
-        assert isinstance(pasef_peaks, list)
-        assert len(pasef_peaks) == len(p1.pasef_frame_msms_infos)
-        assert len(pasef_peaks) > 0
+        assert isinstance(per_window, list)
+        assert len(per_window) == len(p1.pasef_frame_msms_infos)
+        assert len(per_window) > 0
 
-        for arr in pasef_peaks:
+        for arr in per_window:
             assert isinstance(arr, np.ndarray)
             assert arr.ndim == 2
             assert arr.shape[1] == 2
@@ -191,17 +191,23 @@ def test_dda_access_after_close():
         frame = dda.ms1[1]
         precursor = dda.precursors[1]
         # Warm up: these all work while the reader is open.
-        assert len(frame.peaks) > 0
-        assert precursor.peaks.shape[1] == 2
+        assert len(frame.scan_peaks()) > 0
+        assert precursor.merged_peaks().shape[1] == 2
 
     with pytest.raises(RuntimeError, match="closed"):
-        _ = frame.peaks
+        _ = frame.scan_peaks()
 
     with pytest.raises(RuntimeError, match="closed"):
         frame.centroid()
 
     with pytest.raises(RuntimeError, match="closed"):
-        _ = precursor.peaks
+        precursor.merged_peaks()
+
+    with pytest.raises(RuntimeError, match="closed"):
+        _ = precursor.ook0
+
+    with pytest.raises(RuntimeError, match="closed"):
+        _ = dda.timsdata
 
     with pytest.raises(RuntimeError, match="closed"):
         _ = dda.ms1
@@ -209,9 +215,8 @@ def test_dda_access_after_close():
     with pytest.raises(RuntimeError, match="closed"):
         _ = dda.precursors
 
-    # Current behaviour: metadata is read from the SQLite file on demand and
-    # does not depend on the TimsData handle, so it stays available.
-    assert isinstance(dda.metadata.instrument_name, str)
+    with pytest.raises(RuntimeError, match="closed"):
+        _ = dda.metadata
 
 
 if __name__ == "__main__":

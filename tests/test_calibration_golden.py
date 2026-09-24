@@ -18,7 +18,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from tdfpy.timsdata import TimsData, oneOverK0ToCCSforMz
+from tdfpy.calibration import ook0_to_ccs
+from tdfpy.timsdata import TimsData
 
 DATA_DIR = Path("tests/data")
 GOLDEN_PATH = DATA_DIR / "calibration_golden.json"
@@ -64,7 +65,7 @@ def test_calibration_matches_golden(fixture: str) -> None:
             fid = entry["frame_id"]
             tof = np.asarray(entry["tof_indices"], dtype=np.float64)
 
-            got_mz = np.asarray(td.indexToMz(fid, tof), dtype=np.float64)
+            got_mz = np.asarray(td.index_to_mz(fid, tof), dtype=np.float64)
             np.testing.assert_allclose(
                 got_mz,
                 entry["mz"],
@@ -74,7 +75,7 @@ def test_calibration_matches_golden(fixture: str) -> None:
             )
 
             np.testing.assert_allclose(
-                np.asarray(td.mzToIndex(fid, np.asarray(entry["mz"]))),
+                np.asarray(td.mz_to_index(fid, np.asarray(entry["mz"]))),
                 entry["mz_to_index"],
                 rtol=0,
                 atol=INDEX_ATOL,
@@ -83,7 +84,7 @@ def test_calibration_matches_golden(fixture: str) -> None:
 
             scans = np.asarray(entry["scans"], dtype=np.float64)
             np.testing.assert_allclose(
-                np.asarray(td.scanNumToOneOverK0(fid, scans)),
+                np.asarray(td.scan_num_to_ook0(fid, scans)),
                 entry["one_over_k0"],
                 rtol=0,
                 atol=OOK0_ATOL,
@@ -91,15 +92,15 @@ def test_calibration_matches_golden(fixture: str) -> None:
             )
 
             np.testing.assert_allclose(
-                np.asarray(td.oneOverK0ToScanNum(fid, np.asarray(entry["one_over_k0"]))),
-                entry["one_over_k0_to_scan"],
+                np.asarray(td.ook0_to_scan_num(fid, np.asarray(entry["one_over_k0"]))),
+                entry["one_over_k0_to_scan"],  # golden JSON key, frozen
                 rtol=0,
                 atol=SCAN_ATOL,
                 err_msg=f"{fixture} frame {fid}: 1/K0->scan drifted",
             )
 
             np.testing.assert_allclose(
-                np.asarray(td.scanNumToVoltage(fid, scans)),
+                np.asarray(td.scan_num_to_voltage(fid, scans)),
                 entry["voltage"],
                 rtol=0,
                 atol=VOLTAGE_ATOL,
@@ -109,7 +110,7 @@ def test_calibration_matches_golden(fixture: str) -> None:
 
 @pytest.mark.parametrize("fixture", FIXTURES)
 def test_index_mz_roundtrip(fixture: str) -> None:
-    """``mzToIndex`` must invert ``indexToMz`` on the captured grid."""
+    """``mz_to_index`` must invert ``index_to_mz`` on the captured grid."""
     d = DATA_DIR / fixture
     if not d.is_dir():
         pytest.skip(f"test data not found: {d}")
@@ -118,13 +119,13 @@ def test_index_mz_roundtrip(fixture: str) -> None:
         for entry in GOLDEN["fixtures"][fixture]["frames"]:
             fid = entry["frame_id"]
             tof = np.asarray(entry["tof_indices"], dtype=np.float64)
-            back = np.asarray(td.mzToIndex(fid, td.indexToMz(fid, tof)))
+            back = np.asarray(td.mz_to_index(fid, td.index_to_mz(fid, tof)))
             np.testing.assert_allclose(back, tof, rtol=0, atol=INDEX_ATOL)
 
 
 @pytest.mark.parametrize("fixture", FIXTURES)
 def test_ook0_scan_roundtrip(fixture: str) -> None:
-    """``oneOverK0ToScanNum`` must invert ``scanNumToOneOverK0``."""
+    """``ook0_to_scan_num`` must invert ``scan_num_to_ook0``."""
     d = DATA_DIR / fixture
     if not d.is_dir():
         pytest.skip(f"test data not found: {d}")
@@ -133,7 +134,7 @@ def test_ook0_scan_roundtrip(fixture: str) -> None:
         for entry in GOLDEN["fixtures"][fixture]["frames"]:
             fid = entry["frame_id"]
             scans = np.asarray(entry["scans"], dtype=np.float64)
-            back = np.asarray(td.oneOverK0ToScanNum(fid, td.scanNumToOneOverK0(fid, scans)))
+            back = np.asarray(td.ook0_to_scan_num(fid, td.scan_num_to_ook0(fid, scans)))
             np.testing.assert_allclose(back, scans, rtol=0, atol=SCAN_ATOL)
 
 
@@ -143,7 +144,7 @@ def test_ccs_matches_golden() -> None:
     if not probes:
         pytest.skip("golden file has no CCS probes")
 
-    got = [oneOverK0ToCCSforMz(p["one_over_k0"], p["charge"], p["mz"]) for p in probes]
+    got = [ook0_to_ccs(p["one_over_k0"], p["charge"], p["mz"]) for p in probes]
     np.testing.assert_allclose(got, [p["ccs"] for p in probes], rtol=CCS_RTOL, atol=0)
 
 

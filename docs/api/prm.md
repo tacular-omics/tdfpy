@@ -21,10 +21,10 @@ with PRM("experiment.d") as prm:
     for target in prm.targets:
         print(
             f"Target {target.target_id}: "
-            f"{target.monoisotopic_mz:.4f} m/z, "
+            f"{target.precursor_mz:.4f} m/z, "
             f"charge {target.charge}, "
-            f"RT {target.time:.1f} s, "
-            f"1/K0 {target.one_over_k0:.3f}"
+            f"RT {target.rt:.1f} s, "
+            f"1/K0 {target.ook0:.3f}"
         )
         # All transitions collected for this target
         for tr in target.transitions:
@@ -41,7 +41,7 @@ A `PrmTransition` represents a single MS2 acquisition event for a PRM target —
 isolation window applied to a specific frame and mobility scan range. Multiple transitions
 are collected for each target as the analyte elutes across time.
 
-`PrmTransition` provides `.peaks` for raw scan data and `.centroid()` for processed spectra,
+`PrmTransition` provides `.scan_peaks()` for raw per-scan data and `.centroid()` for processed spectra,
 consistent with the `DiaWindow` and `PasefFrameMsmsInfo` APIs.
 
 ```python

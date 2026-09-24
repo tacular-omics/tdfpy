@@ -2,7 +2,7 @@ import pathlib
 
 import pytest
 
-from tdfpy import DIA, DIAMs1Frame, DiaWindow, DiaWindowGroup, get_acquisition_type
+from tdfpy import DIA, DIAMs1Frame, DiaWindow, DiaWindowGroup, ReaderClosedError, get_acquisition_type
 
 D_PATH = "tests/data/example_dia.d"
 SKIP_NO_DATA = pytest.mark.skipif(not pathlib.Path(D_PATH).exists(), reason="Test data not available")
@@ -30,12 +30,12 @@ def test_dia_ms1_frames():
         f1 = dia.ms1[1]
         assert isinstance(f1, DIAMs1Frame)
         assert f1.frame_id == 1
-        assert f1.time == pytest.approx(0.765083)
+        assert f1.rt == pytest.approx(0.765083)
         assert f1.polarity == "positive"
         assert f1.scan_mode == 9
         assert f1.msms_type == 0
-        assert f1.max_intensity == 1325
-        assert f1.summed_intensities == 1925567
+        assert f1.base_peak_intensity == 1325
+        assert f1.total_ion_current == 1925567
         assert f1.num_scans == 918
         assert f1.num_peaks == 57972
         assert f1.accumulation_time == pytest.approx(99.953)
@@ -52,7 +52,7 @@ def test_dia_windows():
         # First window: WindowGroup 1, IsolationMz 813.0, Frame 2
         w0 = all_windows[0]
         assert isinstance(w0, DiaWindow)
-        assert w0.window_group == 1
+        assert w0.window_group_id == 1
         assert w0.isolation_mz == pytest.approx(813.0)
         assert w0.isolation_width == pytest.approx(26.0)
         assert w0.collision_energy == pytest.approx(37.191436)
@@ -68,10 +68,8 @@ def test_dia_window_properties():
     with DIA(D_PATH) as dia:
         w0 = next(iter(dia.windows))
         assert w0.scan_num_range == (393, 657)
-        # isolation_mz=813.0, isolation_width=26.0 -> mz_begin=800.0, mz_end=826.0
-        assert w0.mz_begin == pytest.approx(800.0)
-        assert w0.mz_end == pytest.approx(826.0)
-        assert w0.mz_range == (w0.mz_begin, w0.mz_end)
+        # isolation_mz=813.0, isolation_width=26.0 -> isolation range 800.0-826.0
+        assert w0.isolation_mz_range == pytest.approx((800.0, 826.0))
 
 
 def test_dia_window_groups():
@@ -85,7 +83,7 @@ def test_dia_window_groups():
 
         # First entry is the first sub-window of group 1
         g0 = groups[0]
-        assert g0.window_group == 1
+        assert g0.window_group_id == 1
         assert g0.isolation_mz == pytest.approx(813.0)
         assert g0.isolation_width == pytest.approx(26.0)
         assert g0.scan_num_begin == 393
@@ -93,14 +91,14 @@ def test_dia_window_groups():
 
 
 def test_dia_window_lookup_by_group():
-    """Test DiaWindowLookup indexing by window_group ID."""
+    """Test DiaWindowLookup indexing by window_group_id."""
     with DIA(D_PATH) as dia:
         # Window group 1 occurs in multiple frames; each occurrence contributes
         # 2 sub-windows. There are 30 frames assigned to group 1 -> 60 entries.
         group1_windows = dia.windows[1]
         assert len(group1_windows) == 60
         for w in group1_windows:
-            assert w.window_group == 1
+            assert w.window_group_id == 1
 
         # Invalid group raises KeyError
         with pytest.raises(KeyError):
@@ -128,12 +126,12 @@ def test_dia_window_query_by_rt():
 def test_dia_window_query_by_window_group():
     """Test querying DIA windows by window group."""
     with DIA(D_PATH) as dia:
-        results = list(dia.windows.query(window_group_index=1))
+        results = list(dia.windows.query(window_group=1))
         assert len(results) > 0
         # Querying by window group returns every window belonging to that
         # group (matching how the lookup is keyed and indexed elsewhere).
         for w in results:
-            assert w.window_group == 1
+            assert w.window_group_id == 1
 
 
 def test_dia_ms1_frame_lookup():
@@ -150,15 +148,11 @@ def test_dia_ms1_frame_lookup():
         assert dia.ms1.get(1) is f1
 
 
-def test_dia_ms1_frame_dia_windows_attr():
-    """Test that DIAMs1Frame exposes a dia_windows tuple."""
+def test_dia_ms1_frame_has_no_dia_windows_field():
+    """The always-empty ``dia_windows`` field was removed in 5.0."""
     with DIA(D_PATH) as dia:
         f1 = dia.ms1[1]
-        # dia_windows holds windows whose Frame ID equals the MS1 frame ID.
-        # In this dataset, DIA windows live on the adjacent MS2 frames, so
-        # the MS1 frame itself has no associated dia_windows.
-        assert isinstance(f1.dia_windows, tuple)
-        assert len(f1.dia_windows) == 0
+        assert not hasattr(f1, "dia_windows")
 
 
 def test_dia_ms1_frame_centroid():
@@ -195,17 +189,17 @@ def test_dia_access_after_close():
         frame = dia.ms1[1]
         window = next(iter(dia.windows))
         # Warm up: these all work while the reader is open.
-        assert len(frame.peaks) > 0
+        assert len(frame.scan_peaks()) > 0
         assert window.centroid().shape[1] == 3
 
     with pytest.raises(RuntimeError, match="closed"):
-        _ = frame.peaks
+        _ = frame.scan_peaks()
 
     with pytest.raises(RuntimeError, match="closed"):
         frame.centroid()
 
     with pytest.raises(RuntimeError, match="closed"):
-        _ = window.peaks
+        _ = window.scan_peaks()
 
     with pytest.raises(RuntimeError, match="closed"):
         window.centroid()
@@ -216,9 +210,10 @@ def test_dia_access_after_close():
     with pytest.raises(RuntimeError, match="closed"):
         _ = dia.windows
 
-    # Current behaviour: metadata is read from the SQLite file on demand and
-    # does not depend on the TimsData handle, so it stays available.
-    assert isinstance(dia.metadata.instrument_name, str)
+    # 5.0: everything that reads the file raises once the reader is closed.
+    for name in ("metadata", "calibration", "pandas_tdf", "timsdata"):
+        with pytest.raises(ReaderClosedError):
+            getattr(dia, name)
 
 
 if __name__ == "__main__":

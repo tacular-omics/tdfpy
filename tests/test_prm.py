@@ -3,7 +3,7 @@ import pathlib
 import numpy as np
 import pytest
 
-from tdfpy import PRM, PrmTarget, PrmTransition, get_acquisition_type
+from tdfpy import PRM, PrmTarget, PrmTransition, ReaderClosedError, get_acquisition_type
 
 D_PATH = "tests/data/example_prm.d"
 SKIP_NO_DATA = pytest.mark.skipif(not pathlib.Path(D_PATH).exists(), reason="Test data not available")
@@ -32,17 +32,17 @@ def test_prm_targets():
         assert isinstance(t1, PrmTarget)
         assert t1.target_id == 1
         assert t1.external_id is None
-        assert t1.time == pytest.approx(354.0)
-        assert t1.one_over_k0 == pytest.approx(0.81)
-        assert t1.monoisotopic_mz == pytest.approx(487.26)
+        assert t1.rt == pytest.approx(354.0)
+        assert t1.ook0 == pytest.approx(0.81)
+        assert t1.precursor_mz == pytest.approx(487.26)
         assert t1.charge == 2
         assert t1.description == ""
 
         # Target 2
         t2 = prm.targets[2]
-        assert t2.monoisotopic_mz == pytest.approx(644.82)
-        assert t2.time == pytest.approx(864.0)
-        assert t2.one_over_k0 == pytest.approx(0.945, abs=0.001)
+        assert t2.precursor_mz == pytest.approx(644.82)
+        assert t2.rt == pytest.approx(864.0)
+        assert t2.ook0 == pytest.approx(0.945, abs=0.001)
         assert t2.charge == 2
 
 
@@ -62,7 +62,7 @@ def test_prm_target_lookup_by_id():
 def test_prm_target_query_by_mz():
     """Test querying PRM targets by m/z."""
     with PRM(D_PATH) as prm:
-        results = list(prm.targets.query(mz=487.26, mz_tolerance=0.01, mz_tolerance_type="da"))
+        results = list(prm.targets.query(precursor_mz=487.26, mz_tolerance=0.01, mz_tolerance_type="da"))
         assert len(results) >= 1
         assert any(t.target_id == 1 for t in results)
 
@@ -135,7 +135,7 @@ def test_prm_transition_target_reference():
         t1_transitions = prm.transitions[1]
         tr = t1_transitions[0]
         assert tr.target is prm.targets[1]
-        assert tr.target.monoisotopic_mz == pytest.approx(487.26)
+        assert tr.target.precursor_mz == pytest.approx(487.26)
 
 
 def test_prm_transition_properties():
@@ -145,9 +145,7 @@ def test_prm_transition_properties():
         tr = t1_transitions[0]
 
         assert tr.scan_num_range == (1492, 1565)
-        assert tr.mz_begin == pytest.approx(486.76)
-        assert tr.mz_end == pytest.approx(487.76)
-        assert tr.mz_range == (tr.mz_begin, tr.mz_end)
+        assert tr.isolation_mz_range == pytest.approx((486.76, 487.76))
 
 
 def test_prm_transition_query_by_rt():
@@ -169,7 +167,7 @@ def test_prm_ms1_frames():
         # First MS1 frame
         f1 = prm.ms1[1]
         assert f1.frame_id == 1
-        assert f1.time == pytest.approx(1.723616)
+        assert f1.rt == pytest.approx(1.723616)
         assert f1.polarity == "positive"
         assert f1.msms_type == 0
 
@@ -194,10 +192,10 @@ def test_prm_metadata():
 
 @SKIP_NO_DATA
 def test_prm_transition_peaks():
-    """PrmTransition.peaks returns one (N, 2) array per mobility scan."""
+    """PrmTransition.scan_peaks() returns one (N, 2) array per mobility scan."""
     with PRM(D_PATH) as prm:
         tr = next(t for t in prm.transitions[1] if t.frame_id == 275)
-        per_scan = tr.peaks
+        per_scan = tr.scan_peaks()
 
         assert isinstance(per_scan, list)
         # One entry per scan in [scan_num_begin, scan_num_end).
@@ -244,12 +242,18 @@ def test_prm_transition_mobility_range():
         tr = next(t for t in prm.transitions[1] if t.frame_id == 275)
 
         ook0_begin, ook0_end = tr.ook0_range
-        # Scan number and 1/K0 run in opposite directions.
-        assert ook0_begin > ook0_end > 0.0
+        # Scan number and 1/K0 run in opposite directions, but ranges are
+        # always (low, high) to match isolation_mz_range and query_range(ook0_range=).
+        assert 0.0 < ook0_begin < ook0_end
         assert tr.ook0_range == (tr.ook0_begin, tr.ook0_end)
+        high_scan_ook0 = float(prm.timsdata.scan_num_to_ook0(tr.frame_id, [tr.scan_num_end])[0])
+        assert ook0_begin == pytest.approx(high_scan_ook0)
 
         ccs_begin, ccs_end = tr.ccs_range
-        assert ccs_begin > ccs_end > 0.0
+        assert 0.0 < ccs_begin < ccs_end
+        assert tr.ccs_range == (tr.ccs_begin, tr.ccs_end)
+        v_begin, v_end = tr.voltage_range
+        assert v_begin <= v_end
 
 
 @SKIP_NO_DATA
@@ -259,17 +263,17 @@ def test_prm_access_after_close():
         frame = prm.ms1[1]
         transition = prm.transitions[1][0]
         # Warm up: these all work while the reader is open.
-        assert len(frame.peaks) > 0
+        assert len(frame.scan_peaks()) > 0
         assert transition.raw_peaks().shape[1] == 3
 
     with pytest.raises(RuntimeError, match="closed"):
-        _ = frame.peaks
+        _ = frame.scan_peaks()
 
     with pytest.raises(RuntimeError, match="closed"):
         frame.centroid()
 
     with pytest.raises(RuntimeError, match="closed"):
-        _ = transition.peaks
+        _ = transition.scan_peaks()
 
     with pytest.raises(RuntimeError, match="closed"):
         transition.centroid()
@@ -280,9 +284,10 @@ def test_prm_access_after_close():
     with pytest.raises(RuntimeError, match="closed"):
         _ = prm.transitions
 
-    # Current behaviour: metadata is read from the SQLite file on demand and
-    # does not depend on the TimsData handle, so it stays available.
-    assert isinstance(prm.metadata.instrument_name, str)
+    # 5.0: everything that reads the file raises once the reader is closed.
+    for name in ("metadata", "calibration", "pandas_tdf", "timsdata"):
+        with pytest.raises(ReaderClosedError):
+            getattr(prm, name)
 
 
 if __name__ == "__main__":

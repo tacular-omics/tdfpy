@@ -38,33 +38,27 @@ import os
 import sqlite3
 import sys
 import threading
-import warnings
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import Enum
+from numbers import Integral
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import numpy.typing as npt
 
-from .calibration import (
-    MzCalibration,
-    TimsCalibration,
-    ccs_to_one_over_k0,
-    one_over_k0_to_ccs,
-)
+from .calibration import MzCalibration, TimsCalibration
+from .errors import ReaderClosedError, TdfpyError, TdfpyKeyError, UnsupportedTdfError
 
 logger = logging.getLogger(__name__)
 
 __all__ = [
+    "SUPPORTED_COMPRESSION_TYPE",
+    "FrameMetadata",
     "PressureCompensationStrategy",
     "TimsData",
-    "UnsupportedTdfError",
-    "ccsToOneOverK0ToCCSforMz",
-    "ccsToOneOverK0forMz",
-    "oneOverK0ToCCSforMz",
     "timsdata_connect",
 ]
 
@@ -80,25 +74,35 @@ _PREAD: Callable[[int, int, int], bytes] | None = getattr(os, "pread", None)
 _HAS_PREAD = _PREAD is not None
 
 
-class UnsupportedTdfError(NotImplementedError):
-    """Raised for a ``.d`` folder this reader has not been validated against."""
-
-
 @dataclass(frozen=True)
 class FrameMetadata:
-    """Immutable frame metadata loaded when the reader opens. Time is in seconds."""
+    """Immutable per-frame metadata, loaded from the ``Frames`` table when the reader opens.
+
+    Returned by :meth:`TimsData.frame_metadata`. Reading it needs no SQLite access.
+    """
 
     frame_id: int
-    time: float
+    """Frame ID (``Frames.Id``, 1-based)."""
+    rt: float
+    """Retention time in seconds (``Frames.Time``)."""
     msms_type: int
+    """``Frames.MsMsType``: 0 MS1, 8 DDA MS2, 9 DIA MS2, 10 PRM MS2 (see :class:`~tdfpy.MsMsType`)."""
     polarity: str
+    """``Frames.Polarity`` as stored (``"+"`` or ``"-"``)."""
     num_scans: int
+    """Number of TIMS scans in the frame."""
     num_peaks: int
-    property_group: int | None
-    mz_calibration: int
-    tims_calibration: int
+    """Number of peaks stored for the frame."""
+    property_group_id: int | None
+    """``Frames.PropertyGroup``, or ``None`` when NULL."""
+    mz_calibration_id: int
+    """``Frames.MzCalibration``: row ID in the ``MzCalibration`` table."""
+    tims_calibration_id: int
+    """``Frames.TimsCalibration``: row ID in the ``TimsCalibration`` table."""
     t1: float
+    """``Frames.T1`` temperature, used by the m/z calibration drift term."""
     t2: float
+    """``Frames.T2`` temperature, used by the m/z calibration drift term."""
 
 
 # ---------------------------------------------------------------------------
@@ -165,7 +169,11 @@ class PressureCompensationStrategy(Enum):
 
 
 def _decode_frame(
-    payload: bytes, scan_count: int, frame_id: int
+    payload: bytes,
+    scan_count: int,
+    frame_id: int,
+    scan_begin: int = 0,
+    scan_end: int | None = None,
 ) -> tuple[
     npt.NDArray[np.int64],
     npt.NDArray[np.int64],
@@ -176,6 +184,11 @@ def _decode_frame(
 
     Returns ``(scan_starts, scan_counts, tof_indices, raw_intensities)``, where the
     per-scan slices are ``tof[start:start + count]``.
+
+    Only scans ``[scan_begin, scan_end)`` are decoded into TOF indices and
+    intensities (default: all of them); ``scan_starts`` is shifted so it indexes
+    into that slice, and is meaningful for those scans only. The structural checks
+    below always cover the whole frame; the TOF-range check covers the slice.
 
     Every layout assumption is checked before any decoding arithmetic runs.
     Without those checks a corrupt payload escapes as an ``IndexError`` or a
@@ -247,19 +260,28 @@ def _decode_frame(
     starts = np.zeros(scan_count, dtype=np.int64)
     np.cumsum(counts[:-1], out=starts[1:])
 
+    # Decode only the requested scans: a precursor or DIA window touches a few
+    # dozen of a frame's ~1000 scans, and the cumsum below is the costly part.
+    end = scan_count if scan_end is None else scan_end
+    begin = scan_begin
+    lo = int(starts[begin]) if begin < scan_count else total_peaks
+    hi = int(starts[end - 1] + counts[end - 1]) if end > begin else lo
+    starts -= lo
+    counts_slice = counts[begin:end]
+
     # TOF indices are a cumulative sum of deltas that resets at every scan
-    # boundary. Done as one global cumsum minus the running total carried in at
-    # each boundary, which avoids a Python loop over scans (5-9x faster).
-    running = np.cumsum(tof_deltas, dtype=np.uint64)
-    carry = np.zeros(scan_count, dtype=np.uint64)
-    non_empty = counts > 0
-    prev_index = starts[non_empty] - 1
+    # boundary. Done as one cumsum minus the running total carried in at each
+    # boundary, which avoids a Python loop over scans (5-9x faster).
+    running = np.cumsum(tof_deltas[lo:hi], dtype=np.uint64)
+    carry = np.zeros(end - begin, dtype=np.uint64)
+    non_empty = counts_slice > 0
+    prev_index = starts[begin:end][non_empty] - 1
     carry[non_empty] = np.where(prev_index >= 0, running[np.maximum(prev_index, 0)], np.uint64(0))
-    tof = running - np.repeat(carry, counts) - np.uint64(1)
+    tof = running - np.repeat(carry, counts_slice) - np.uint64(1)
     if np.any(tof > np.iinfo(np.uint32).max):
         raise UnsupportedTdfError(f"Frame {frame_id}: TOF indices overflow uint32.")
 
-    return starts, counts, tof.astype(np.uint32), intensities
+    return starts, counts, tof.astype(np.uint32), intensities[lo:hi]
 
 
 # ---------------------------------------------------------------------------
@@ -280,11 +302,20 @@ class TimsData:
     unavailable (Windows) the seek + read pair is serialised by a lock instead.
     ``close()`` is *not* safe to race against an in-flight read, and the
     ``sqlite3`` connection on :attr:`conn` keeps sqlite3's own thread rules.
+
+    Raises:
+        FileNotFoundError: If ``analysis.tdf`` or ``analysis.tdf_bin`` is missing.
+        UnsupportedTdfError: For unsupported options, compression types or a
+            folder whose metadata is incomplete.
+        TdfpyError: If SQLite cannot read ``analysis.tdf``.
+        TdfpyKeyError: From per-frame methods, for a frame ID not in the file.
+        ReaderClosedError: From spectral reads after :meth:`close`.
     """
 
     def __init__(
         self,
         analysis_directory: str | os.PathLike[str],
+        *,
         use_recalibrated_state: bool = False,
         pressure_compensation_strategy: PressureCompensationStrategy = PressureCompensationStrategy.NoPressureCompensation,
     ) -> None:
@@ -304,14 +335,20 @@ class TimsData:
                 raise FileNotFoundError(f"{os.path.basename(path)} not found in {analysis_directory!r}")
 
         self.analysis_directory = analysis_directory
-        self.conn: sqlite3.Connection | None = sqlite3.connect(Path(tdf_path).resolve().as_uri() + "?mode=ro", uri=True)
-        self.conn.row_factory = sqlite3.Row
-
+        self.conn: sqlite3.Connection | None = None
+        self.handle: Any = None
         try:
+            self.conn = sqlite3.connect(Path(tdf_path).resolve().as_uri() + "?mode=ro", uri=True)
+            self.conn.row_factory = sqlite3.Row
             self._load_metadata()
-        except Exception:
-            self.conn.close()
-            self.conn = None
+        except sqlite3.Error as exc:
+            self.close()
+            raise TdfpyError(f"Cannot read {tdf_path!r}: {exc}") from exc
+        except KeyError as exc:
+            self.close()
+            raise UnsupportedTdfError(f"{tdf_path!r} lacks required metadata {exc}; the file may be corrupt or from an unsupported schema.") from exc
+        except BaseException:
+            self.close()
             raise
 
         #: Serialises seek + read on the shared handle for the no-``pread``
@@ -320,11 +357,9 @@ class TimsData:
         #: Open binary file object, or ``None`` once :meth:`close` has run.
         #: Callers use this only to test whether the reader is still open.
         try:
-            self.handle: Any = open(bin_path, "rb")
+            self.handle = open(bin_path, "rb")
         except BaseException:
-            self.conn.close()
-            self.conn = None
-            self.handle = None
+            self.close()
             raise
         self._fd: int = self.handle.fileno()
 
@@ -337,17 +372,17 @@ class TimsData:
         self._peak_counts = dict(self.conn.execute("SELECT Id, NumPeaks FROM Frames"))
         self._frame_metadata = {
             int(r["Id"]): FrameMetadata(
-                int(r["Id"]),
-                float(r["Time"]),
-                int(r["MsMsType"]),
-                str(r["Polarity"]),
-                int(r["NumScans"]),
-                int(r["NumPeaks"]),
-                r["PropertyGroup"],
-                int(r["MzCalibration"]),
-                int(r["TimsCalibration"]),
-                float(r["T1"]),
-                float(r["T2"]),
+                frame_id=int(r["Id"]),
+                rt=float(r["Time"]),
+                msms_type=int(r["MsMsType"]),
+                polarity=str(r["Polarity"]),
+                num_scans=int(r["NumScans"]),
+                num_peaks=int(r["NumPeaks"]),
+                property_group_id=None if r["PropertyGroup"] is None else int(r["PropertyGroup"]),
+                mz_calibration_id=int(r["MzCalibration"]),
+                tims_calibration_id=int(r["TimsCalibration"]),
+                t1=float(r["T1"]),
+                t2=float(r["T2"]),
             )
             for r in self.conn.execute("SELECT * FROM Frames ORDER BY Id")
         }
@@ -398,7 +433,7 @@ class TimsData:
                 valid = f"{lo}..{hi}"
             else:
                 valid = "none (Frames table is empty)"
-            raise ValueError(f"Frame {frame_id} not found in the Frames table (valid frame IDs: {valid}). Frame IDs are 1-based.") from None
+            raise TdfpyKeyError(f"Frame {frame_id} not found in the Frames table (valid frame IDs: {valid}). Frame IDs are 1-based.") from None
 
     def _mz_cal(self, frame_id: int) -> tuple[MzCalibration, float, float]:
         _, _, _, t1, t2, mz_id, _ = self._frame(frame_id)
@@ -424,9 +459,15 @@ class TimsData:
 
         Supported names are PropertyDefinitions, GroupProperties, and
         DiaFrameMsMsWindows. An absent table produces an empty tuple.
+
+        Raises:
+            TdfpyKeyError: If ``name`` is not one of the supported tables.
         """
         self._require_open()
-        return self._metadata_tables[name]
+        try:
+            return self._metadata_tables[name]
+        except KeyError:
+            raise TdfpyKeyError(f"Unsupported metadata table {name!r}; choose from {sorted(self._metadata_tables)}.") from None
 
     def mz_calibration_key(self, frame_id: int) -> tuple[float, ...]:
         """Identify the effective m/z conversion, including temperature drift."""
@@ -440,7 +481,7 @@ class TimsData:
             cal.c2,
         )
 
-    def calibration_key(self, frame_id: int) -> tuple:
+    def calibration_key(self, frame_id: int) -> tuple[tuple[float, ...], TimsCalibration]:
         """Identify the effective m/z and mobility conversions for caching."""
         return (self.mz_calibration_key(frame_id), self._tims_cal(frame_id))
 
@@ -456,6 +497,7 @@ class TimsData:
         self.close()
 
     def close(self) -> None:
+        """Close ``analysis.tdf_bin`` and the SQLite connection. Safe to call twice."""
         if getattr(self, "handle", None) is not None:
             self.handle.close()
             self.handle = None
@@ -466,7 +508,7 @@ class TimsData:
 
     def _require_open(self) -> Any:
         if getattr(self, "handle", None) is None:
-            raise RuntimeError("TimsData connection has been closed.")
+            raise ReaderClosedError("TimsData connection has been closed.")
         return self.handle
 
     def _pread(self, count: int, offset: int) -> bytes:
@@ -501,36 +543,36 @@ class TimsData:
 
     # -- conversions ------------------------------------------------------
 
-    def indexToMz(self, frame_id: int, indices: npt.ArrayLike) -> npt.NDArray[np.float64]:
+    def index_to_mz(self, frame_id: int, indices: npt.ArrayLike) -> npt.NDArray[np.float64]:
         """Convert TOF sample indices to m/z for ``frame_id``."""
         cal, t1, t2 = self._mz_cal(frame_id)
         return cal.index_to_mz(indices, t1, t2)
 
-    def mzToIndex(self, frame_id: int, mzs: npt.ArrayLike) -> npt.NDArray[np.float64]:
+    def mz_to_index(self, frame_id: int, mzs: npt.ArrayLike) -> npt.NDArray[np.float64]:
         """Convert m/z to (fractional) TOF sample indices for ``frame_id``."""
         cal, t1, t2 = self._mz_cal(frame_id)
         return cal.mz_to_index(mzs, t1, t2)
 
-    def scanNumToOneOverK0(self, frame_id: int, scan_nums: npt.ArrayLike) -> npt.NDArray[np.float64]:
-        """Convert scan numbers to inverse reduced mobility (1/K0)."""
-        return self._tims_cal(frame_id).scan_to_one_over_k0(scan_nums)
+    def scan_num_to_ook0(self, frame_id: int, scan_nums: npt.ArrayLike) -> npt.NDArray[np.float64]:
+        """Convert scan numbers to inverse reduced mobility 1/K0 (V·s/cm²)."""
+        return self._tims_cal(frame_id).scan_to_ook0(scan_nums)
 
-    def oneOverK0ToScanNum(self, frame_id: int, mobilities: npt.ArrayLike) -> npt.NDArray[np.float64]:
-        """Convert 1/K0 to (fractional) scan numbers."""
-        return self._tims_cal(frame_id).one_over_k0_to_scan(mobilities)
+    def ook0_to_scan_num(self, frame_id: int, ook0: npt.ArrayLike) -> npt.NDArray[np.float64]:
+        """Convert 1/K0 (V·s/cm²) to (fractional) scan numbers."""
+        return self._tims_cal(frame_id).ook0_to_scan(ook0)
 
-    def scanNumToVoltage(self, frame_id: int, scan_nums: npt.ArrayLike) -> npt.NDArray[np.float64]:
+    def scan_num_to_voltage(self, frame_id: int, scan_nums: npt.ArrayLike) -> npt.NDArray[np.float64]:
         """Convert scan numbers to TIMS ramp voltage."""
         return self._tims_cal(frame_id).scan_to_voltage(scan_nums)
 
-    def voltageToScanNum(self, frame_id: int, voltages: npt.ArrayLike) -> npt.NDArray[np.float64]:
+    def voltage_to_scan_num(self, frame_id: int, voltages: npt.ArrayLike) -> npt.NDArray[np.float64]:
         """Convert TIMS ramp voltage to (fractional) scan numbers."""
         return self._tims_cal(frame_id).voltage_to_scan(voltages)
 
     # -- spectral data ----------------------------------------------------
 
     def _decode(
-        self, frame_id: int
+        self, frame_id: int, scan_begin: int = 0, scan_end: int | None = None
     ) -> (
         tuple[
             int,
@@ -541,7 +583,11 @@ class TimsData:
         ]
         | None
     ):
-        """Read and decode a whole frame, or ``None`` if it holds no data."""
+        """Read and decode scans ``[scan_begin, scan_end)``, or ``None`` if the frame holds no data.
+
+        The bounds must already be validated (see :meth:`_scan_range`). The
+        returned ``starts`` index into the decoded slice; see :func:`_decode_frame`.
+        """
         offset, num_scans, accum_time, *_ = self._frame(frame_id)
 
         header = self._pread(8, offset)
@@ -586,9 +632,10 @@ class TimsData:
                 raise UnsupportedTdfError(f"Frame {frame_id}: empty packet disagrees with Frames.NumPeaks ({self._peak_counts[frame_id]}).")
             return None
 
-        starts, counts, tof, raw_intensity = _decode_frame(payload, scan_count, frame_id)
-        if tof.size != self._peak_counts[frame_id]:
-            raise UnsupportedTdfError(f"Frame {frame_id}: decoded {tof.size} peaks but Frames.NumPeaks is {self._peak_counts[frame_id]}.")
+        starts, counts, tof, raw_intensity = _decode_frame(payload, scan_count, frame_id, scan_begin, scan_end)
+        decoded_peaks = int(counts.sum())
+        if decoded_peaks != self._peak_counts[frame_id]:
+            raise UnsupportedTdfError(f"Frame {frame_id}: decoded {decoded_peaks} peaks but Frames.NumPeaks is {self._peak_counts[frame_id]}.")
         if np.any(tof >= self._digitizer_num_samples):
             raise UnsupportedTdfError(f"Frame {frame_id}: TOF index exceeds DigitizerNumSamples.")
 
@@ -604,6 +651,26 @@ class TimsData:
 
         return scan_count, starts, counts, tof, intensity
 
+    def _scan_range(self, frame_id: int, scan_begin: int, scan_end: int | None) -> tuple[int, int]:
+        """Validate a half-open scan range against the frame's scan count.
+
+        One policy for every reader method: bounds must be integers with
+        ``0 <= scan_begin <= scan_end <= num_scans``; ``scan_end=None`` means
+        ``num_scans``. An empty range (``scan_begin == scan_end``) is valid.
+        """
+        _, num_scans, *_ = self._frame(frame_id)
+        if scan_end is None:
+            scan_end = num_scans
+        for name, value in (("scan_begin", scan_begin), ("scan_end", scan_end)):
+            if isinstance(value, bool) or not isinstance(value, Integral):
+                raise TdfpyError(f"Frame {frame_id}: {name} must be an integer, got {value!r}.")
+        begin, end = int(scan_begin), int(scan_end)
+        if not 0 <= begin <= end <= num_scans:
+            raise TdfpyError(
+                f"Frame {frame_id}: invalid scan range [{begin}, {end}); need 0 <= scan_begin <= scan_end <= {num_scans} (the frame's scan count)."
+            )
+        return begin, end
+
     def read_frame_arrays(
         self, frame_id: int, scan_begin: int = 0, scan_end: int | None = None
     ) -> tuple[npt.NDArray[np.int64], npt.NDArray[np.uint32], npt.NDArray[np.uint32]]:
@@ -612,33 +679,27 @@ class TimsData:
         Returns ``(scan_indices, tof_indices, intensities)``, one entry per peak.
         This is the cheap path: peaks for a contiguous scan range are already
         contiguous in the decoded frame, so it slices rather than splitting the
-        frame into per-scan arrays the way :meth:`readScans` must.
+        frame into per-scan arrays the way :meth:`read_scans` must.
 
-        Prefer this whenever you were going to concatenate ``readScans`` output
+        Prefer this whenever you were going to concatenate ``read_scans`` output
         back together.
+
+        Raises:
+            TdfpyError: If a bound is not an integer, or the range is outside
+                ``0 <= scan_begin <= scan_end <= num_scans``. ``scan_end=None``
+                means ``num_scans``; an empty range returns empty arrays.
+            TdfpyKeyError: If ``frame_id`` is not in the Frames table.
         """
-        decoded = self._decode(frame_id)
-        if decoded is None:
-            return (
-                np.zeros(0, dtype=np.int64),
-                _EMPTY_U32,
-                _EMPTY_U32,
-            )
-        scan_count, starts, counts, tof, intensity = decoded
-
-        if scan_end is None:
-            scan_end = scan_count
-        begin = max(0, min(int(scan_begin), scan_count))
-        end = max(begin, min(int(scan_end), scan_count))
-        if begin == end:
+        begin, end = self._scan_range(frame_id, scan_begin, scan_end)
+        # Decode even for an empty range so a corrupt frame is still reported.
+        decoded = self._decode(frame_id, begin, end)
+        if decoded is None or begin == end:
             return np.zeros(0, dtype=np.int64), _EMPTY_U32, _EMPTY_U32
-
-        lo = int(starts[begin])
-        hi = int(starts[end - 1] + counts[end - 1])
+        _, _, counts, tof, intensity = decoded
         scan_indices = np.repeat(np.arange(begin, end, dtype=np.int64), counts[begin:end])
-        return scan_indices, tof[lo:hi], intensity[lo:hi]
+        return scan_indices, tof, intensity
 
-    def readScans(self, frame_id: int, scan_begin: int, scan_end: int) -> list[tuple[npt.NDArray[np.uint32], npt.NDArray[np.uint32]]]:
+    def read_scans(self, frame_id: int, scan_begin: int, scan_end: int) -> list[tuple[npt.NDArray[np.uint32], npt.NDArray[np.uint32]]]:
         """Read scans ``[scan_begin, scan_end)`` of a frame.
 
         Returns one ``(tof_indices, intensities)`` pair per scan. Intensities are
@@ -646,17 +707,22 @@ class TimsData:
 
         See :meth:`read_frame_arrays` for a flat-array alternative that avoids
         materialising one array pair per scan.
+
+        Raises:
+            TdfpyError: If a bound is not an integer, or the range is outside
+                ``0 <= scan_begin <= scan_end <= num_scans``. An empty range
+                (``scan_begin == scan_end``) returns ``[]``.
+            TdfpyKeyError: If ``frame_id`` is not in the Frames table.
         """
-        decoded = self._decode(frame_id)
+        begin, end = self._scan_range(frame_id, scan_begin, scan_end)
+        # Decode even for an empty range so a corrupt frame is still reported.
+        decoded = self._decode(frame_id, begin, end)
         if decoded is None:
-            return [(_EMPTY_U32, _EMPTY_U32) for _ in range(scan_begin, scan_end)]
-        scan_count, starts, counts, tof, intensity = decoded
+            return [(_EMPTY_U32, _EMPTY_U32) for _ in range(begin, end)]
+        _, starts, counts, tof, intensity = decoded
 
         result = []
-        for i in range(scan_begin, scan_end):
-            if i < 0 or i >= scan_count:
-                result.append((_EMPTY_U32, _EMPTY_U32))
-                continue
+        for i in range(begin, end):
             start = int(starts[i])
             stop = start + int(counts[i])
             result.append((tof[start:stop], intensity[start:stop]))
@@ -673,31 +739,3 @@ def timsdata_connect(analysis_dir: str | os.PathLike[str]) -> Iterator[TimsData]
     finally:
         if td:
             td.close()
-
-
-def oneOverK0ToCCSforMz(ook0: float, charge: int, mz: float) -> float:
-    """Convert 1/K0 to CCS for a given charge and m/z."""
-    return one_over_k0_to_ccs(ook0, charge, mz)
-
-
-def ccsToOneOverK0forMz(ccs: float, charge: int, mz: float) -> float:
-    """Convert CCS to 1/K0 for a given charge and m/z.
-
-    The exact inverse of :func:`oneOverK0ToCCSforMz`.
-    """
-    return ccs_to_one_over_k0(ccs, charge, mz)
-
-
-def ccsToOneOverK0ToCCSforMz(ccs: float, charge: int, mz: float) -> float:
-    """Deprecated alias for :func:`ccsToOneOverK0forMz`.
-
-    The old name was a copy-paste of the forward function's name and reads as
-    "CCS to 1/K0 to CCS", which is not what it does. It stays exported so
-    existing callers keep working.
-    """
-    warnings.warn(
-        "ccsToOneOverK0ToCCSforMz is a misnamed alias and will be removed in a future release; use ccsToOneOverK0forMz instead.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    return ccsToOneOverK0forMz(ccs, charge, mz)

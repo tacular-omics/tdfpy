@@ -24,7 +24,7 @@ Before loading data, you can inspect the acquisition type of a `.d` folder:
 from tdfpy import get_acquisition_type
 
 acq_type = get_acquisition_type(D_PATH)
-# Returns one of: "DDA", "DIA", "PRM", "Unknown"
+# Returns one of: "DDA", "DIA", "PRM", "unknown"
 print(acq_type)
 ```
 
@@ -36,7 +36,7 @@ from tdfpy import DDA
 with DDA(D_PATH) as dda:
     # Iterate over MS1 frames
     for frame in dda.ms1:
-        print(f"Frame {frame.frame_id} at RT {frame.time:.1f}s")
+        print(f"Frame {frame.frame_id} at RT {frame.rt:.1f}s")
         # Centroid the frame. Returns shape (N, 3): [m/z, intensity, 1/K0]
         peaks = frame.centroid()
         print(f"  {len(peaks)} centroided peaks")
@@ -46,7 +46,7 @@ with DDA(D_PATH) as dda:
     for precursor in dda.precursors:
         print(f"Precursor {precursor.precursor_id}: {precursor.largest_peak_mz:.4f} m/z")
         # MS2 peaks centroided by tdfpy (ion mobility collapsed, merged at 30 ppm)
-        peaks = precursor.peaks
+        peaks = precursor.merged_peaks()
         break
 ```
 
@@ -63,7 +63,7 @@ with DIA(D_PATH) as dia:
 
     # DIA windows
     for window in dia.windows:
-        print(f"Window group {window.window_group}: isolation {window.isolation_mz} m/z")
+        print(f"Window group {window.window_group_id}: isolation {window.isolation_mz} m/z")
         peaks = window.centroid()
         break
 ```
@@ -81,13 +81,13 @@ with PRM(D_PATH) as prm:
 
     # PRM targets (precursor ions being monitored)
     for target in prm.targets:
-        print(f"Target {target.target_id}: {target.monoisotopic_mz:.4f} m/z, charge {target.charge}")
+        print(f"Target {target.target_id}: {target.precursor_mz:.4f} m/z, charge {target.charge}")
         break
 
     # PRM transitions (MS2 spectra linked to a target)
     for transition in prm.transitions:
         print(f"Transition frame {transition.frame_id}: isolation {transition.isolation_mz} m/z")
-        raw = transition.peaks  # list of per-scan (mz, intensity) arrays
+        raw = transition.scan_peaks()  # list of per-scan (N, 2) [m/z, intensity] arrays
         peaks = transition.centroid()  # shape (N, 3): [m/z, intensity, 1/K0]
         break
 ```
@@ -106,7 +106,7 @@ with DDA(D_PATH) as dda:
 
     # Query precursors by m/z and retention time
     results = dda.precursors.query(
-        mz=1292.63,
+        precursor_mz=1292.63,
         mz_tolerance=20.0,       # ppm by default
         rt=2400.0,               # seconds
         rt_tolerance=30.0,       # seconds
@@ -120,12 +120,12 @@ from tdfpy import DIA
 
 with DIA(D_PATH) as dia:
     # Get all windows in a window group
-    group_windows = dia.windows[1]  # returns a list
+    group_windows = dia.windows[1]  # returns a tuple
 
     # Query windows by retention time
     results = dia.windows.query(rt=10.0, rt_tolerance=5.0)
     for w in results:
-        print(w.window_group, w.isolation_mz)
+        print(w.window_group_id, w.isolation_mz)
 ```
 
 ## How data access works
@@ -139,8 +139,8 @@ When you open a `DDA`, `DIA` or `PRM` reader, it immediately:
 2. Reads all frame and precursor metadata from the SQLite database into memory
 
 The objects you get back — `Frame`, `Precursor`, `DiaWindow`, etc. — all hold a reference
-to that open connection. Their fields (`frame_id`, `rt`, `monoisotopic_mz`, etc.) are
-available immediately. **Spectral data is fetched lazily**: calling `.peaks` or `.centroid()`
+to that open connection. Their fields (`frame_id`, `rt`, `precursor_mz`, etc.) are
+available immediately. **Spectral data is fetched lazily**: calling `.merged_peaks()`, `.scan_peaks()` or `.centroid()`
 reads from the binary file at that moment.
 
 This means objects cannot be used after the reader closes:
@@ -152,7 +152,8 @@ with DDA(D_PATH) as dda:
     frame = dda.ms1[1]
     peaks = frame.centroid()  # The connection is open
 
-# peaks = frame.centroid()  # RuntimeError: TimsData connection is closed.
+# peaks = frame.centroid()  # ReaderClosedError (a RuntimeError subclass)
+# dda.metadata              # also ReaderClosedError: read metadata inside the block
 ```
 
 ## Development

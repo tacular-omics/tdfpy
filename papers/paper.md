@@ -96,7 +96,7 @@ SQLite metadata layer that wraps `analysis.tdf` as pandas DataFrames
 [@McKinney2010Pandas]; and a reader layer that materialises the metadata as
 typed dataclasses (`DDAMs1Frame`, `Precursor`, `DiaWindow`, `PrmTransition`).
 Metadata is loaded eagerly while spectral binary data is read lazily — only
-when `.peaks`, `.raw_peaks()`, or `.centroid()` is called — and context
+when `.merged_peaks()`, `.raw_peaks()`, or `.centroid()` is called — and context
 managers guarantee the open binary file is closed.
 
 The conversion models are reimplemented from the run's own `MzCalibration` and
@@ -163,7 +163,7 @@ with DDA("experiment.d") as dda:
     for frame in dda.ms1:
         peaks = frame.centroid()      # (N, 3): [m/z, intensity, 1/K0]
     for precursor in dda.precursors:
-        ms2, ccs = precursor.peaks, precursor.ccs
+        ms2, ccs = precursor.merged_peaks(), precursor.ccs
 
 with DIA("experiment.d") as dia:
     for window in dia.windows:

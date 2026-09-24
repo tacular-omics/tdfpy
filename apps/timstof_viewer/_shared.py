@@ -182,13 +182,17 @@ def run_summary(analysis_dir: str) -> dict:
     }
 
 
+#: Label for a run whose acquisition mode is not DDA, DIA or PRM (or unreadable).
+UNKNOWN_ACQUISITION = str(tdfpy.AcquisitionType.UNKNOWN)
+
+
 @st.cache_data(show_spinner=False)
 def acquisition_type(analysis_dir: str) -> str:
-    """Detected acquisition mode: ``"DDA"`` / ``"DIA"`` / ``"PRM"`` / ``"Unknown"``."""
+    """Detected acquisition mode: ``"DDA"`` / ``"DIA"`` / ``"PRM"`` / ``"unknown"``."""
     try:
         return str(get_acquisition_type(analysis_dir))
     except Exception:  # noqa: BLE001
-        return "Unknown"
+        return UNKNOWN_ACQUISITION
 
 
 @st.cache_data(show_spinner=False)
@@ -496,7 +500,7 @@ def fetch_precursor_centroided(
 
 @st.cache_data(show_spinner=True)
 def load_frame_raw(analysis_dir: str, frame_id: int) -> FrameRaw:
-    """Read raw ``(scan, tof_idx, intensity)`` for a frame via ``readScans``.
+    """Read raw ``(scan, tof_idx, intensity)`` for a frame via ``read_scans``.
 
     Goes straight to the C extension — works identically for MS1 and MS2
     frames and bypasses any centroiding the high-level API would apply.
@@ -509,7 +513,7 @@ def load_frame_raw(analysis_dir: str, frame_id: int) -> FrameRaw:
             raise ValueError(f"Frame {frame_id} not found in database")
         (num_scans,) = row
 
-        scans = td.readScans(frame_id, 0, num_scans)
+        scans = td.read_scans(frame_id, 0, num_scans)
         scan_lens = np.fromiter(
             (len(idx) for idx, _ in scans), dtype=np.int64, count=num_scans
         )
@@ -652,7 +656,7 @@ def ms2_segment_rects(analysis_dir: str, frame_id: int, acquisition: str) -> lis
         return []
     bounds = sorted({s["scan_begin"] for s in segs} | {s["scan_end"] for s in segs})
     with tdfpy.timsdata_connect(analysis_dir) as td:
-        ook0 = np.asarray(td.scanNumToOneOverK0(frame_id, np.asarray(bounds, dtype=np.int64)))
+        ook0 = np.asarray(td.scan_num_to_ook0(frame_id, np.asarray(bounds, dtype=np.int64)))
     k0 = dict(zip(bounds, ook0.tolist()))
     return [
         {**s, "ook0_begin": float(k0[s["scan_begin"]]), "ook0_end": float(k0[s["scan_end"]])}
@@ -705,7 +709,7 @@ def precursors_for_ms1_frame(analysis_dir: str, frame_id: int) -> list[dict]:
         need.add(iso["scan_end"])
     scan_list = sorted(need)
     with tdfpy.timsdata_connect(analysis_dir) as td:
-        k0_vals = np.asarray(td.scanNumToOneOverK0(frame_id, np.asarray(scan_list, dtype=np.float64)))
+        k0_vals = np.asarray(td.scan_num_to_ook0(frame_id, np.asarray(scan_list, dtype=np.float64)))
     k0 = dict(zip(scan_list, k0_vals.tolist()))
 
     out: list[dict] = []
@@ -800,12 +804,12 @@ def dia_windows_ook0(analysis_dir: str) -> list[dict]:
         ])
     )
     with tdfpy.timsdata_connect(analysis_dir) as td:
-        ook0 = np.asarray(td.scanNumToOneOverK0(ref_frame, scans))
+        ook0 = np.asarray(td.scan_num_to_ook0(ref_frame, scans))
     scan_to_k0 = dict(zip(scans.tolist(), ook0.tolist()))
     out: list[dict] = []
     for _, r in windows.iterrows():
         out.append({
-            "window_group": int(r["WindowGroup"]),
+            "window_group_id": int(r["WindowGroup"]),
             "mz_begin": float(r["mz_begin"]),
             "mz_end": float(r["mz_end"]),
             "isolation_mz": float(r["IsolationMz"]),
@@ -885,7 +889,7 @@ def precursor_pasef_info(analysis_dir: str, precursor_id: int) -> dict:
     info: dict = {}
     if not prow.empty:
         p = prow.iloc[0]
-        info["parent_frame"] = int(p["Parent"])
+        info["parent_frame_id"] = int(p["Parent"])
         info["scan_number"] = float(p["ScanNumber"])
         info["monoisotopic_mz"] = (
             float(p["MonoisotopicMz"]) if not pd.isna(p["MonoisotopicMz"]) else None
@@ -894,7 +898,7 @@ def precursor_pasef_info(analysis_dir: str, precursor_id: int) -> dict:
         info["intensity"] = float(p["Intensity"])
         info["rt_min"] = None
         frames = pdf.frames
-        frow = frames[frames["Id"] == info["parent_frame"]]
+        frow = frames[frames["Id"] == info["parent_frame_id"]]
         if not frow.empty:
             info["rt_min"] = float(frow.iloc[0]["Time"]) / 60.0
     try:

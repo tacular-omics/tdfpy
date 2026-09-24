@@ -101,7 +101,7 @@ def test_validation_cli_returns_json_and_failure_status(tmp_path):
     assert data["issues"]
 
 
-def test_batch_iterator_rejects_cached_spectral_access_after_close():
+def test_iter_window_spectra_raises_after_reader_close():
     reader = DIA("tests/data/example_dia.d")
     try:
         windows = list(islice(reader.windows, 2))

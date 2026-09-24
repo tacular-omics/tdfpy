@@ -12,6 +12,10 @@ import struct
 from contextlib import closing
 from pathlib import Path
 
+from .errors import TdfpyError
+
+__all__ = ["slice_d_folder"]
+
 logger = logging.getLogger(__name__)
 
 TDF_FILE = "analysis.tdf"
@@ -65,10 +69,10 @@ def slice_d_folder(
     FileExistsError
         If ``dest_dir`` already exists. This function never overwrites or
         deletes pre-existing data.
-    ValueError
+    TdfpyError
         If ``frame_start > frame_end``, if ``dest_dir`` resolves to the source
         folder or to a location inside it, if no frames fall in the requested
-        range, or if a kept frame has a NULL ``TimsId``.
+        range, if a kept frame has a NULL ``TimsId``, or if SQLite fails.
 
     Notes
     -----
@@ -91,7 +95,10 @@ def slice_d_folder(
 
     dest_dir.mkdir(parents=True)
     try:
-        frame_ids = _write_slice(source_dir, dest_dir, frame_start, frame_end)
+        try:
+            frame_ids = _write_slice(source_dir, dest_dir, frame_start, frame_end)
+        except sqlite3.Error as exc:
+            raise TdfpyError(f"SQLite error while slicing {source_dir / TDF_FILE}: {exc}") from exc
     except BaseException:
         # Never leave a half-written .d folder behind — it would look valid to
         # a reader but contain truncated binary data.
@@ -130,7 +137,7 @@ def _write_slice(source_dir: Path, dest_dir: Path, frame_start: int, frame_end: 
         if not rows:
             lo, hi = conn.execute("SELECT MIN(Id), MAX(Id) FROM Frames").fetchone()
             available = f"{lo}..{hi}" if lo is not None else "none (Frames table is empty)"
-            raise ValueError(
+            raise TdfpyError(
                 f"No frames in the requested range [{frame_start}, {frame_end}] (inclusive). Source .d folder has frame IDs {available}; frame IDs are 1-based."
             )
 
@@ -139,7 +146,7 @@ def _write_slice(source_dir: Path, dest_dir: Path, frame_start: int, frame_end: 
             preview = ", ".join(str(i) for i in null_offset_ids[:10])
             if len(null_offset_ids) > 10:
                 preview += ", …"
-            raise ValueError(
+            raise TdfpyError(
                 f"{len(null_offset_ids)} frame(s) in the requested range "
                 f"[{frame_start}, {frame_end}] have a NULL TimsId and therefore "
                 f"no binary blob to copy (frame IDs: {preview}). Slice a range "
@@ -183,16 +190,16 @@ def _validate_inputs(source_dir: Path, dest_dir: Path, frame_start: int, frame_e
     if not (source_dir / TDF_BIN_FILE).exists():
         raise FileNotFoundError(f"{TDF_BIN_FILE} not found in {source_dir}")
     if frame_start > frame_end:
-        raise ValueError(f"frame_start ({frame_start}) must be <= frame_end ({frame_end})")
+        raise TdfpyError(f"frame_start ({frame_start}) must be <= frame_end ({frame_end})")
 
     resolved_source = source_dir.resolve()
     resolved_dest = dest_dir.resolve()
     if resolved_dest == resolved_source:
-        raise ValueError(
+        raise TdfpyError(
             f"dest_dir ({dest_dir}) resolves to the source .d folder ({source_dir}). Slicing in place is not supported; choose a different destination."
         )
     if resolved_source in resolved_dest.parents:
-        raise ValueError(f"dest_dir ({dest_dir}) resolves to a location inside the source .d folder ({source_dir}). Choose a destination outside the source.")
+        raise TdfpyError(f"dest_dir ({dest_dir}) resolves to a location inside the source .d folder ({source_dir}). Choose a destination outside the source.")
     if dest_dir.exists():
         raise FileExistsError(
             f"dest_dir ({dest_dir}) already exists. slice_d_folder never overwrites an existing path; remove it first or choose another destination."

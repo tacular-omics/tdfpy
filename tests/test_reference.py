@@ -18,9 +18,9 @@ import numpy as np
 import pytest
 
 from tdfpy import DDA, DIA, PRM
-from tdfpy.calibration import _CCS_K, ccs_to_one_over_k0, one_over_k0_to_ccs
+from tdfpy.calibration import _CCS_K, ccs_to_ook0, ook0_to_ccs
 from tdfpy.centroiding import _HAS_NUMBA, merge_peaks
-from tdfpy.elems import Polarity
+from tdfpy.elems import _parse_polarity
 
 DATA = Path("tests/data")
 
@@ -36,14 +36,14 @@ N2_MASS = 28.013  # Da, the drift gas Bruker uses
 TEMPERATURE = 305.0  # K, Bruker's convention
 
 
-def _mason_schamp_ccs(one_over_k0: float, charge: int, mz: float) -> float:
+def _mason_schamp_ccs(ook0: float, charge: int, mz: float) -> float:
     """CCS in Å^2 from 1/K0 in V s/cm^2, written out from the Mason-Schamp equation.
 
     CCS = 3 z e / (16 N0) * sqrt(2 pi / (mu k_B T)) * (1 / K0)
     """
     mass = mz * charge  # Bruker's convention: no proton subtraction
     mu = mass * N2_MASS / (mass + N2_MASS) * DALTON
-    k0 = 1.0 / one_over_k0 * 1e-4  # cm^2/(V s) -> m^2/(V s)
+    k0 = 1.0 / ook0 * 1e-4  # cm^2/(V s) -> m^2/(V s)
     ccs_m2 = 3.0 * charge * E_CHARGE / (16.0 * N0) * math.sqrt(2.0 * math.pi / (mu * K_B * TEMPERATURE)) / k0
     return ccs_m2 * 1e20
 
@@ -57,11 +57,11 @@ def test_ccs_constant_matches_codata():
 
 @pytest.mark.parametrize("charge", [1, 2, 3, 4])
 @pytest.mark.parametrize("mz", [100.0, 445.12, 1000.0, 1800.0])
-@pytest.mark.parametrize("one_over_k0", [0.6, 0.95, 1.3, 1.7])
-def test_ccs_matches_mason_schamp(one_over_k0, charge, mz):
-    ccs = one_over_k0_to_ccs(one_over_k0, charge, mz)
-    assert ccs == pytest.approx(_mason_schamp_ccs(one_over_k0, charge, mz), rel=1e-6)
-    assert ccs_to_one_over_k0(ccs, charge, mz) == pytest.approx(one_over_k0, rel=1e-12)
+@pytest.mark.parametrize("ook0", [0.6, 0.95, 1.3, 1.7])
+def test_ccs_matches_mason_schamp(ook0, charge, mz):
+    ccs = ook0_to_ccs(ook0, charge, mz)
+    assert ccs == pytest.approx(_mason_schamp_ccs(ook0, charge, mz), rel=1e-6)
+    assert ccs_to_ook0(ccs, charge, mz) == pytest.approx(ook0, rel=1e-12)
 
 
 # Agilent ESI-L tune mix, singly charged ions. The 1/K0 values are Bruker's
@@ -78,9 +78,9 @@ TUNE_MIX = [
 ]
 
 
-@pytest.mark.parametrize(("mz", "one_over_k0", "published_ccs"), TUNE_MIX)
-def test_ccs_matches_published_tune_mix(mz, one_over_k0, published_ccs):
-    assert one_over_k0_to_ccs(one_over_k0, 1, mz) == pytest.approx(published_ccs, rel=1e-2)
+@pytest.mark.parametrize(("mz", "ook0", "published_ccs"), TUNE_MIX)
+def test_ccs_matches_published_tune_mix(mz, ook0, published_ccs):
+    assert ook0_to_ccs(ook0, 1, mz) == pytest.approx(published_ccs, rel=1e-2)
 
 
 def _rows(d: Path, sql: str) -> list[sqlite3.Row]:
@@ -95,20 +95,20 @@ def _need(d: Path) -> None:
 
 
 def _check_frame(frame, row) -> None:
-    assert frame.time == row["Time"]
-    assert frame.polarity is Polarity.from_str(row["Polarity"])
+    assert frame.rt == row["Time"]
+    assert frame.polarity == _parse_polarity(row["Polarity"]) == {"+": "positive", "-": "negative"}[row["Polarity"]]
     assert frame.scan_mode == row["ScanMode"]
     assert frame.msms_type == row["MsMsType"]
     assert frame.tims_id == row["TimsId"]
-    assert frame.max_intensity == row["MaxIntensity"]
-    assert frame.summed_intensities == row["SummedIntensities"]
+    assert frame.base_peak_intensity == row["MaxIntensity"]
+    assert frame.total_ion_current == row["SummedIntensities"]
     assert frame.num_scans == row["NumScans"]
     assert frame.num_peaks == row["NumPeaks"]
-    assert frame.mz_calibration == row["MzCalibration"]
+    assert frame.mz_calibration_id == row["MzCalibration"]
     assert frame.t1 == row["T1"]
     assert frame.t2 == row["T2"]
-    assert frame.tims_calibration == row["TimsCalibration"]
-    assert frame.property_group == row["PropertyGroup"]
+    assert frame.tims_calibration_id == row["TimsCalibration"]
+    assert frame.property_group_id == row["PropertyGroup"]
     assert frame.accumulation_time == row["AccumulationTime"]
     assert frame.ramp_time == row["RampTime"]
 
@@ -145,7 +145,7 @@ def test_dda_precursors_and_pasef_windows_match_sqlite():
             assert p.charge == row["Charge"]
             assert p.scan_number == row["ScanNumber"]
             assert p.intensity == row["Intensity"]
-            assert p.parent_frame == row["Parent"]
+            assert p.parent_frame_id == row["Parent"]
             assert p.rt == times[row["Parent"]]
             got_windows = sorted(p.pasef_frame_msms_infos, key=lambda w: (w.frame_id, w.scan_num_begin))
             expected = windows.get(pid, [])
@@ -158,7 +158,7 @@ def test_dda_precursors_and_pasef_windows_match_sqlite():
                 assert w.isolation_mz == wr["IsolationMz"]
                 assert w.isolation_width == wr["IsolationWidth"]
                 assert w.collision_energy == wr["CollisionEnergy"]
-                assert w.precursor == pid
+                assert w.precursor_id == pid
         # Each MS1 frame lists exactly the precursors whose Parent it is.
         for frame in dda.ms1:
             assert sorted(p.precursor_id for p in frame.precursors) == sorted(i for i, r in precursors.items() if r["Parent"] == frame.frame_id)
@@ -176,7 +176,7 @@ def test_dia_windows_match_sqlite():
     with DIA(d) as dia:
         by_frame: dict[int, list[tuple]] = {}
         for w in dia.windows:
-            assert w.window_group == groups[w.frame_id]
+            assert w.window_group_id == groups[w.frame_id]
             assert w.rt == times[w.frame_id]
             by_frame.setdefault(w.frame_id, []).append((w.scan_num_begin, w.scan_num_end, w.isolation_mz, w.isolation_width, w.collision_energy))
         assert by_frame.keys() == groups.keys()

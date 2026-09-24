@@ -1,149 +1,345 @@
+"""Frame elements returned by the :class:`~tdfpy.DDA`, :class:`~tdfpy.DIA` and
+:class:`~tdfpy.PRM` readers.
+
+Every element is a frozen, slotted dataclass. Elements that can read spectra
+keep a reference to the reader's :class:`~tdfpy.TimsData`; after the reader is
+closed their spectral accessors raise :class:`~tdfpy.ReaderClosedError`.
+
+Peak array shapes, the same on every element:
+
+* ``raw_peaks()`` -> one ``(N, 3)`` float64 array of ``[m/z, intensity, ion_mobility]``.
+* ``centroid()`` -> one ``(N, 3)`` float64 array of ``[m/z, intensity, ion_mobility]``.
+* ``scan_peaks()`` -> a ``list`` with one ``(N_i, 2)`` ``[m/z, intensity]`` raw
+  array per mobility scan.
+* ``Precursor.merged_peaks()`` / ``PasefFrameMsmsInfo.merged_peaks()`` -> one
+  ``(N, 2)`` ``[m/z, intensity]`` array, mobility-collapsed by a greedy merge.
+  This is the most expensive accessor; call it once and keep the result.
+
+Every spectral accessor is a method, so each call visibly reads and decodes
+the frame; nothing is cached on the element.
+"""
+
 import datetime
 import logging
 import warnings
-from dataclasses import dataclass
-from enum import Enum, StrEnum
-from typing import Any, Literal
+from collections.abc import Callable, Iterator, Mapping
+from dataclasses import dataclass, field
+from enum import IntEnum
+from typing import ClassVar, Literal
 
 import numpy as np
 import numpy.typing as npt
-import pandas as pd
 
+from .calibration import ook0_to_ccs
 from .centroiding import (
     get_centroided_spectrum,
     get_mobility_collapsed_spectrum,
     get_raw_peaks,
 )
+from .errors import ReaderClosedError, TdfpyError, TdfpyKeyError
 from .noise import NoiseSpec
 from .pipeline import Centroider, Smooth
 from .regions import ChargeStateRegion
-from .timsdata import TimsData, oneOverK0ToCCSforMz
+from .timsdata import TimsData
+
+__all__ = [
+    "Calibration",
+    "DDAMs1Frame",
+    "DIAMs1Frame",
+    "DiaWindow",
+    "DiaWindowGroup",
+    "Frame",
+    "MetaData",
+    "MetaValue",
+    "MsMsType",
+    "PasefFrameMsmsInfo",
+    "Polarity",
+    "Precursor",
+    "PRMMs1Frame",
+    "PrmTarget",
+    "PrmTransition",
+]
 
 logger = logging.getLogger(__name__)
 
-
-def _frame_raw_peaks(
-    td: TimsData,
-    frame_id: int,
-    *,
-    scan_range: tuple[int, int] | None,
-    exclude: ChargeStateRegion | None,
-    smooth: Smooth | None,
-    noise: NoiseSpec,
-    ion_mobility_type: Literal["ook0", "ccs", "voltage"],
-) -> np.ndarray:
-    """Shared body for the ``raw_peaks`` methods across frame elements."""
-    return get_raw_peaks(
-        td,
-        frame_id,
-        scan_range=scan_range,
-        exclude=exclude,
-        smooth=smooth,
-        noise=noise,
-        ion_mobility_type=ion_mobility_type,
-    )
+IonMobilityType = Literal["ook0", "ccs", "voltage"]
 
 
-def _frame_centroid(
-    td: TimsData,
-    frame_id: int,
-    *,
-    scan_range: tuple[int, int] | None,
-    exclude: ChargeStateRegion | None,
-    smooth: Smooth | None,
-    noise: NoiseSpec,
-    ion_mobility_type: Literal["ook0", "ccs", "voltage"],
-    centroid: Centroider | None,
-) -> np.ndarray:
-    """Run the common pipeline once. JIT fallback belongs to the kernel."""
-    return get_centroided_spectrum(
-        td,
-        frame_id,
-        scan_range=scan_range,
-        exclude=exclude,
-        smooth=smooth,
-        noise=noise,
-        ion_mobility_type=ion_mobility_type,
-        centroid=centroid,
-    )
+class MsMsType(IntEnum):
+    """The ``MsMsType`` column of the ``Frames`` table."""
 
-
-class MsMsType(Enum):
     MS1 = 0
-    PRM_MS2 = 10
     DDA_MS2 = 8
     DIA_MS2 = 9
+    PRM_MS2 = 10
 
 
-class Polarity(StrEnum):
-    POSITIVE = "positive"
-    NEGATIVE = "negative"
-    UNKNOWN = "unknown"
-    MIXED = "mixed"
+Polarity = Literal["positive", "negative"]
+"""Ion polarity of a frame. Fields typed ``Polarity | None`` are ``None`` when unknown or mixed."""
 
-    @staticmethod
-    def from_str(s: str) -> "Polarity":
-        """Convert a string to a `Polarity` enum value.
-
-        Args:
-            s: Polarity string. Accepted values (case-insensitive):
-                `"positive"` or `"+"` → `Polarity.POSITIVE`;
-                `"negative"` or `"-"` → `Polarity.NEGATIVE`;
-                `"unknown"` or `"?"` → `Polarity.UNKNOWN`;
-                `"mixed"` or `"mix"` → `Polarity.MIXED`.
-
-        Returns:
-            The matching `Polarity` enum member.
-
-        Raises:
-            ValueError: If the string does not match any known polarity.
-        """
-        s = s.lower()
-        if s in ("positive", "+"):
-            return Polarity.POSITIVE
-        elif s in ("negative", "-"):
-            return Polarity.NEGATIVE
-        elif s in ("unknown", "unkown", "?"):
-            return Polarity.UNKNOWN
-        elif s in ("mixed", "mix"):
-            return Polarity.MIXED
-        else:
-            raise ValueError(
-                f"Unknown polarity string {s!r}. Expected one of (case-insensitive): 'positive'/'+', 'negative'/'-', 'unknown'/'?', 'mixed'/'mix'."
-            )
+_POLARITY_STRINGS: dict[str, Polarity] = {"+": "positive", "positive": "positive", "-": "negative", "negative": "negative"}
 
 
-@dataclass
+def _parse_polarity(value: object) -> Polarity | None:
+    """``Frames.Polarity`` (``"+"`` / ``"-"``, case-insensitive words also accepted) as ``"positive"`` / ``"negative"``.
+
+    Anything else gives ``None``; the reader warns once per file for those.
+    """
+    return _POLARITY_STRINGS.get(str(value).strip().lower())
+
+
+# ---------------------------------------------------------------------------
+# Mixins. They hold no state (``__slots__ = ()``) so the frozen, slotted
+# dataclasses below can combine them freely.
+# ---------------------------------------------------------------------------
+
+
 class _TdfData:
+    """Gives an element checked access to the reader's :class:`TimsData`."""
+
+    __slots__ = ()
     _timsdata: TimsData
 
     @property
     def timsdata(self) -> TimsData:
-        if self._timsdata.handle is None:
-            raise RuntimeError("TimsData connection is closed. Keep DFolder instance alive or use context manager.")
-        return self._timsdata
+        """The reader's open :class:`TimsData`.
+
+        Raises:
+            ReaderClosedError: If the reader that built this element was closed.
+        """
+        td = self._timsdata
+        if td.handle is None:
+            raise ReaderClosedError("The reader that built this element is closed. Read spectra inside the reader's `with` block.")
+        return td
 
 
-@dataclass
-class PasefFrameMsmsInfo(_TdfData):
-    """A single PASEF MS/MS isolation window within a parent frame.
+class _Spectrum(_TdfData):
+    """``scan_peaks`` / ``raw_peaks`` / ``centroid`` over one frame's scan range."""
 
-    Each instance corresponds to one row in the `PasefFrameMsMsInfo` table: a
-    contiguous range of mobility scans acquired with a specific isolation window and
-    collision energy, linked to a precursor ion.
+    __slots__ = ()
+    frame_id: int
+
+    def _scan_bounds(self) -> tuple[int, int] | None:
+        """``[begin, end)`` mobility scans this element covers; ``None`` = whole frame."""
+        raise NotImplementedError
+
+    def scan_peaks(self) -> list[npt.NDArray[np.float64]]:
+        """Raw peaks, one ``(N_i, 2)`` ``[m/z, intensity]`` float64 array per mobility scan.
+
+        The list has one entry per scan in this element's scan range, in scan
+        order; empty scans give a ``(0, 2)`` array.
+
+        Raises:
+            ReaderClosedError: If the reader was closed.
+            TdfpyError: If a window's scan range does not fit its frame (corrupt file).
+        """
+        td = self.timsdata
+        bounds = self._scan_bounds()
+        begin, end = bounds if bounds is not None else (0, td.frame_metadata(self.frame_id).num_scans)
+        arrays = []
+        for index_array, int_array in td.read_scans(self.frame_id, begin, end):
+            mz_array = td.index_to_mz(self.frame_id, index_array)
+            arrays.append(np.stack((mz_array, int_array), axis=-1).astype(np.float64))
+        return arrays
+
+    def raw_peaks(
+        self,
+        *,
+        exclude: ChargeStateRegion | None = None,
+        smooth: Smooth | None = None,
+        noise: NoiseSpec = None,
+        ion_mobility_type: IonMobilityType = "ook0",
+    ) -> npt.NDArray[np.float64]:
+        """Raw peaks as one ``(N, 3)`` ``[m/z, intensity, ion_mobility]`` array.
+
+        Restricted to this element's scan range. See :func:`tdfpy.get_raw_peaks`
+        for the keyword arguments.
+
+        Raises:
+            ReaderClosedError: If the reader was closed.
+            TdfpyError: If a window's scan range does not fit its frame (corrupt file).
+        """
+        return get_raw_peaks(
+            self.timsdata,
+            self.frame_id,
+            scan_range=self._scan_bounds(),
+            exclude=exclude,
+            smooth=smooth,
+            noise=noise,
+            ion_mobility_type=ion_mobility_type,
+        )
+
+    def centroid(
+        self,
+        *,
+        exclude: ChargeStateRegion | None = None,
+        smooth: Smooth | None = None,
+        noise: NoiseSpec = None,
+        ion_mobility_type: IonMobilityType = "ook0",
+        centroid: Centroider | None = None,
+    ) -> npt.NDArray[np.float64]:
+        """Centroided peaks as one ``(N, 3)`` ``[m/z, intensity, ion_mobility]`` array.
+
+        Restricted to this element's scan range. The raw-peak keywords are
+        passed to :func:`tdfpy.get_raw_peaks`; centroider settings live on
+        :class:`~tdfpy.Centroider` (default :class:`~tdfpy.MergePeaksCentroider`).
+
+        Raises:
+            ReaderClosedError: If the reader was closed.
+            TdfpyError: If a window's scan range does not fit its frame (corrupt file).
+        """
+        return get_centroided_spectrum(
+            self.timsdata,
+            self.frame_id,
+            scan_range=self._scan_bounds(),
+            exclude=exclude,
+            smooth=smooth,
+            noise=noise,
+            ion_mobility_type=ion_mobility_type,
+            centroid=centroid,
+        )
+
+
+class _IsolationWindow:
+    """m/z range properties of an isolation window."""
+
+    __slots__ = ()
+    scan_num_begin: int
+    scan_num_end: int
+    isolation_mz: float
+    isolation_width: float
+
+    @property
+    def scan_num_range(self) -> tuple[int, int]:
+        """``(scan_num_begin, scan_num_end)``, end exclusive."""
+        return (self.scan_num_begin, self.scan_num_end)
+
+    @property
+    def isolation_mz_range(self) -> tuple[float, float]:
+        """Quadrupole isolation window ``(isolation_mz - width / 2, isolation_mz + width / 2)``, low first."""
+        half = self.isolation_width / 2
+        return (self.isolation_mz - half, self.isolation_mz + half)
+
+
+class _MobilityWindow(_IsolationWindow, _Spectrum):
+    """A scan range in one frame: mobility ranges plus spectrum access."""
+
+    __slots__ = ()
+    #: MS/MS type of the frame the window was acquired in. Set by each subclass.
+    msms_type: ClassVar["MsMsType"]
+
+    @property
+    def ms_level(self) -> int:
+        """MS level of the window's spectra: always 2 (an MS/MS isolation window)."""
+        return 2
+
+    def _scan_bounds(self) -> tuple[int, int] | None:
+        return self._window_scans()
+
+    def _window_scans(self) -> tuple[int, int]:
+        """The window's ``[scan_num_begin, scan_num_end)``, checked against its frame.
+
+        Every spectral accessor (``scan_peaks``, ``raw_peaks``, ``centroid``,
+        ``merged_peaks``) goes through here, so a window whose scan range does
+        not fit its frame raises instead of being silently clipped.
+
+        Raises:
+            TdfpyError: If the range is outside ``0 <= begin <= end <= num_scans``.
+        """
+        num_scans = self.timsdata.frame_metadata(self.frame_id).num_scans
+        begin, end = self.scan_num_begin, self.scan_num_end
+        if not 0 <= begin <= end <= num_scans:
+            raise TdfpyError(
+                f"{type(self).__name__} in frame {self.frame_id}: scan range [{begin}, {end}) does not fit the frame's "
+                f"{num_scans} scans; the Frames and MS/MS tables disagree, so the file may be corrupt."
+            )
+        return (begin, end)
+
+    def _edge_values(self, convert: Callable[[int, npt.ArrayLike], npt.NDArray[np.float64]]) -> tuple[float, float]:
+        """``(low, high)`` of ``convert`` at the two scan edges. Scan order runs high to low 1/K0."""
+        values = convert(self.frame_id, [self.scan_num_begin, self.scan_num_end])
+        a, b = float(values[0]), float(values[1])
+        return (a, b) if a <= b else (b, a)
+
+    @property
+    def ook0_range(self) -> tuple[float, float]:
+        """``(ook0_begin, ook0_end)``: lowest and highest 1/K0 (V·s/cm²) of the scan range, low first."""
+        return self._edge_values(self.timsdata.scan_num_to_ook0)
+
+    @property
+    def ook0_begin(self) -> float:
+        """Lowest 1/K0 (V·s/cm²) of the scan range."""
+        return self.ook0_range[0]
+
+    @property
+    def ook0_end(self) -> float:
+        """Highest 1/K0 (V·s/cm²) of the scan range."""
+        return self.ook0_range[1]
+
+    @property
+    def ccs_range(self) -> tuple[float, float]:
+        """``(ccs_begin, ccs_end)``: CCS (Å²) range for charge 1 at ``isolation_mz``, low first."""
+        lo, hi = self.ook0_range
+        a, b = ook0_to_ccs(lo, 1, self.isolation_mz), ook0_to_ccs(hi, 1, self.isolation_mz)
+        return (a, b) if a <= b else (b, a)
+
+    @property
+    def ccs_begin(self) -> float:
+        """Lowest CCS (Å²) of the scan range, for charge 1 at ``isolation_mz``."""
+        return self.ccs_range[0]
+
+    @property
+    def ccs_end(self) -> float:
+        """Highest CCS (Å²) of the scan range, for charge 1 at ``isolation_mz``."""
+        return self.ccs_range[1]
+
+    @property
+    def voltage_range(self) -> tuple[float, float]:
+        """``(voltage_begin, voltage_end)``: TIMS voltage (V) range of the scan range, low first."""
+        return self._edge_values(self.timsdata.scan_num_to_voltage)
+
+    @property
+    def voltage_begin(self) -> float:
+        """Lowest TIMS voltage (V) of the scan range."""
+        return self.voltage_range[0]
+
+    @property
+    def voltage_end(self) -> float:
+        """Highest TIMS voltage (V) of the scan range."""
+        return self.voltage_range[1]
+
+
+def _timsdata_field() -> TimsData:
+    return field(repr=False, compare=False)  # type: ignore[return-value]
+
+
+# ---------------------------------------------------------------------------
+# DDA
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class PasefFrameMsmsInfo(_MobilityWindow):
+    """A single PASEF MS/MS isolation window within an MS/MS frame.
+
+    One row of the `PasefFrameMsMsInfo` table: a contiguous range of mobility
+    scans acquired with one isolation window and collision energy, linked to a
+    precursor.
 
     | Field | Type | Description |
     |---|---|---|
     | `frame_id` | `int` | MS/MS frame the window was acquired in (not the parent MS1 frame) |
     | `scan_num_begin` | `int` | First mobility scan (inclusive) |
-    | `scan_num_end` | `int` | Mobility scan range end (exclusive) — the range is `[scan_num_begin, scan_num_end)` |
+    | `scan_num_end` | `int` | Mobility scan range end (exclusive), so the range is `[scan_num_begin, scan_num_end)` |
     | `isolation_mz` | `float` | Isolation window center m/z |
     | `isolation_width` | `float` | Isolation window width in Th |
     | `collision_energy` | `float` | Collision energy in eV |
-    | `precursor` | `int \\| None` | Associated precursor ID |
+    | `precursor_id` | `int \\| None` | Associated precursor ID (`None` when the row has no precursor) |
     | `rt` | `float` | Retention time in seconds of that MS/MS frame |
-    | `polarity` | `Polarity` | Ion polarity |
+    | `polarity` | `Polarity \\| None` | `"positive"` / `"negative"`, `None` if unknown |
     """
+
+    msms_type: ClassVar[MsMsType] = MsMsType.DDA_MS2
 
     frame_id: int
     scan_num_begin: int
@@ -151,111 +347,58 @@ class PasefFrameMsmsInfo(_TdfData):
     isolation_mz: float
     isolation_width: float
     collision_energy: float
-    precursor: int | None
+    precursor_id: int | None
     rt: float
-    polarity: Polarity
+    polarity: Polarity | None
+    _timsdata: TimsData = _timsdata_field()
 
     @property
     def unique_id(self) -> tuple[int, int | None]:
-        if self.precursor is None:
+        """``(frame_id, precursor_id)``. Warns when ``precursor_id`` is ``None``."""
+        if self.precursor_id is None:
             warnings.warn(
-                f"Precursor is None for frame {self.frame_id}. Unique ID will be (frame_id, None).",
+                f"precursor_id is None for frame {self.frame_id}. Unique ID will be (frame_id, None).",
                 UserWarning,
                 stacklevel=2,
             )
-        return (self.frame_id, self.precursor)
+        return (self.frame_id, self.precursor_id)
 
-    @property
-    def peaks(self) -> npt.NDArray[np.float64]:
-        """**Centroided** MS/MS peaks summed over this window's scan range.
+    def merged_peaks(self) -> npt.NDArray[np.float64]:
+        """Mobility-collapsed MS/MS spectrum, one ``(N, 2)`` ``[m/z, intensity]`` array.
 
-        The mobility dimension is summed away and the resulting profile is
-        centroided by greedy m/z merging — see
-        :func:`~tdfpy.centroiding.get_mobility_collapsed_spectrum`.
+        Sums the window's scans (dropping ion mobility), then merges peaks
+        greedily in m/z (30 ppm). This decodes and merges every scan, so it is
+        the most expensive accessor; call it once and keep the result. For
+        per-scan raw peaks use :meth:`scan_peaks`; for an ``(N, 3)`` spectrum
+        that keeps ion mobility use :meth:`centroid`. See
+        :func:`~tdfpy.get_mobility_collapsed_spectrum`.
 
-        Returns a single ``(N, 2)`` array of ``[m/z, intensity]`` — note this is
-        already centroided and 2-D, unlike ``Frame.peaks`` /
-        ``DiaWindow.raw_peaks`` which return *raw* peaks as a ``list`` of per-scan
-        arrays. Do not iterate this expecting one entry per scan.
+        Raises:
+            ReaderClosedError: If the reader was closed.
+            TdfpyError: If a window's scan range does not fit its frame (corrupt file).
         """
-        return get_mobility_collapsed_spectrum(
-            self.timsdata,
-            [(self.frame_id, self.scan_num_begin, self.scan_num_end)],
-        )
-
-    @property
-    def scan_num_range(self) -> tuple[int, int]:
-        return (self.scan_num_begin, self.scan_num_end)
-
-    @property
-    def ook0_begin(self) -> float:
-        return self.timsdata.scanNumToOneOverK0(self.frame_id, [self.scan_num_begin])[0]
-
-    @property
-    def ook0_end(self) -> float:
-        return self.timsdata.scanNumToOneOverK0(self.frame_id, [self.scan_num_end])[0]
-
-    @property
-    def ook0_range(self) -> tuple[float, float]:
-        return (self.ook0_begin, self.ook0_end)
-
-    @property
-    def ccs_begin(self) -> float:
-        return oneOverK0ToCCSforMz(self.ook0_begin, 1, self.isolation_mz)
-
-    @property
-    def ccs_end(self) -> float:
-        return oneOverK0ToCCSforMz(self.ook0_end, 1, self.isolation_mz)
-
-    @property
-    def ccs_range(self) -> tuple[float, float]:
-        return (self.ccs_begin, self.ccs_end)
-
-    @property
-    def voltage_begin(self) -> float:
-        return self.timsdata.scanNumToVoltage(self.frame_id, [self.scan_num_begin])[0]
-
-    @property
-    def voltage_end(self) -> float:
-        return self.timsdata.scanNumToVoltage(self.frame_id, [self.scan_num_end])[0]
-
-    @property
-    def voltage_range(self) -> tuple[float, float]:
-        return (self.voltage_begin, self.voltage_end)
-
-    @property
-    def mz_begin(self) -> float:
-        return self.isolation_mz - self.isolation_width / 2
-
-    @property
-    def mz_end(self) -> float:
-        return self.isolation_mz + self.isolation_width / 2
-
-    @property
-    def mz_range(self) -> tuple[float, float]:
-        return (self.mz_begin, self.mz_end)
+        begin, end = self._window_scans()
+        return get_mobility_collapsed_spectrum(self.timsdata, [(self.frame_id, begin, end)])
 
 
-@dataclass
+@dataclass(frozen=True, slots=True, kw_only=True)
 class Precursor(_TdfData):
     """A detected precursor ion from a DDA acquisition.
 
-    Combines data from the `Precursors` table with its associated PASEF MS/MS
-    scan windows (`PasefFrameMsmsInfo`). Provides direct access to ion mobility,
-    CCS, and fragmentation spectra.
+    Combines one row of the `Precursors` table with its PASEF MS/MS windows.
 
     | Field | Type | Description |
     |---|---|---|
     | `precursor_id` | `int` | Unique precursor ID |
     | `largest_peak_mz` | `float` | m/z of the most intense isotope peak |
     | `average_mz` | `float` | Intensity-weighted average m/z |
-    | `monoisotopic_mz` | `float \\| None` | Monoisotopic m/z (if determined) |
+    | `monoisotopic_mz` | `float \\| None` | Monoisotopic m/z (if determined); see also `precursor_mz` |
     | `charge` | `int \\| None` | Charge state (if determined) |
     | `scan_number` | `float` | Fractional mobility scan coordinate |
     | `intensity` | `float` | Summed precursor intensity |
-    | `parent_frame` | `int` | MS1 frame ID |
+    | `parent_frame_id` | `int` | MS1 frame the precursor was detected in |
     | `pasef_frame_msms_infos` | `tuple[PasefFrameMsmsInfo, ...]` | Associated PASEF MS/MS windows |
-    | `rt` | `float` | Retention time in seconds |
+    | `rt` | `float` | Retention time in seconds of the parent frame |
     """
 
     precursor_id: int
@@ -265,439 +408,291 @@ class Precursor(_TdfData):
     charge: int | None
     scan_number: float
     intensity: float
-    parent_frame: int
+    parent_frame_id: int
     pasef_frame_msms_infos: tuple[PasefFrameMsmsInfo, ...]
     rt: float
+    _timsdata: TimsData = _timsdata_field()
+
+    @property
+    def precursor_mz(self) -> float:
+        """The precursor m/z: ``monoisotopic_mz`` when Bruker determined it, else ``largest_peak_mz``."""
+        return self.monoisotopic_mz if self.monoisotopic_mz is not None else self.largest_peak_mz
 
     @property
     def ook0(self) -> float:
-        return self.timsdata.scanNumToOneOverK0(self.parent_frame, [self.scan_number])[0]
+        """1/K0 (V·s/cm²) at ``scan_number`` in the parent frame."""
+        return float(self.timsdata.scan_num_to_ook0(self.parent_frame_id, [self.scan_number])[0])
 
     @property
     def ccs(self) -> float:
-        return oneOverK0ToCCSforMz(self.ook0, self.charge or 1, self.monoisotopic_mz or self.largest_peak_mz)
+        """CCS (Å²) at ``precursor_mz``. Uses charge 1 when the charge is unknown."""
+        return ook0_to_ccs(self.ook0, self.charge or 1, self.precursor_mz)
 
     @property
     def voltage(self) -> float:
-        return self.timsdata.scanNumToVoltage(self.parent_frame, [self.scan_number])[0]
+        """TIMS voltage (V) at ``scan_number`` in the parent frame."""
+        return float(self.timsdata.scan_num_to_voltage(self.parent_frame_id, [self.scan_number])[0])
 
-    @property
-    def peaks(self) -> npt.NDArray[np.float64]:
-        """**Centroided** PASEF MS/MS peaks for this precursor.
+    def merged_peaks(self) -> npt.NDArray[np.float64]:
+        """Mobility-collapsed MS/MS spectrum, one ``(N, 2)`` ``[m/z, intensity]`` array.
 
-        Sums every PASEF subscan of this precursor — which may span several
-        frames — collapses the mobility dimension, then centroids by greedy m/z
-        merging. See :func:`~tdfpy.centroiding.get_mobility_collapsed_spectrum`.
+        Sums every PASEF window of this precursor (which may span several
+        frames), drops ion mobility, then merges peaks greedily in m/z
+        (30 ppm). This decodes every window, so it is the most expensive
+        accessor; call it once and keep the result. See
+        :func:`~tdfpy.get_mobility_collapsed_spectrum`.
 
-        Returns a single ``(N, 2)`` array of ``[m/z, intensity]`` (already
-        centroided and 2-D), unlike ``Frame.peaks`` / ``DiaWindow.raw_peaks``
-        which return *raw* peaks as a ``list`` of per-scan arrays. Do not iterate
-        this expecting one entry per scan.
+        Raises:
+            ReaderClosedError: If the reader was closed.
+            TdfpyError: If a window's scan range does not fit its frame (corrupt file).
         """
         return get_mobility_collapsed_spectrum(
             self.timsdata,
-            [(info.frame_id, info.scan_num_begin, info.scan_num_end) for info in self.pasef_frame_msms_infos],
+            [(info.frame_id, *info._window_scans()) for info in self.pasef_frame_msms_infos],
         )
 
-    @property
-    def pasef_peaks(self) -> list[np.ndarray]:
-        return [pasef_info.peaks for pasef_info in self.pasef_frame_msms_infos]
+    def pasef_merged_peaks(self) -> list[npt.NDArray[np.float64]]:
+        """:meth:`PasefFrameMsmsInfo.merged_peaks` of each PASEF window, one ``(N_i, 2)`` array per window.
 
-    def _get_pasef_frame_single_value(self, attr: str) -> Any:
-        values = {getattr(info, attr) for info in self.pasef_frame_msms_infos}
-        if len(values) == 0:
-            warnings.warn(
-                f"No values found for attribute '{attr}' in pasef_frame_msms_infos. Returning None.",
-                UserWarning,
-                stacklevel=2,
-            )
-            return None
-        if len(values) > 1:
-            warnings.warn(
-                f"Multiple values found for attribute '{attr}' in pasef_frame_msms_infos. Returning None.",
-                UserWarning,
-                stacklevel=2,
-            )
-            return None
-        return values.pop()
+        Raises:
+            ReaderClosedError: If the reader was closed.
+            TdfpyError: If a window's scan range does not fit its frame (corrupt file).
+        """
+        return [pasef_info.merged_peaks() for pasef_info in self.pasef_frame_msms_infos]
+
+    def _single_value[T](self, values: set[T], attr: str) -> T | None:
+        if len(values) == 1:
+            return values.pop()
+        reason = "No values" if not values else "Multiple values"
+        warnings.warn(
+            f"{reason} found for attribute '{attr}' in pasef_frame_msms_infos. Returning None.",
+            UserWarning,
+            stacklevel=3,
+        )
+        return None
 
     @property
     def scan_num_range(self) -> tuple[int, int] | None:
-        return self._get_pasef_frame_single_value("scan_num_range")
+        """Shared scan range of the PASEF windows, or ``None`` (with a warning) if they differ."""
+        return self._single_value({i.scan_num_range for i in self.pasef_frame_msms_infos}, "scan_num_range")
 
     @property
     def ook0_range(self) -> tuple[float, float] | None:
-        return self._get_pasef_frame_single_value("ook0_range")
+        """Shared 1/K0 range of the PASEF windows, or ``None`` (with a warning) if they differ."""
+        return self._single_value({i.ook0_range for i in self.pasef_frame_msms_infos}, "ook0_range")
 
     @property
     def ccs_range(self) -> tuple[float, float] | None:
-        return self._get_pasef_frame_single_value("ccs_range")
+        """Shared CCS range of the PASEF windows, or ``None`` (with a warning) if they differ."""
+        return self._single_value({i.ccs_range for i in self.pasef_frame_msms_infos}, "ccs_range")
 
     @property
     def voltage_range(self) -> tuple[float, float] | None:
-        return self._get_pasef_frame_single_value("voltage_range")
+        """Shared voltage range of the PASEF windows, or ``None`` (with a warning) if they differ."""
+        return self._single_value({i.voltage_range for i in self.pasef_frame_msms_infos}, "voltage_range")
 
     @property
-    def mz_range(self) -> tuple[float, float] | None:
-        return self._get_pasef_frame_single_value("mz_range")
-
-    @property
-    def polarity(self) -> Polarity:
-        polarities = {info.polarity for info in self.pasef_frame_msms_infos}
-        if len(polarities) == 0:
-            warnings.warn(
-                "No polarities found in pasef_frame_msms_infos. Returning 'unknown' for polarity.",
-                UserWarning,
-                stacklevel=2,
-            )
-            return Polarity.UNKNOWN
-        if len(polarities) != 1:
-            warnings.warn(
-                "Multiple polarities found in pasef_frame_msms_infos. Returning 'mixed' for polarity.",
-                UserWarning,
-                stacklevel=2,
-            )
-            return Polarity.MIXED
-        return polarities.pop()
+    def isolation_mz_range(self) -> tuple[float, float] | None:
+        """Shared quadrupole isolation m/z range of the PASEF windows, or ``None`` (with a warning) if they differ."""
+        return self._single_value({i.isolation_mz_range for i in self.pasef_frame_msms_infos}, "isolation_mz_range")
 
     @property
     def collision_energy(self) -> float | None:
-        return self._get_pasef_frame_single_value("collision_energy")
-
-
-@dataclass
-class DiaWindowGroup:
-    """A DIA isolation window definition (shared across frames in the same group).
-
-    Defines the m/z isolation range, mobility scan range, and collision energy
-    for one window within a DIA window group. `DiaWindow` extends this with
-    per-frame fields (`frame_id`, `rt`, `polarity`).
-
-    | Field | Type | Description |
-    |---|---|---|
-    | `window_index` | `int` | 0-based row index in the `DiaFrameMsMsWindows` table (not per-group) |
-    | `window_group` | `int` | Window group ID |
-    | `scan_num_begin` | `int` | First mobility scan (inclusive) |
-    | `scan_num_end` | `int` | Mobility scan range end (exclusive) — the range is `[scan_num_begin, scan_num_end)` |
-    | `isolation_mz` | `float` | Isolation window center m/z |
-    | `isolation_width` | `float` | Isolation window width in Th |
-    | `collision_energy` | `float` | Collision energy in eV |
-    """
-
-    window_index: int
-    window_group: int
-    scan_num_begin: int
-    scan_num_end: int
-    isolation_mz: float
-    isolation_width: float
-    collision_energy: float
+        """Shared collision energy (eV) of the PASEF windows, or ``None`` (with a warning) if they differ."""
+        return self._single_value({i.collision_energy for i in self.pasef_frame_msms_infos}, "collision_energy")
 
     @property
-    def scan_num_range(self) -> tuple[int, int]:
-        return (self.scan_num_begin, self.scan_num_end)
-
-    @property
-    def mz_begin(self) -> float:
-        return self.isolation_mz - self.isolation_width / 2
-
-    @property
-    def mz_end(self) -> float:
-        return self.isolation_mz + self.isolation_width / 2
-
-    @property
-    def mz_range(self) -> tuple[float, float]:
-        return (self.mz_begin, self.mz_end)
+    def polarity(self) -> Polarity | None:
+        """Shared polarity of the PASEF windows; ``None`` (with a warning) if there are none or they differ."""
+        return self._single_value({info.polarity for info in self.pasef_frame_msms_infos}, "polarity")
 
 
-@dataclass
-class Frame(_TdfData):
-    """Base class for a single timsTOF acquisition frame.
+# ---------------------------------------------------------------------------
+# Frames
+# ---------------------------------------------------------------------------
 
-    A frame represents one complete TIMS-MS acquisition cycle. All fields below
-    are present on `DDAMs1Frame` and `DIAMs1Frame` through inheritance.
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class Frame(_Spectrum):
+    """Base class for a single timsTOF MS1 frame.
+
+    A frame is one complete TIMS-MS acquisition cycle. All fields below are
+    present on `DDAMs1Frame`, `DIAMs1Frame` and `PRMMs1Frame`.
     """
 
     frame_id: int
     """Unique frame ID (1-based)."""
-    time: float
-    """Acquisition time in seconds."""
-    polarity: Polarity
-    """Ion polarity of the acquisition."""
+    rt: float
+    """Retention time in seconds (the `Time` column)."""
+    polarity: Polarity | None
+    """``"positive"`` or ``"negative"``; ``None`` if the file stores anything else."""
     scan_mode: int
     """Scan mode integer from the TDF schema."""
-    msms_type: int
-    """MS/MS type (0 = MS1, 8 = DDA MS2, 9 = DIA MS2)."""
+    msms_type: MsMsType
+    """MS/MS type of the frame."""
     tims_id: int | None
-    """TIMS device ID, if present."""
-    max_intensity: int
-    """Maximum peak intensity across all scans in this frame."""
-    summed_intensities: int
-    """Sum of all peak intensities in this frame."""
+    """Byte offset of this frame's data block in `analysis.tdf_bin` (the `TimsId` column)."""
+    base_peak_intensity: int
+    """Most intense peak across all scans in this frame (the `MaxIntensity` column)."""
+    total_ion_current: int
+    """Sum of all peak intensities in this frame (the `SummedIntensities` column)."""
     num_scans: int
     """Number of TIMS scans (mobility bins) in this frame."""
     num_peaks: int
     """Total number of peaks across all scans in this frame."""
-    mz_calibration: int
-    """Reference to the m/z calibration entry."""
+    mz_calibration_id: int
+    """ID of the row in the `MzCalibration` table."""
     t1: float
-    """TIMS calibration coefficient T1."""
+    """Temperature T1 (°C) used by the m/z calibration."""
     t2: float
-    """TIMS calibration coefficient T2."""
-    tims_calibration: int
-    """Reference to the TIMS calibration entry."""
-    property_group: int | None
-    """Reference to the property group entry, if present."""
+    """Temperature T2 (°C) used by the m/z calibration."""
+    tims_calibration_id: int
+    """ID of the row in the `TimsCalibration` table."""
+    property_group_id: int | None
+    """ID of the row in the `PropertyGroups` table, if present."""
     accumulation_time: float
     """Ion accumulation time in milliseconds."""
     ramp_time: float
     """TIMS ramp time in milliseconds."""
+    _timsdata: TimsData = _timsdata_field()
 
     @property
-    def peaks(self) -> list[npt.NDArray[np.float64]]:
-        """Read raw peaks for this frame and return as list of (mz, intensity) arrays."""
-        d: list[tuple[npt.NDArray[np.uint32], npt.NDArray[np.uint32]]] = self.timsdata.readScans(self.frame_id, 0, self.num_scans)
-        mz_int_arrays = []
-        for index_array, int_array in d:
-            mz_array = self.timsdata.indexToMz(self.frame_id, index_array)
-            mz_int_arrays.append(np.stack((mz_array, int_array), axis=-1).astype(np.float64))
-        return mz_int_arrays
+    def ms_level(self) -> int:
+        """MS level: 1 for an MS1 frame, 2 for an MS/MS frame (from ``msms_type``)."""
+        return 1 if self.msms_type == MsMsType.MS1 else 2
 
-    def raw_peaks(
-        self,
-        *,
-        exclude: ChargeStateRegion | None = None,
-        smooth: Smooth | None = None,
-        noise: NoiseSpec = None,
-        ion_mobility_type: Literal["ook0", "ccs", "voltage"] = "ook0",
-    ) -> np.ndarray:
-        """Return raw peaks as ``(N, 3)`` ``[mz, intensity, ion_mobility]``.
-
-        Higher-level pythonic wrapper around :func:`tdfpy.get_raw_peaks`. See
-        that function for the meaning of each kwarg.
-        """
-        return _frame_raw_peaks(
-            self.timsdata,
-            self.frame_id,
-            scan_range=None,
-            exclude=exclude,
-            smooth=smooth,
-            noise=noise,
-            ion_mobility_type=ion_mobility_type,
-        )
-
-    def centroid(
-        self,
-        *,
-        exclude: ChargeStateRegion | None = None,
-        smooth: Smooth | None = None,
-        noise: NoiseSpec = None,
-        ion_mobility_type: Literal["ook0", "ccs", "voltage"] = "ook0",
-        centroid: Centroider | None = None,
-    ) -> np.ndarray:
-        """Centroid the spectrum for this frame.
-
-        Pre-centroid raw-peak knobs (``exclude``, ``noise``, smoothing,
-        ``ion_mobility_type``) are forwarded to
-        :func:`tdfpy.get_raw_peaks`. Centroider-specific knobs live on
-        :class:`~tdfpy.pipeline.Centroider`.
-        """
-        return _frame_centroid(
-            self.timsdata,
-            self.frame_id,
-            scan_range=None,
-            exclude=exclude,
-            smooth=smooth,
-            noise=noise,
-            ion_mobility_type=ion_mobility_type,
-            centroid=centroid,
-        )
+    def _scan_bounds(self) -> tuple[int, int] | None:
+        return None
 
 
-@dataclass
+@dataclass(frozen=True, slots=True, kw_only=True)
 class DDAMs1Frame(Frame):
     """An MS1 frame from a DDA acquisition.
 
-    Inherits all fields from `Frame`. The `precursors` field lists every
-    precursor detected in this frame.
+    Inherits all fields from `Frame`. `precursors` lists every precursor
+    detected in this frame.
     """
 
     precursors: tuple[Precursor, ...]
     """All precursors detected in this MS1 frame."""
 
 
-@dataclass
-class DiaWindow(DiaWindowGroup, _TdfData):
-    """A DIA isolation window bound to a specific frame.
+# ---------------------------------------------------------------------------
+# DIA
+# ---------------------------------------------------------------------------
 
-    Extends `DiaWindowGroup` with per-frame context (`frame_id`, `rt`,
-    `polarity`). Provides raw and centroided spectrum access and ion mobility
-    conversion properties.
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class DiaWindowGroup(_IsolationWindow):
+    """One window of a DIA window group, shared by every frame that uses the group.
+
+    One row of the `DiaFrameMsMsWindows` table. `DiaWindow` adds the per-frame
+    fields (`frame_id`, `rt`, `polarity`).
+
+    | Field | Type | Description |
+    |---|---|---|
+    | `window_index` | `int` | 0-based row index in the `DiaFrameMsMsWindows` table (not per group) |
+    | `window_group_id` | `int` | Window group ID (the `WindowGroup` column) |
+    | `scan_num_begin` | `int` | First mobility scan (inclusive) |
+    | `scan_num_end` | `int` | Mobility scan range end (exclusive), so the range is `[scan_num_begin, scan_num_end)` |
+    | `isolation_mz` | `float` | Isolation window center m/z |
+    | `isolation_width` | `float` | Isolation window width in Th |
+    | `collision_energy` | `float` | Collision energy in eV |
+    """
+
+    window_index: int
+    window_group_id: int
+    scan_num_begin: int
+    scan_num_end: int
+    isolation_mz: float
+    isolation_width: float
+    collision_energy: float
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class DiaWindow(DiaWindowGroup, _MobilityWindow):
+    """A DIA isolation window in one specific MS/MS frame.
+
+    Extends `DiaWindowGroup` with the frame it was acquired in, and gives
+    spectrum access and ion-mobility ranges for the window's scan range.
     """
 
     frame_id: int
-    """Frame ID this window belongs to."""
+    """MS/MS frame this window was acquired in."""
+    msms_type: ClassVar[MsMsType] = MsMsType.DIA_MS2
+
     rt: float
-    """Retention time of the parent frame in seconds."""
-    polarity: Polarity
-    """Ion polarity."""
-
-    @property
-    def peaks(self) -> list[npt.NDArray[np.float64]]:
-        """Read raw peaks for this DIA window and return as list of (mz, intensity) arrays."""
-        d: list[tuple[npt.NDArray[np.uint32], npt.NDArray[np.uint32]]] = self.timsdata.readScans(self.frame_id, self.scan_num_begin, self.scan_num_end)
-        mz_int_arrays = []
-        for index_array, int_array in d:
-            mz_array = self.timsdata.indexToMz(self.frame_id, index_array)
-            mz_int_arrays.append(np.stack((mz_array, int_array), axis=-1).astype(np.float64))
-        return mz_int_arrays
-
-    def raw_peaks(
-        self,
-        *,
-        exclude: ChargeStateRegion | None = None,
-        smooth: Smooth | None = None,
-        noise: NoiseSpec = None,
-        ion_mobility_type: Literal["ook0", "ccs", "voltage"] = "ook0",
-    ) -> np.ndarray:
-        """Return raw peaks for this DIA window — restricted to the
-        window's scan range ``[scan_num_begin, scan_num_end)``.
-
-        Mirrors :meth:`Frame.raw_peaks`.
-        """
-        return _frame_raw_peaks(
-            self.timsdata,
-            self.frame_id,
-            scan_range=(self.scan_num_begin, self.scan_num_end),
-            exclude=exclude,
-            smooth=smooth,
-            noise=noise,
-            ion_mobility_type=ion_mobility_type,
-        )
-
-    def centroid(
-        self,
-        *,
-        exclude: ChargeStateRegion | None = None,
-        smooth: Smooth | None = None,
-        noise: NoiseSpec = None,
-        ion_mobility_type: Literal["ook0", "ccs", "voltage"] = "ook0",
-        centroid: Centroider | None = None,
-    ) -> np.ndarray:
-        """Centroid the spectrum for this DIA window — restricted to the
-        window's scan range ``[scan_num_begin, scan_num_end)``.
-
-        Mirrors :meth:`Frame.centroid`.
-        """
-        return _frame_centroid(
-            self.timsdata,
-            self.frame_id,
-            scan_range=(self.scan_num_begin, self.scan_num_end),
-            exclude=exclude,
-            smooth=smooth,
-            noise=noise,
-            ion_mobility_type=ion_mobility_type,
-            centroid=centroid,
-        )
-
-    @property
-    def ook0_begin(self) -> float:
-        return self.timsdata.scanNumToOneOverK0(self.frame_id, [self.scan_num_begin])[0]
-
-    @property
-    def ook0_end(self) -> float:
-        return self.timsdata.scanNumToOneOverK0(self.frame_id, [self.scan_num_end])[0]
-
-    @property
-    def ook0_range(self) -> tuple[float, float]:
-        return (self.ook0_begin, self.ook0_end)
-
-    @property
-    def ccs_begin(self) -> float:
-        return oneOverK0ToCCSforMz(self.ook0_begin, 1, self.isolation_mz)
-
-    @property
-    def ccs_end(self) -> float:
-        return oneOverK0ToCCSforMz(self.ook0_end, 1, self.isolation_mz)
-
-    @property
-    def ccs_range(self) -> tuple[float, float]:
-        return (self.ccs_begin, self.ccs_end)
-
-    @property
-    def voltage_begin(self) -> float:
-        return self.timsdata.scanNumToVoltage(self.frame_id, [self.scan_num_begin])[0]
-
-    @property
-    def voltage_end(self) -> float:
-        return self.timsdata.scanNumToVoltage(self.frame_id, [self.scan_num_end])[0]
-
-    @property
-    def voltage_range(self) -> tuple[float, float]:
-        return (self.voltage_begin, self.voltage_end)
+    """Retention time of that frame in seconds."""
+    polarity: Polarity | None
+    """``"positive"`` / ``"negative"``, ``None`` if unknown."""
+    _timsdata: TimsData = _timsdata_field()
 
 
-@dataclass
+@dataclass(frozen=True, slots=True, kw_only=True)
 class DIAMs1Frame(Frame):
     """An MS1 frame from a DIA acquisition.
 
-    Inherits all fields from `Frame`. The `dia_windows` field only matches identical frame IDs. Normal DIA
-    windows belong to MS2 frames, so this tuple is empty. Use reader.windows
-    to access isolation windows. This field does not associate acquisition cycles.
+    Inherits all fields from `Frame`. DIA isolation windows belong to MS/MS
+    frames; use the reader's `windows` lookup for them.
     """
 
-    dia_windows: tuple[DiaWindow, ...]
-    """All DIA windows associated with this MS1 frame."""
+
+# ---------------------------------------------------------------------------
+# PRM
+# ---------------------------------------------------------------------------
 
 
-@dataclass
+@dataclass(frozen=True, slots=True, kw_only=True)
 class PrmTarget:
     """A predefined PRM target ion from the `PrmTargets` table.
-
-    Defines the expected m/z, charge, retention time, and ion mobility for
-    a target analyte in a PRM acquisition.
 
     | Field | Type | Description |
     |---|---|---|
     | `target_id` | `int` | Unique target ID |
     | `external_id` | `str \\| None` | External identifier |
-    | `time` | `float` | Expected retention time in seconds |
-    | `one_over_k0` | `float` | Expected ion mobility (1/K0) |
-    | `monoisotopic_mz` | `float` | Target m/z |
+    | `rt` | `float` | Expected retention time in seconds |
+    | `ook0` | `float` | Expected ion mobility 1/K0 (V·s/cm²) |
+    | `precursor_mz` | `float` | Target precursor m/z (the `MonoisotopicMz` column) |
     | `charge` | `int` | Charge state |
     | `description` | `str` | Target description |
-    | `transitions` | `tuple[PrmTransition, ...]` | Associated PRM transitions |
+    | `transitions` | `tuple[PrmTransition, ...]` | Transitions acquired for this target |
+
+    ``transitions`` is excluded from equality and hashing (each transition
+    points back at its target).
     """
 
     target_id: int
     external_id: str | None
-    time: float
-    one_over_k0: float
-    monoisotopic_mz: float
+    rt: float
+    ook0: float
+    precursor_mz: float
     charge: int
     description: str
-    transitions: tuple["PrmTransition", ...] = ()
+    transitions: tuple["PrmTransition", ...] = field(default=(), compare=False, repr=False)
 
 
-@dataclass
-class PrmTransition(_TdfData):
-    """A PRM isolation window bound to a specific frame.
+@dataclass(frozen=True, slots=True, kw_only=True)
+class PrmTransition(_MobilityWindow):
+    """A PRM isolation window in one specific MS/MS frame.
 
-    Each instance corresponds to one row in the `PrmFrameMsMsInfo` table:
-    a contiguous range of mobility scans acquired with a specific isolation
-    window and collision energy, linked to a PRM target.
+    One row of the `PrmFrameMsMsInfo` table: a contiguous range of mobility
+    scans acquired with one isolation window and collision energy, linked to a
+    PRM target.
 
     | Field | Type | Description |
     |---|---|---|
     | `frame_id` | `int` | Frame ID |
     | `scan_num_begin` | `int` | First mobility scan (inclusive) |
-    | `scan_num_end` | `int` | Mobility scan range end (exclusive) — the range is `[scan_num_begin, scan_num_end)` |
+    | `scan_num_end` | `int` | Mobility scan range end (exclusive), so the range is `[scan_num_begin, scan_num_end)` |
     | `isolation_mz` | `float` | Isolation window center m/z |
     | `isolation_width` | `float` | Isolation window width in Th |
     | `collision_energy` | `float` | Collision energy in eV |
     | `target` | `PrmTarget` | Associated PRM target |
     | `rt` | `float` | Retention time in seconds |
-    | `polarity` | `Polarity` | Ion polarity |
+    | `polarity` | `Polarity \\| None` | `"positive"` / `"negative"`, `None` if unknown |
     """
+
+    msms_type: ClassVar[MsMsType] = MsMsType.PRM_MS2
 
     frame_id: int
     scan_num_begin: int
@@ -707,144 +702,65 @@ class PrmTransition(_TdfData):
     collision_energy: float
     target: PrmTarget
     rt: float
-    polarity: Polarity
-
-    @property
-    def peaks(self) -> list[npt.NDArray[np.float64]]:
-        """Read raw peaks for this PRM transition and return as list of (mz, intensity) arrays."""
-        d: list[tuple[npt.NDArray[np.uint32], npt.NDArray[np.uint32]]] = self.timsdata.readScans(self.frame_id, self.scan_num_begin, self.scan_num_end)
-        mz_int_arrays = []
-        for index_array, int_array in d:
-            mz_array = self.timsdata.indexToMz(self.frame_id, index_array)
-            mz_int_arrays.append(np.stack((mz_array, int_array), axis=-1).astype(np.float64))
-        return mz_int_arrays
-
-    def raw_peaks(
-        self,
-        *,
-        exclude: ChargeStateRegion | None = None,
-        smooth: Smooth | None = None,
-        noise: NoiseSpec = None,
-        ion_mobility_type: Literal["ook0", "ccs", "voltage"] = "ook0",
-    ) -> np.ndarray:
-        """Return raw peaks for this PRM transition — restricted to its
-        scan range ``[scan_num_begin, scan_num_end)``.
-
-        Mirrors :meth:`Frame.raw_peaks`.
-        """
-        return _frame_raw_peaks(
-            self.timsdata,
-            self.frame_id,
-            scan_range=(self.scan_num_begin, self.scan_num_end),
-            exclude=exclude,
-            smooth=smooth,
-            noise=noise,
-            ion_mobility_type=ion_mobility_type,
-        )
-
-    def centroid(
-        self,
-        *,
-        exclude: ChargeStateRegion | None = None,
-        smooth: Smooth | None = None,
-        noise: NoiseSpec = None,
-        ion_mobility_type: Literal["ook0", "ccs", "voltage"] = "ook0",
-        centroid: Centroider | None = None,
-    ) -> np.ndarray:
-        """Centroid the spectrum for this PRM transition — restricted to
-        its scan range ``[scan_num_begin, scan_num_end)``.
-
-        Mirrors :meth:`Frame.centroid`.
-        """
-        return _frame_centroid(
-            self.timsdata,
-            self.frame_id,
-            scan_range=(self.scan_num_begin, self.scan_num_end),
-            exclude=exclude,
-            smooth=smooth,
-            noise=noise,
-            ion_mobility_type=ion_mobility_type,
-            centroid=centroid,
-        )
-
-    @property
-    def scan_num_range(self) -> tuple[int, int]:
-        return (self.scan_num_begin, self.scan_num_end)
-
-    @property
-    def ook0_begin(self) -> float:
-        return self.timsdata.scanNumToOneOverK0(self.frame_id, [self.scan_num_begin])[0]
-
-    @property
-    def ook0_end(self) -> float:
-        return self.timsdata.scanNumToOneOverK0(self.frame_id, [self.scan_num_end])[0]
-
-    @property
-    def ook0_range(self) -> tuple[float, float]:
-        return (self.ook0_begin, self.ook0_end)
-
-    @property
-    def ccs_begin(self) -> float:
-        return oneOverK0ToCCSforMz(self.ook0_begin, 1, self.isolation_mz)
-
-    @property
-    def ccs_end(self) -> float:
-        return oneOverK0ToCCSforMz(self.ook0_end, 1, self.isolation_mz)
-
-    @property
-    def ccs_range(self) -> tuple[float, float]:
-        return (self.ccs_begin, self.ccs_end)
-
-    @property
-    def voltage_begin(self) -> float:
-        return self.timsdata.scanNumToVoltage(self.frame_id, [self.scan_num_begin])[0]
-
-    @property
-    def voltage_end(self) -> float:
-        return self.timsdata.scanNumToVoltage(self.frame_id, [self.scan_num_end])[0]
-
-    @property
-    def voltage_range(self) -> tuple[float, float]:
-        return (self.voltage_begin, self.voltage_end)
-
-    @property
-    def mz_begin(self) -> float:
-        return self.isolation_mz - self.isolation_width / 2
-
-    @property
-    def mz_end(self) -> float:
-        return self.isolation_mz + self.isolation_width / 2
-
-    @property
-    def mz_range(self) -> tuple[float, float]:
-        return (self.mz_begin, self.mz_end)
+    polarity: Polarity | None
+    _timsdata: TimsData = _timsdata_field()
 
 
-@dataclass
+@dataclass(frozen=True, slots=True, kw_only=True)
 class PRMMs1Frame(Frame):
     """An MS1 frame from a PRM acquisition.
 
-    Inherits all fields from `Frame`. The `prm_transitions` field lists the PRM
-    transitions from adjacent MS2 frames.
+    Inherits all fields from `Frame`. PRM transitions belong to MS/MS frames;
+    use the reader's `transitions` lookup for them.
     """
 
-    prm_transitions: tuple[PrmTransition, ...]
-    """All PRM transitions associated with this MS1 frame."""
+
+# ---------------------------------------------------------------------------
+# Key/value tables
+# ---------------------------------------------------------------------------
+
+MetaValue = str | int | float | None
+"""A value from the `GlobalMetadata` or `CalibrationInfo` table."""
 
 
-@dataclass
-class _KeyDf:
-    df: pd.DataFrame
+@dataclass(frozen=True, slots=True, eq=False)
+class _KeyTable(Mapping[str, MetaValue]):
+    """Read-only key/value table. A missing key raises :class:`~tdfpy.TdfpyKeyError`."""
 
-    def __getitem__(self, key: str) -> str:
-        if key not in self.df.index:
-            raise KeyError(f"Key {key!r} not found in the {type(self).__name__} table. Available keys: {sorted(map(str, self.df.index))}")
-        return self.df.loc[key]
+    table: Mapping[str, MetaValue]
+
+    def __getitem__(self, key: str) -> MetaValue:
+        try:
+            return self.table[key]
+        except KeyError:
+            raise TdfpyKeyError(f"Key {key!r} not found in the {type(self).__name__} table. Available keys: {sorted(self.table)}") from None
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self.table)
+
+    def __len__(self) -> int:
+        return len(self.table)
+
+    def _str(self, key: str) -> str:
+        return str(self[key])
+
+    def _int(self, key: str) -> int:
+        return int(self._str(key))
+
+    def _float(self, key: str) -> float:
+        return float(self._str(key))
+
+    def _datetime(self, key: str) -> datetime.datetime:
+        return datetime.datetime.fromisoformat(self._str(key))
 
 
-@dataclass
-class Calibration(_KeyDf):
-    """
+@dataclass(frozen=True, slots=True, eq=False)
+class Calibration(_KeyTable):
+    """The `CalibrationInfo` table as a read-only mapping of key to value.
+
+    A missing key raises :class:`~tdfpy.TdfpyKeyError`, from indexing and from
+    the typed properties below.
+
     Example Calibration table keys:
 
     ```
@@ -864,55 +780,67 @@ class Calibration(_KeyDf):
 
     @property
     def date(self) -> datetime.datetime:
-        # Example: CalibrationDateTime 2018-08-21T16:50:31+02:00
-        cdatetime = self["CalibrationDateTime"]
-        return datetime.datetime.fromisoformat(cdatetime)
+        """Mass calibration date (`CalibrationDateTime`)."""
+        return self._datetime("CalibrationDateTime")
 
     @property
     def user(self) -> str:
-        return self["CalibrationUser"]
+        """User who ran the calibration."""
+        return self._str("CalibrationUser")
 
     @property
     def software(self) -> str:
-        return self["CalibrationSoftware"]
+        """Calibration software name."""
+        return self._str("CalibrationSoftware")
 
     @property
     def software_version(self) -> str:
-        return self["CalibrationSoftwareVersion"]
+        """Calibration software version."""
+        return self._str("CalibrationSoftwareVersion")
 
     @property
     def mode(self) -> str:
-        return self["MzCalibrationMode"]
+        """m/z calibration mode (`MzCalibrationMode`), as text."""
+        return self._str("MzCalibrationMode")
 
     @property
     def std_ppm(self) -> float:
-        return float(self["MzStandardDeviationPPM"])
+        """m/z calibration standard deviation in ppm."""
+        return self._float("MzStandardDeviationPPM")
 
     @property
     def reference_masses(self) -> str:
-        return self["ReferenceMassList"]
+        """Reference mass list name."""
+        return self._str("ReferenceMassList")
 
     @property
     def mobility_calibration_date(self) -> datetime.datetime:
-        mcdatetime = self["MobilityCalibrationDateTime"]
-        return datetime.datetime.fromisoformat(mcdatetime)
+        """Mobility calibration date."""
+        return self._datetime("MobilityCalibrationDateTime")
 
     @property
     def mobility_calibration_user(self) -> str:
-        return self["MobilityCalibrationUser"]
+        """User who ran the mobility calibration."""
+        return self._str("MobilityCalibrationUser")
 
     @property
     def mobility_standard_deviation_percent(self) -> float:
-        return float(self["MobilityStandardDeviationPercent"])
+        """Mobility calibration standard deviation in percent."""
+        return self._float("MobilityStandardDeviationPercent")
 
     @property
     def reference_mobility_list(self) -> str:
-        return self["ReferenceMobilityList"]
+        """Reference mobility list name."""
+        return self._str("ReferenceMobilityList")
 
 
-@dataclass
-class MetaData(_KeyDf):
-    """
+@dataclass(frozen=True, slots=True, eq=False)
+class MetaData(_KeyTable):
+    """The `GlobalMetadata` table as a read-only mapping of key to value.
+
+    A missing key raises :class:`~tdfpy.TdfpyKeyError`, from indexing and from
+    the typed properties below.
+
     Example GlobalMetaData table keys:
 
     ```
@@ -942,67 +870,67 @@ class MetaData(_KeyDf):
     @property
     def schema_type(self) -> str:
         """Schema type (typically 'TDF')."""
-        return self["SchemaType"]
+        return self._str("SchemaType")
 
     @property
     def schema_version_major(self) -> int:
         """Major version of the TDF schema."""
-        return int(self["SchemaVersionMajor"])
+        return self._int("SchemaVersionMajor")
 
     @property
     def schema_version_minor(self) -> int:
         """Minor version of the TDF schema."""
-        return int(self["SchemaVersionMinor"])
+        return self._int("SchemaVersionMinor")
 
     @property
     def acquisition_software_vendor(self) -> str:
         """Vendor of acquisition software."""
-        return self["AcquisitionSoftwareVendor"]
+        return self._str("AcquisitionSoftwareVendor")
 
     @property
     def instrument_vendor(self) -> str:
         """Instrument vendor."""
-        return self["InstrumentVendor"]
+        return self._str("InstrumentVendor")
 
     @property
     def tims_compression_type(self) -> int:
         """TIMS data compression type."""
-        return int(self["TimsCompressionType"])
+        return self._int("TimsCompressionType")
 
     @property
     def closed_properly(self) -> bool:
         """Whether the acquisition was closed properly."""
-        return bool(int(self["ClosedProperly"]))
+        return bool(self._int("ClosedProperly"))
 
     @property
     def max_num_peaks_per_scan(self) -> int:
         """Maximum number of peaks per scan."""
-        return int(self["MaxNumPeaksPerScan"])
+        return self._int("MaxNumPeaksPerScan")
 
     @property
     def analysis_id(self) -> str:
         """Analysis UUID."""
-        return self["AnalysisId"]
+        return self._str("AnalysisId")
 
     @property
     def digitizer_num_samples(self) -> int:
         """Number of digitizer samples."""
-        return int(self["DigitizerNumSamples"])
+        return self._int("DigitizerNumSamples")
 
     @property
     def peak_list_index_scale_factor(self) -> int:
         """Peak list index scale factor."""
-        return int(self["PeakListIndexScaleFactor"])
+        return self._int("PeakListIndexScaleFactor")
 
     @property
     def mz_acq_range_lower(self) -> float:
         """Lower m/z acquisition range."""
-        return float(self["MzAcqRangeLower"])
+        return self._float("MzAcqRangeLower")
 
     @property
     def mz_acq_range_upper(self) -> float:
         """Upper m/z acquisition range."""
-        return float(self["MzAcqRangeUpper"])
+        return self._float("MzAcqRangeUpper")
 
     @property
     def mz_acq_range(self) -> tuple[float, float]:
@@ -1010,85 +938,84 @@ class MetaData(_KeyDf):
         return (self.mz_acq_range_lower, self.mz_acq_range_upper)
 
     @property
-    def one_over_k0_acq_range_lower(self) -> float:
+    def ook0_acq_range_lower(self) -> float:
         """Lower 1/K0 acquisition range."""
-        return float(self["OneOverK0AcqRangeLower"])
+        return self._float("OneOverK0AcqRangeLower")
 
     @property
-    def one_over_k0_acq_range_upper(self) -> float:
+    def ook0_acq_range_upper(self) -> float:
         """Upper 1/K0 acquisition range."""
-        return float(self["OneOverK0AcqRangeUpper"])
+        return self._float("OneOverK0AcqRangeUpper")
 
     @property
-    def one_over_k0_acq_range(self) -> tuple[float, float]:
+    def ook0_acq_range(self) -> tuple[float, float]:
         """1/K0 acquisition range as (lower, upper) tuple."""
-        return (self.one_over_k0_acq_range_lower, self.one_over_k0_acq_range_upper)
+        return (self.ook0_acq_range_lower, self.ook0_acq_range_upper)
 
     # Acquisition software information
     @property
     def acquisition_software(self) -> str:
         """Acquisition software name."""
-        return self["AcquisitionSoftware"]
+        return self._str("AcquisitionSoftware")
 
     @property
     def acquisition_software_version(self) -> str:
         """Acquisition software version."""
-        return self["AcquisitionSoftwareVersion"]
+        return self._str("AcquisitionSoftwareVersion")
 
     @property
     def acquisition_firmware_version(self) -> str:
         """Acquisition firmware version."""
-        return self["AcquisitionFirmwareVersion"]
+        return self._str("AcquisitionFirmwareVersion")
 
     @property
     def acquisition_datetime(self) -> datetime.datetime:
         """Acquisition date and time."""
-        adatetime = self["AcquisitionDateTime"]
-        return datetime.datetime.fromisoformat(adatetime)
+        return self._datetime("AcquisitionDateTime")
 
     # Instrument information
     @property
     def instrument_name(self) -> str:
         """Instrument name."""
-        return self["InstrumentName"]
+        return self._str("InstrumentName")
 
     @property
     def instrument_family(self) -> int:
         """Instrument family code."""
-        return int(self["InstrumentFamily"])
+        return self._int("InstrumentFamily")
 
     @property
     def instrument_revision(self) -> int:
         """Instrument revision number."""
-        return int(self["InstrumentRevision"])
+        return self._int("InstrumentRevision")
 
     @property
     def instrument_source_type(self) -> int:
         """Instrument source type code."""
-        return int(self["InstrumentSourceType"])
+        return self._int("InstrumentSourceType")
 
     @property
     def instrument_serial_number(self) -> str:
         """Instrument serial number."""
-        return self["InstrumentSerialNumber"]
+        return self._str("InstrumentSerialNumber")
 
     # Sample and method information
     @property
     def operator_name(self) -> str:
         """Operator name."""
-        return self["OperatorName"]
+        return self._str("OperatorName")
 
     @property
     def description(self) -> str:
         """Sample/acquisition description."""
-        return self["Description"]
+        return self._str("Description")
 
     @property
     def sample_name(self) -> str:
         """Sample name."""
-        return self["SampleName"]
+        return self._str("SampleName")
 
     @property
     def method_name(self) -> str:
         """Acquisition method name."""
-        return self["MethodName"]
+        return self._str("MethodName")

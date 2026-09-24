@@ -2,7 +2,7 @@
 Package for working with TDF (Bruker Data File) data.
 """
 
-from .calibration import UnsupportedCalibrationError
+from .calibration import ccs_to_ook0, ook0_to_ccs
 from .centroiding import (
     get_centroided_spectrum,
     get_mobility_collapsed_spectrum,
@@ -17,11 +17,22 @@ from .elems import (
     DiaWindowGroup,
     Frame,
     MetaData,
+    MetaValue,
+    MsMsType,
     PasefFrameMsmsInfo,
+    Polarity,
     Precursor,
     PRMMs1Frame,
     PrmTarget,
     PrmTransition,
+)
+from .errors import (
+    AcquisitionTypeError,
+    ReaderClosedError,
+    TdfpyError,
+    TdfpyKeyError,
+    UnsupportedCalibrationError,
+    UnsupportedTdfError,
 )
 from .lookup import (
     DiaWindowLookup,
@@ -61,17 +72,18 @@ from .pipeline import (
     smooth,
     subset_scans,
 )
-from .processing import iter_window_spectra
+from .processing import iter_precursor_spectra, iter_window_spectra
 from .reader import (
     DDA,
     DIA,
     PRM,
+    AcquisitionType,
     get_acquisition_type,
 )
 from .regions import ChargeStateRegion
 from .slicer import slice_d_folder
 from .tdf import PandasTdf
-from .timsdata import FrameMetadata, TimsData, UnsupportedTdfError, timsdata_connect
+from .timsdata import FrameMetadata, TimsData, timsdata_connect
 from .validation import ValidationIssue, ValidationReport, validate_acquisition
 from .viz import plot_centroiding
 
@@ -79,6 +91,7 @@ __version__ = "4.1.1"
 
 __all__ = [
     "FrameMetadata",
+    "iter_precursor_spectra",
     "iter_window_spectra",
     "ValidationIssue",
     "ValidationReport",
@@ -87,13 +100,25 @@ __all__ = [
     "PandasTdf",
     "TimsData",
     "timsdata_connect",
+    # Errors
+    "TdfpyError",
+    "TdfpyKeyError",
+    "AcquisitionTypeError",
+    "ReaderClosedError",
     "UnsupportedTdfError",
     "UnsupportedCalibrationError",
     "DDA",
     "DIA",
     "PRM",
     "get_acquisition_type",
+    "AcquisitionType",
     "slice_d_folder",
+    # Enums
+    "MsMsType",
+    "Polarity",
+    # Unit conversion
+    "ook0_to_ccs",
+    "ccs_to_ook0",
     # Frame elements
     "Frame",
     "DDAMs1Frame",
@@ -106,6 +131,7 @@ __all__ = [
     "PrmTarget",
     "PrmTransition",
     "MetaData",
+    "MetaValue",
     "Calibration",
     "DiaWindowLookup",
     "Ms1FrameLookup",
