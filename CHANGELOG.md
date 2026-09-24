@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.1.1] (2026-09-23)
+
 ### Fixed
 
 - `slice_d_folder` now drops `FrameMsMsInfo` and `CollisionEnergySweepingInfo` rows for frames outside the kept range. Before, they were copied unchanged and pointed at deleted frames.
@@ -19,6 +21,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Reference tests: CCS against the Mason-Schamp equation from CODATA 2018 constants, and Bruker's tune-mix reference 1/K0 values converted to CCS against published drift-tube CCS for the Agilent tune mix (Stow et al. 2017; agreement to about 1%); DDA/DIA/PRM metadata against direct sqlite queries.
 - Hypothesis property tests for `merge_peaks` (intensity conservation, both kernels agree, degenerate frames), `_sum_by_tof_index` and the CCS round trip. `hypothesis` joins the dev group.
+- `SECURITY.md` (private reports through GitHub security advisories).
+
+### Changed
+
+- GitHub Actions are pinned to commit SHAs. Locked dev and docs dependencies updated (requests, pygments, urllib3, pymdown-extensions, pillow); runtime requirements are unchanged.
 
 ## [4.1.0] (2026-09-23)
 
