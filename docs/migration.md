@@ -32,6 +32,15 @@ the sections after it cover changes of type or behaviour.
 | `tdfpy.calibration.one_over_k0_to_ccs`, `ccs_to_one_over_k0` | `ook0_to_ccs`, `ccs_to_ook0` |
 | `TimsCalibration.scan_to_one_over_k0`, `one_over_k0_to_scan` | `scan_to_ook0`, `ook0_to_scan` |
 | MCP tool `query_dia_windows(window_group=...)` | `window_group_id=` |
+| `PasefFrameMsmsInfo.mz_range`, `DiaWindow.mz_range`, `PrmTransition.mz_range`, `Precursor.mz_range` | `.isolation_mz_range` |
+| `.mz_begin`, `.mz_end` (isolation windows) | removed: `lo, hi = w.isolation_mz_range` |
+| `PrmTarget.monoisotopic_mz` | `PrmTarget.precursor_mz` |
+| `Frame.summed_intensities` | `Frame.total_ion_current` |
+| `Frame.max_intensity` | `Frame.base_peak_intensity` |
+| `PrecursorLookup.query_range(mz_range=...)`, `PrmTargetLookup.query_range(mz_range=...)` | `precursor_mz_range=` |
+| `Polarity.POSITIVE`, `Polarity.NEGATIVE` | `"positive"`, `"negative"` |
+
+These names match mzmlpy, so code can read both formats with one vocabulary.
 
 Every spectral accessor is now a method, so each call visibly decodes the frame:
 
@@ -43,6 +52,18 @@ Every spectral accessor is now a method, so each call visibly decodes the frame:
 | `merged_peaks()` (`Precursor`, `PasefFrameMsmsInfo`) | one `(N, 2)` array, mobility collapsed | decode + greedy m/z merge; the slowest, call once |
 
 `PasefFrameMsmsInfo` now has `scan_peaks()`, `raw_peaks()` and `centroid()` too.
+
+## Added
+
+- `ms_level` on frames (1 or 2, from `msms_type`) and on `PasefFrameMsmsInfo`,
+  `DiaWindow` and `PrmTransition` (always 2). Those window classes carry `msms_type`
+  as a class constant.
+- `Precursor.precursor_mz`: `monoisotopic_mz` when known, otherwise
+  `largest_peak_mz`. `PrecursorLookup` matches on it.
+- `reader.ms1.query_range(rt_range=(lo, hi))` and `reader.ms1.query(rt=, rt_tolerance=)`.
+- `tdfpy.iter_precursor_spectra(dda.precursors)` yields `(precursor, peaks)` with
+  `peaks == precursor.merged_peaks()`, decoding each PASEF frame once. Use it instead
+  of looping over `merged_peaks()` when you need many precursors.
 
 ## Removed
 
@@ -67,6 +88,19 @@ Every spectral accessor is now a method, so each call visibly decodes the frame:
   `get_acquisition_type(p) == "DDA"` still holds.
 - **`Frame.msms_type`** is a `MsMsType` (an `IntEnum`), not a plain `int`.
   `MsMsType` and `Polarity` are exported from `tdfpy`.
+- **`Polarity`** is `Literal["positive", "negative"]` (was a `StrEnum` with the same
+  values). Every `polarity` field is `Polarity | None`: a `Polarity` column value
+  other than `+` / `-` gives `None` and one warning per file, and
+  `Precursor.polarity` is `None` with a warning when its PASEF frames disagree.
+  Compare with strings: `frame.polarity == "positive"`. `FrameMetadata.polarity`
+  is still the raw `"+"` / `"-"`.
+- **Lookup keywords.** A `(low, high)` tuple is always `*_range` and goes to
+  `query_range`; a point is `rt=` / `mz=` / `ook0=` plus a `*_tolerance` and goes
+  to `query`. The precursor m/z range is `precursor_mz_range=`.
+- **MS1 centroids.** `MergePeaksCentroider` now sorts on the integer TOF index
+  before converting to m/z. Ties (equal-intensity seeds, equal m/z) are broken in
+  (TOF, scan) order, so about 0.1% of centroids on a dense MS1 frame differ from
+  4.x. `merged_peaks()` is unchanged.
 - **Elements are frozen, slotted and keyword-only.** Assigning to a field raises
   `FrozenInstanceError`; constructing one needs keyword arguments.
   `PrmTarget` equality and hashing ignore `transitions`.
@@ -82,7 +116,7 @@ Every spectral accessor is now a method, so each call visibly decodes the frame:
 - **Mobility ranges are `(low, high)`.** `ook0_range`, `ccs_range` and
   `voltage_range` (and their `*_begin` / `*_end`) on `PasefFrameMsmsInfo`,
   `Precursor`, `DiaWindow` and `PrmTransition` used to follow scan order, which is
-  high-to-low 1/K0. They now match `mz_range`, `ook0_acq_range` and
+  high-to-low 1/K0. They now match `isolation_mz_range`, `ook0_acq_range` and
   `query_range(ook0_range=)`. Code that swapped them by hand must stop.
 - **Wrong reader for the file.** `DDA` on a DIA run (or any other mismatch) raises
   `AcquisitionTypeError`. Check first with `tdfpy.get_acquisition_type(path)`.
@@ -107,10 +141,18 @@ frame.time, target.one_over_k0, metadata.one_over_k0_acq_range
 td.scanNumToOneOverK0(frame_id, scans)
 from tdfpy.timsdata import oneOverK0ToCCSforMz
 ms2 = precursor.peaks
+lo, hi = window.mz_begin, window.mz_end
+dda.precursors.query_range(mz_range=(500, 600))
+frame.summed_intensities, target.monoisotopic_mz
+frame.polarity == Polarity.POSITIVE
 
 # 5.0
 frame.rt, target.ook0, metadata.ook0_acq_range
 td.scan_num_to_ook0(frame_id, scans)
 from tdfpy import ook0_to_ccs
 ms2 = precursor.merged_peaks()
+lo, hi = window.isolation_mz_range
+dda.precursors.query_range(precursor_mz_range=(500, 600))
+frame.total_ion_current, target.precursor_mz
+frame.polarity == "positive"
 ```

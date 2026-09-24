@@ -20,7 +20,7 @@ import pytest
 from tdfpy import DDA, DIA, PRM
 from tdfpy.calibration import _CCS_K, ccs_to_ook0, ook0_to_ccs
 from tdfpy.centroiding import _HAS_NUMBA, merge_peaks
-from tdfpy.elems import Polarity
+from tdfpy.elems import _parse_polarity
 
 DATA = Path("tests/data")
 
@@ -96,12 +96,12 @@ def _need(d: Path) -> None:
 
 def _check_frame(frame, row) -> None:
     assert frame.rt == row["Time"]
-    assert frame.polarity is Polarity.from_str(row["Polarity"])
+    assert frame.polarity == _parse_polarity(row["Polarity"]) == {"+": "positive", "-": "negative"}[row["Polarity"]]
     assert frame.scan_mode == row["ScanMode"]
     assert frame.msms_type == row["MsMsType"]
     assert frame.tims_id == row["TimsId"]
-    assert frame.max_intensity == row["MaxIntensity"]
-    assert frame.summed_intensities == row["SummedIntensities"]
+    assert frame.base_peak_intensity == row["MaxIntensity"]
+    assert frame.total_ion_current == row["SummedIntensities"]
     assert frame.num_scans == row["NumScans"]
     assert frame.num_peaks == row["NumPeaks"]
     assert frame.mz_calibration_id == row["MzCalibration"]

@@ -8,7 +8,7 @@ kernel behind :class:`~tdfpy.MergePeaksCentroider`.
 
 import logging
 import warnings
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import Literal
 
 import numpy as np
@@ -202,6 +202,43 @@ if _HAS_NUMBA:
         return out_mz[:count], out_intensity[:count], out_im[:count]
 
 
+if _HAS_NUMBA:
+
+    @_njit(cache=True)
+    def _counting_argsort_kernel(keys, lo, width):
+        counts = np.zeros(width + 1, np.int64)
+        for i in range(keys.shape[0]):
+            counts[keys[i] - lo + 1] += 1
+        for j in range(1, counts.shape[0]):
+            counts[j] += counts[j - 1]
+        order = np.empty(keys.shape[0], np.int64)
+        for i in range(keys.shape[0]):
+            k = keys[i] - lo
+            order[counts[k]] = i
+            counts[k] += 1
+        return order
+
+
+def _tof_order(tof_indices: np.ndarray) -> np.ndarray:
+    """Stable ascending order of integer TOF indices.
+
+    Equivalent to ``np.argsort(tof_indices, kind="stable")``. With numba this is
+    a counting sort over the index span, several times faster than a comparison
+    sort on a dense frame; a sparse span (wider than 16 slots per peak) or a
+    missing numba falls back to the comparison sort.
+    """
+    if tof_indices.size < 2:
+        return np.arange(tof_indices.size, dtype=np.int64)
+    lo = int(tof_indices.min())
+    width = int(tof_indices.max()) - lo + 1
+    if _HAS_NUMBA and width <= 16 * tof_indices.size + 4096:
+        try:
+            return _counting_argsort_kernel(np.ascontiguousarray(tof_indices, dtype=np.int64), lo, width)
+        except NumbaError:
+            pass
+    return np.argsort(tof_indices, kind="stable")
+
+
 def _merge_peaks_numba(
     mz_array: np.ndarray,
     intensity_array: np.ndarray,
@@ -228,10 +265,16 @@ def _merge_peaks_numba(
     # A non-positive (or None) max_peaks means "no limit" — must match the
     # pure-Python kernel, which treats a falsy max_peaks as unlimited.
     _max_peaks = -1 if (max_peaks is None or max_peaks <= 0) else int(max_peaks)
-    sort_idx = np.argsort(mz_array)
-    mz_s = np.ascontiguousarray(mz_array[sort_idx], dtype=np.float64)
-    int_s = np.ascontiguousarray(intensity_array[sort_idx], dtype=np.float64)
-    im_s = np.ascontiguousarray(ion_mobility_array[sort_idx], dtype=np.float64)
+    if mz_array.size > 1 and not np.all(mz_array[1:] >= mz_array[:-1]):
+        sort_idx = np.argsort(mz_array)
+        mz_array = mz_array[sort_idx]
+        intensity_array = intensity_array[sort_idx]
+        ion_mobility_array = ion_mobility_array[sort_idx]
+    # Already ascending (MergePeaksCentroider pre-sorts on the integer TOF
+    # index): the O(n) check replaces an O(n log n) float argsort.
+    mz_s = np.ascontiguousarray(mz_array, dtype=np.float64)
+    int_s = np.ascontiguousarray(intensity_array, dtype=np.float64)
+    im_s = np.ascontiguousarray(ion_mobility_array, dtype=np.float64)
     intensity_order = np.ascontiguousarray(np.argsort(int_s)[::-1].astype(np.int64))
     out_mz, out_int, out_im = _merge_peaks_numba_kernel(
         mz_s,
@@ -758,6 +801,31 @@ def get_mobility_collapsed_spectrum(
         On the bundled fixtures the strong peaks agree to ~0.5 ppm and the total
         ion current to within 0.1%, with ~4% more peaks reported.
     """
+    return _collapsed_spectrum(
+        td,
+        scan_ranges,
+        lambda frame_id, begin, end: td.read_frame_arrays(frame_id, begin, end)[1:],
+        mz_tolerance=mz_tolerance,
+        mz_tolerance_type=mz_tolerance_type,
+        use_numba=use_numba,
+    )
+
+
+def _collapsed_spectrum(
+    td: TimsData,
+    scan_ranges: Sequence[tuple[int, int, int]],
+    read: Callable[[int, int, int], tuple[np.ndarray, np.ndarray]],
+    *,
+    mz_tolerance: float = COLLAPSED_MZ_TOLERANCE_PPM,
+    mz_tolerance_type: Literal["ppm", "da"] = "ppm",
+    use_numba: bool = True,
+) -> np.ndarray:
+    """:func:`get_mobility_collapsed_spectrum` with the raw-peak source injected.
+
+    ``read(frame_id, scan_begin, scan_end)`` returns ``(tof_indices,
+    intensities)``; :func:`tdfpy.iter_precursor_spectra` passes one that serves
+    already-decoded frames.
+    """
     if not scan_ranges:
         return np.empty((0, 2), dtype=np.float64)
 
@@ -765,7 +833,7 @@ def get_mobility_collapsed_spectrum(
     # conversions. Frames sharing a calibration row may have different drift.
     groups: dict[tuple, tuple[int, list[np.ndarray], list[np.ndarray]]] = {}
     for frame_id, scan_begin, scan_end in scan_ranges:
-        _, tof, intensity = td.read_frame_arrays(frame_id, scan_begin, scan_end)
+        tof, intensity = read(frame_id, scan_begin, scan_end)
         if tof.size:
             key = td.mz_calibration_key(frame_id)
             if key not in groups:

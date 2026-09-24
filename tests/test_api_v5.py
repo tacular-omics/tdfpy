@@ -7,6 +7,7 @@ renamed attributes and the names that 5.0 removed with no alias.
 import dataclasses
 import pathlib
 from collections.abc import Mapping
+from typing import get_args
 
 import numpy as np
 import pytest
@@ -81,10 +82,13 @@ def test_closed_reader_raises_reader_closed_error():
         list(dda.ms1)
 
 
-def test_polarity_from_str_raises_tdfpy_error():
-    assert Polarity.from_str("+") is Polarity.POSITIVE
-    with pytest.raises(TdfpyError):
-        Polarity.from_str("sideways")
+def test_polarity_is_a_plain_string():
+    with DDA(DDA_PATH) as dda:
+        frame = next(iter(dda.ms1))
+        precursor = next(iter(dda.precursors))
+    assert frame.polarity == "positive" and type(frame.polarity) is str
+    assert precursor.pasef_frame_msms_infos[0].polarity == "positive"
+    assert precursor.polarity == "positive"
 
 
 # -- sqlite errors are wrapped at the boundary --------------------------------
@@ -144,7 +148,7 @@ def test_frame_msms_type_is_enum():
     with DDA(DDA_PATH) as dda:
         frame = next(iter(dda.ms1))
     assert frame.msms_type is MsMsType.MS1
-    assert isinstance(frame.polarity, Polarity)
+    assert frame.polarity in get_args(Polarity)
 
 
 # -- frozen, slotted, keyword-only elements ---------------------------------
@@ -390,7 +394,7 @@ def test_precursor_aggregate_properties():
         assert precursor.ook0_range == info.ook0_range
         assert precursor.ccs_range == info.ccs_range
         assert precursor.voltage_range == info.voltage_range == (info.voltage_begin, info.voltage_end)
-        assert precursor.mz_range == info.mz_range
+        assert precursor.isolation_mz_range == info.isolation_mz_range
         assert precursor.collision_energy == info.collision_energy
         assert precursor.polarity is info.polarity
         assert np.isfinite(precursor.voltage)
@@ -400,17 +404,17 @@ def test_precursor_aggregate_warns_when_windows_disagree():
     with DDA(DDA_PATH) as dda:
         precursor = next(iter(dda.precursors))
         infos = precursor.pasef_frame_msms_infos
-        shifted = dataclasses.replace(infos[0], collision_energy=infos[0].collision_energy + 1.0, polarity=Polarity.NEGATIVE)
+        shifted = dataclasses.replace(infos[0], collision_energy=infos[0].collision_energy + 1.0, polarity="negative")
         mixed = dataclasses.replace(precursor, pasef_frame_msms_infos=(infos[0], shifted))
         empty = dataclasses.replace(precursor, pasef_frame_msms_infos=())
         with pytest.warns(UserWarning, match="Multiple values"):
             assert mixed.collision_energy is None
-        with pytest.warns(UserWarning, match="Multiple polarities"):
-            assert mixed.polarity is Polarity.MIXED
+        with pytest.warns(UserWarning, match="Multiple values found for attribute 'polarity'"):
+            assert mixed.polarity is None
         with pytest.warns(UserWarning, match="No values"):
-            assert empty.mz_range is None
-        with pytest.warns(UserWarning, match="No polarities"):
-            assert empty.polarity is Polarity.UNKNOWN
+            assert empty.isolation_mz_range is None
+        with pytest.warns(UserWarning, match="No values found for attribute 'polarity'"):
+            assert empty.polarity is None
 
 
 # -- review fixes: ranges are (low, high) ---------------------------------------
@@ -563,7 +567,8 @@ def dda_precursors():
 
 
 def _precursor_mz(p):
-    return p.monoisotopic_mz if p.monoisotopic_mz is not None else p.largest_peak_mz
+    assert p.precursor_mz == (p.monoisotopic_mz if p.monoisotopic_mz is not None else p.largest_peak_mz)
+    return p.precursor_mz
 
 
 @settings(max_examples=40, deadline=None, suppress_health_check=[HealthCheck.too_slow])
@@ -581,9 +586,9 @@ def test_precursor_query_matches_brute_force(dda_precursors, mz, rt, mz_tol, rt_
         p for p in dda_precursors if (mz is None or mz - width <= _precursor_mz(p) <= mz + width) and (rt is None or rt - rt_tol <= p.rt <= rt + rt_tol)
     ]
     assert got == expected
-    mz_range = None if mz is None else (mz - width, mz + width)
+    precursor_mz_range = None if mz is None else (mz - width, mz + width)
     rt_range = None if rt is None else (rt - rt_tol, rt + rt_tol)
-    assert list(dda_precursors.query_range(mz_range=mz_range, rt_range=rt_range)) == got
+    assert list(dda_precursors.query_range(precursor_mz_range=precursor_mz_range, rt_range=rt_range)) == got
 
 
 @settings(max_examples=40, deadline=None, suppress_health_check=[HealthCheck.too_slow])

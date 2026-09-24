@@ -81,7 +81,7 @@ with PRM(D_PATH) as prm:
 
     # PRM targets (precursor ions being monitored)
     for target in prm.targets:
-        print(f"Target {target.target_id}: {target.monoisotopic_mz:.4f} m/z, charge {target.charge}")
+        print(f"Target {target.target_id}: {target.precursor_mz:.4f} m/z, charge {target.charge}")
         break
 
     # PRM transitions (MS2 spectra linked to a target)
@@ -139,7 +139,7 @@ When you open a `DDA`, `DIA` or `PRM` reader, it immediately:
 2. Reads all frame and precursor metadata from the SQLite database into memory
 
 The objects you get back — `Frame`, `Precursor`, `DiaWindow`, etc. — all hold a reference
-to that open connection. Their fields (`frame_id`, `rt`, `monoisotopic_mz`, etc.) are
+to that open connection. Their fields (`frame_id`, `rt`, `precursor_mz`, etc.) are
 available immediately. **Spectral data is fetched lazily**: calling `.merged_peaks()`, `.scan_peaks()` or `.centroid()`
 reads from the binary file at that moment.
 

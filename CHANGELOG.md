@@ -20,7 +20,11 @@ Breaking API cleanup for 5.0. [docs/migration.md](docs/migration.md) has the ful
 
 - `tdfpy.errors`: `TdfpyError(ValueError)` base, `TdfpyKeyError` (+`KeyError`), `ReaderClosedError` (+`RuntimeError`), `AcquisitionTypeError`. All exported from `tdfpy`.
 - Opening a `DDA`, `DIA` or `PRM` reader on another acquisition type raises `AcquisitionTypeError` ("not a DDA acquisition (found DIA); use tdfpy.get_acquisition_type()"). It used to open and return empty or wrong elements.
-- `AcquisitionType` (`StrEnum`), `MsMsType`, `Polarity`, `MetaValue`, `ook0_to_ccs` and `ccs_to_ook0` exported from `tdfpy`.
+- `AcquisitionType` (`StrEnum`), `MsMsType`, `Polarity` (a `Literal`), `MetaValue`, `ook0_to_ccs` and `ccs_to_ook0` exported from `tdfpy`.
+- `ms_level` on every frame (1 for MS1, 2 for MS/MS) and on `PasefFrameMsmsInfo`, `DiaWindow` and `PrmTransition` (always 2), next to `msms_type`. The window classes carry `msms_type` as a class constant (`DDA_MS2`, `DIA_MS2`, `PRM_MS2`).
+- `Precursor.precursor_mz`: `monoisotopic_mz` when known, else `largest_peak_mz`. The raw fields stay.
+- `Ms1FrameLookup.query_range(rt_range=)` and `query(rt=, rt_tolerance=30)`: MS1 frames by retention time.
+- `tdfpy.iter_precursor_spectra(precursors)`: yields `(precursor, precursor.merged_peaks())`, decoding each PASEF frame once instead of once per precursor window.
 - `scan_peaks()`, `raw_peaks()` and `centroid()` on `PasefFrameMsmsInfo`.
 - Lookups: `ids()`, `id in lookup`, and `get(id, default)` on every lookup.
 - `__all__` in every public module; `Raises:` sections in docstrings.
@@ -30,7 +34,7 @@ Breaking API cleanup for 5.0. [docs/migration.md](docs/migration.md) has the ful
 
 - Renamed, no alias: `.time` -> `.rt` (`Frame`, `PrmTarget`); `PrmTarget.one_over_k0` -> `ook0`; `Frame.mz_calibration`, `tims_calibration`, `property_group` -> `*_id`; `Precursor.parent_frame` -> `parent_frame_id`; `PasefFrameMsmsInfo.precursor` -> `precursor_id`; `window_group` -> `window_group_id` on `DiaWindowGroup` / `DiaWindow`; `MetaData.one_over_k0_acq_range*` -> `ook0_acq_range*`; `TimsCalibration.scan_to_one_over_k0` / `one_over_k0_to_scan` -> `scan_to_ook0` / `ook0_to_scan`; `tdfpy.calibration.one_over_k0_to_ccs` / `ccs_to_one_over_k0` -> `ook0_to_ccs` / `ccs_to_ook0`; camelCase `TimsData` methods -> snake_case (`index_to_mz`, `mz_to_index`, `scan_num_to_ook0`, `ook0_to_scan_num`, `scan_num_to_voltage`, `voltage_to_scan_num`, `read_scans`).
 - Every spectral accessor is a method. The per-scan `.peaks` property of `Frame`, `DiaWindow` and `PrmTransition` is now `scan_peaks()`. `Precursor.peaks` and `PasefFrameMsmsInfo.peaks` (one mobility-collapsed `(N, 2)` spectrum, the most expensive accessor) are now `merged_peaks()`, and `Precursor.pasef_peaks` is `pasef_merged_peaks()`.
-- Mobility ranges are `(low, high)`, like `mz_range`, `ook0_acq_range` and `query_range(ook0_range=)`. `ook0_range`, `ccs_range` and `voltage_range` on `PasefFrameMsmsInfo`, `Precursor`, `DiaWindow` and `PrmTransition` used to come out high-to-low because scan number and 1/K0 run in opposite directions; `*_begin` is now the low value and `*_end` the high one.
+- Mobility ranges are `(low, high)`, like `isolation_mz_range`, `ook0_acq_range` and `query_range(ook0_range=)`. `ook0_range`, `ccs_range` and `voltage_range` on `PasefFrameMsmsInfo`, `Precursor`, `DiaWindow` and `PrmTransition` used to come out high-to-low because scan number and 1/K0 run in opposite directions; `*_begin` is now the low value and `*_end` the high one.
 - `FrameMetadata` (exported from `tdfpy`) renamed its fields to match `Frame`: `time` -> `rt`, `mz_calibration` -> `mz_calibration_id`, `tims_calibration` -> `tims_calibration_id`, `property_group` -> `property_group_id`.
 - `TimsData(path, *, use_recalibrated_state=..., pressure_compensation_strategy=...)`: the options are keyword-only.
 - After a reader closes, `reader.timsdata`, `metadata`, `calibration` and `pandas_tdf` raise `ReaderClosedError`, as do `Precursor.ook0` / `ccs` and the mobility ranges. `timsdata` used to hand back the closed handle and `metadata` kept reading the file.
@@ -44,6 +48,25 @@ Breaking API cleanup for 5.0. [docs/migration.md](docs/migration.md) has the ful
 - `MetaData` and `Calibration` are read-only `Mapping`s; the `df` field is replaced by `table`.
 - `plot_centroiding`: every argument after `frame_id` is keyword-only, including `ion_mobility_type`.
 - MCP `query_dia_windows`: parameter `window_group` -> `window_group_id`.
+- Reader vocabulary shared with mzmlpy, renamed with no alias: `mz_range` -> `isolation_mz_range` on `PasefFrameMsmsInfo`, `DiaWindow`, `PrmTransition` and `Precursor`; `mz_begin` / `mz_end` removed (use `isolation_mz_range`); `PrmTarget.monoisotopic_mz` -> `precursor_mz`; `Frame.summed_intensities` -> `total_ion_current`; `Frame.max_intensity` -> `base_peak_intensity`.
+- `Polarity` is `Literal["positive", "negative"]`, not a `StrEnum`, and every `polarity` field is `Polarity | None`. A frame whose `Polarity` column is not `+` / `-` gives `None` and one `UserWarning` per file; a precursor whose PASEF frames disagree gives `None` with a warning. `FrameMetadata.polarity` stays the raw `"+"` / `"-"` string.
+- Lookup keywords: a `(low, high)` tuple is `*_range`, a point is `rt=` / `mz=` / `ook0=` plus a tolerance. `PrecursorLookup.query_range(mz_range=)` and `PrmTargetLookup.query_range(mz_range=)` -> `precursor_mz_range=` (matches `precursor_mz`). `query(mz=...)` is unchanged.
+- The `DDA`, `DIA` and `PRM` readers load their tables with plain sqlite queries instead of pandas `iterrows`; SQLite errors there raise `TdfpyError` ("Failed to read TDF database ...").
+- Reading a scan range (`read_frame_arrays`, `read_scans`, every window accessor) decodes TOF indices for those scans only. Whole-frame layout checks still run; the TOF-bounds check now covers the scans read.
+- `MergePeaksCentroider` sorts peaks on the integer TOF index (a counting sort under numba) before converting to m/z, and `merge_peaks` skips its m/z argsort when the input is already ascending. On a dense MS1 frame about 0.05-0.1% of centroids change, because ties between equal-intensity seeds and equal-m/z points are now broken in (TOF, scan) order rather than by an unstable sort; summed intensity per frame moves by under 0.02%. `merged_peaks()` output is unchanged.
+
+### Performance
+
+Indicative numbers: one core (`taskset`, one numba thread), direct runs on a shared, loaded machine (load 12-19). "Before" is commit b783db4, which still built the readers with pandas `iterrows` as 4.1 did.
+
+| workload | before | after |
+|---|---|---|
+| open `DDA`, 35-min plasma run (174,658 precursors, 283,910 PASEF rows) | 21.4 s | 2.2-2.4 s |
+| open `DDA`, 15-min HeLa run | 13.2 s | 1.6 s |
+| open `DIA`, 15-min run | 1.19 s | 0.34 s |
+| `centroid()` on 300 MS1 frames | 8.7 s | 7.9 s |
+| `merged_peaks()` on 2000 precursors | 2.31 s | 1.85 s (loop), 0.70 s (`iter_precursor_spectra`) |
+| `centroid()` on 1500 DIA windows | 5.84 s | 3.12 s (2.24 s via `iter_window_spectra`, was 3.98 s) |
 
 ## [4.1.1] (2026-09-23)
 

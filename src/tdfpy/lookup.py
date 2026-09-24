@@ -5,6 +5,11 @@ Every lookup is iterable, has ``len()``, is indexed by an integer ID and has
 Lookups that map one ID to several elements (``DiaWindowLookup``,
 ``PrmTransitionLookup``) return a ``tuple``. ``query`` / ``query_range``
 arguments are keyword-only.
+
+Argument names follow one rule: a ``(low, high)`` tuple is ``*_range``
+(``rt_range``, ``ook0_range``, ``precursor_mz_range``) and goes to
+``query_range``; a point value is ``rt`` / ``mz`` / ``ook0`` plus a
+``*_tolerance`` and goes to ``query``. Ranges and tolerances are inclusive.
 """
 
 from collections.abc import Callable, Iterable, Iterator, Mapping
@@ -107,12 +112,41 @@ def _group[V](items: Iterable[V], by: Callable[[V], int]) -> dict[int, tuple[V, 
 
 
 class Ms1FrameLookup[T: Frame](_IdLookup[T, T]):
-    """MS1 frames of a reader, indexed by frame ID."""
+    """MS1 frames of a reader, indexed by frame ID, with RT queries."""
 
     _label = "MS1 frame ID"
 
     def __init__(self, frames: Mapping[int, T]):
         super().__init__(frames.values(), frames)
+
+    def query_range(self, *, rt_range: tuple[float, float] | None = None) -> Iterator[T]:
+        """MS1 frames inside an RT range, in frame order.
+
+        Args:
+            rt_range: ``(min_rt, max_rt)`` in seconds, inclusive. ``None`` keeps every frame.
+
+        Yields:
+            Matching MS1 frames.
+        """
+        for frame in self._items:
+            if _in(frame.rt, rt_range):
+                yield frame
+
+    def query(self, *, rt: float | None = None, rt_tolerance: float = 30.0) -> Iterator[T]:
+        """MS1 frames within ``rt_tolerance`` of ``rt``, in frame order.
+
+        Args:
+            rt: Target retention time in seconds. ``None`` keeps every frame.
+            rt_tolerance: RT tolerance in seconds (default 30).
+
+        Yields:
+            Matching MS1 frames.
+
+        Raises:
+            TdfpyError: If ``rt_tolerance`` is negative.
+        """
+        nonnegative("rt_tolerance", rt_tolerance)
+        return self.query_range(rt_range=_tolerance_range(rt, rt_tolerance))
 
 
 class DiaWindowLookup(_IdLookup[DiaWindow, tuple[DiaWindow, ...]]):
@@ -186,23 +220,21 @@ class PrecursorLookup(_IdLookup[Precursor, Precursor]):
     def query_range(
         self,
         *,
-        mz_range: tuple[float, float] | None = None,
+        precursor_mz_range: tuple[float, float] | None = None,
         rt_range: tuple[float, float] | None = None,
     ) -> Iterator[Precursor]:
-        """Precursors inside m/z and/or RT ranges (inclusive).
-
-        Uses `monoisotopic_mz` when known, otherwise `largest_peak_mz`.
+        """Precursors inside precursor m/z and/or RT ranges (inclusive).
 
         Args:
-            mz_range: ``(min_mz, max_mz)``. ``None`` skips m/z filtering.
+            precursor_mz_range: ``(min_mz, max_mz)`` of :attr:`Precursor.precursor_mz`
+                (monoisotopic when known, else the largest peak). ``None`` skips m/z filtering.
             rt_range: ``(min_rt, max_rt)`` in seconds. ``None`` skips RT filtering.
 
         Yields:
             Matching `Precursor` objects.
         """
         for precursor in self._items:
-            mz = precursor.monoisotopic_mz if precursor.monoisotopic_mz is not None else precursor.largest_peak_mz
-            if _in(mz, mz_range) and _in(precursor.rt, rt_range):
+            if _in(precursor.precursor_mz, precursor_mz_range) and _in(precursor.rt, rt_range):
                 yield precursor
 
     def query(
@@ -224,15 +256,14 @@ class PrecursorLookup(_IdLookup[Precursor, Precursor]):
             rt_tolerance: RT tolerance in seconds (default 30).
 
         Yields:
-            Matching `Precursor` objects. Uses `monoisotopic_mz` when known,
-            otherwise `largest_peak_mz`.
+            Matching `Precursor` objects, matched on :attr:`Precursor.precursor_mz`.
 
         Raises:
             TdfpyError: If a tolerance is negative or ``mz_tolerance_type`` is unknown.
         """
-        mz_range = _mz_range(mz, mz_tolerance, mz_tolerance_type)
+        precursor_mz_range = _mz_range(mz, mz_tolerance, mz_tolerance_type)
         nonnegative("rt_tolerance", rt_tolerance)
-        return self.query_range(mz_range=mz_range, rt_range=_tolerance_range(rt, rt_tolerance))
+        return self.query_range(precursor_mz_range=precursor_mz_range, rt_range=_tolerance_range(rt, rt_tolerance))
 
 
 class PrmTargetLookup(_IdLookup[PrmTarget, PrmTarget]):
@@ -246,14 +277,14 @@ class PrmTargetLookup(_IdLookup[PrmTarget, PrmTarget]):
     def query_range(
         self,
         *,
-        mz_range: tuple[float, float] | None = None,
+        precursor_mz_range: tuple[float, float] | None = None,
         rt_range: tuple[float, float] | None = None,
         ook0_range: tuple[float, float] | None = None,
     ) -> Iterator[PrmTarget]:
-        """Targets inside m/z, RT and/or 1/K0 ranges (inclusive).
+        """Targets inside precursor m/z, RT and/or 1/K0 ranges (inclusive).
 
         Args:
-            mz_range: ``(min_mz, max_mz)``. ``None`` skips m/z filtering.
+            precursor_mz_range: ``(min_mz, max_mz)`` of :attr:`PrmTarget.precursor_mz`. ``None`` skips m/z filtering.
             rt_range: ``(min_rt, max_rt)`` in seconds. ``None`` skips RT filtering.
             ook0_range: ``(min_ook0, max_ook0)``. ``None`` skips 1/K0 filtering.
 
@@ -261,7 +292,7 @@ class PrmTargetLookup(_IdLookup[PrmTarget, PrmTarget]):
             Matching `PrmTarget` objects.
         """
         for target in self._items:
-            if _in(target.monoisotopic_mz, mz_range) and _in(target.rt, rt_range) and _in(target.ook0, ook0_range):
+            if _in(target.precursor_mz, precursor_mz_range) and _in(target.rt, rt_range) and _in(target.ook0, ook0_range):
                 yield target
 
     def query(
@@ -278,7 +309,7 @@ class PrmTargetLookup(_IdLookup[PrmTarget, PrmTarget]):
         """Targets within a tolerance of ``mz``, ``rt`` and/or ``ook0``.
 
         Args:
-            mz: Target m/z. ``None`` skips m/z filtering.
+            mz: Target precursor m/z. ``None`` skips m/z filtering.
             rt: Target retention time in seconds. ``None`` skips RT filtering.
             ook0: Target 1/K0. ``None`` skips 1/K0 filtering.
             mz_tolerance: m/z tolerance (default 20).
@@ -292,11 +323,11 @@ class PrmTargetLookup(_IdLookup[PrmTarget, PrmTarget]):
         Raises:
             TdfpyError: If a tolerance is negative or ``mz_tolerance_type`` is unknown.
         """
-        mz_range = _mz_range(mz, mz_tolerance, mz_tolerance_type)
+        precursor_mz_range = _mz_range(mz, mz_tolerance, mz_tolerance_type)
         nonnegative("rt_tolerance", rt_tolerance)
         nonnegative("ook0_tolerance", ook0_tolerance)
         return self.query_range(
-            mz_range=mz_range,
+            precursor_mz_range=precursor_mz_range,
             rt_range=_tolerance_range(rt, rt_tolerance),
             ook0_range=_tolerance_range(ook0, ook0_tolerance),
         )

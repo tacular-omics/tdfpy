@@ -29,6 +29,26 @@ decode a frame again. Consume the iterator inside the reader's context. It
 retains the current frame and uses no global spectrum cache or worker pool.
 Returned numerical arrays remain usable after the reader closes.
 
+## Precursor batches
+
+A PASEF frame holds windows of many precursors, so calling `merged_peaks()` on
+each precursor decodes the same frame many times. `iter_precursor_spectra`
+decodes each frame once and yields `(precursor, peaks)` pairs, where `peaks`
+equals `precursor.merged_peaks()`: an `(N, 2)` `[m/z, intensity]` array.
+
+```python
+from tdfpy import DDA, iter_precursor_spectra
+
+with DDA(D_PATH) as reader:
+    for precursor, peaks in iter_precursor_spectra(reader.precursors):
+        assert peaks.shape[1] == 2
+        assert precursor.precursor_mz > 0
+```
+
+Pass precursors in reader order (or any subset of it). The last 64 decoded
+frames are kept, so a scattered order is still correct but may decode a frame
+again. Consume the iterator inside the reader's context.
+
 ## File checks
 
 For acquisition checks, run `tdfpy validate sample.d` or
@@ -68,6 +88,8 @@ Python installation.
 ## API
 
 ::: tdfpy.iter_window_spectra
+
+::: tdfpy.iter_precursor_spectra
 
 ::: tdfpy.validate_acquisition
 

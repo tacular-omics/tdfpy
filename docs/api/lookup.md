@@ -75,7 +75,7 @@ from tdfpy import PRM
 with PRM("experiment.d") as prm:
     # Iterate over all targets
     for target in prm.targets:
-        print(target.target_id, target.monoisotopic_mz, target.charge)
+        print(target.target_id, target.precursor_mz, target.charge)
 
     # Access a specific target by ID
     t = prm.targets[1]
@@ -83,7 +83,7 @@ with PRM("experiment.d") as prm:
 
     # Query by m/z (20 ppm window)
     for target in prm.targets.query(mz=565.3189, mz_tolerance=20.0):
-        print(target.target_id, target.monoisotopic_mz)
+        print(target.target_id, target.precursor_mz)
 
     # Query by m/z and expected RT (±30 s)
     for target in prm.targets.query(mz=565.3189, rt=480.0, rt_tolerance=30.0):

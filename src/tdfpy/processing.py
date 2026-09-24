@@ -1,12 +1,14 @@
-"""Bounded frame reuse for isolation windows."""
+"""Bounded frame reuse for isolation windows and PASEF precursors."""
 
+from collections import OrderedDict
 from collections.abc import Iterable, Iterator
 from itertools import groupby
 from typing import Literal
 
 import numpy as np
 
-from .elems import DiaWindow, PrmTransition
+from .centroiding import _collapsed_spectrum
+from .elems import DiaWindow, Precursor, PrmTransition
 from .noise import NoiseSpec
 from .pipeline import (
     Centroider,
@@ -16,8 +18,14 @@ from .pipeline import (
     read_spectrum,
 )
 from .regions import ChargeStateRegion
+from .timsdata import TimsData
 
-__all__ = ["iter_window_spectra"]
+__all__ = ["iter_precursor_spectra", "iter_window_spectra"]
+
+#: Decoded frames kept by :func:`iter_precursor_spectra`. A PASEF precursor
+#: spans a handful of consecutive MS/MS frames, so this covers any precursor
+#: order that is roughly by frame (the reader's order) with room to spare.
+_PRECURSOR_FRAME_CACHE = 64
 
 
 def iter_window_spectra(
@@ -54,3 +62,49 @@ def iter_window_spectra(
             )
             peaks = cfg(prepared, td, frame_id, ion_mobility_type=ion_mobility_type) if not prepared.empty else np.empty((0, 3), dtype=np.float64)
             yield window, peaks
+
+
+def iter_precursor_spectra(precursors: Iterable[Precursor]) -> Iterator[tuple[Precursor, np.ndarray]]:
+    """Yield ``(precursor, peaks)`` pairs, decoding each MS/MS frame once.
+
+    ``peaks`` equals :meth:`Precursor.merged_peaks`: the ``(N, 2)`` ``[m/z,
+    intensity]`` mobility-collapsed spectrum over all of the precursor's PASEF
+    windows. A PASEF frame carries windows of many precursors (often ten or
+    more), so looping over ``merged_peaks()`` decodes each frame that many
+    times; this decodes it once and serves every window from it.
+
+    Pass ``reader.precursors`` (or any subset) in its existing order. The most
+    recent 64 decoded frames are kept, so any roughly frame-ordered input decodes
+    each frame once; a very scattered order still gives correct results but may
+    decode a frame again. Keep the reader open while consuming the iterator.
+
+    Raises:
+        ReaderClosedError: If the reader was closed.
+        TdfpyError: If a window's scan range does not fit its frame (corrupt file).
+    """
+    cache: OrderedDict[tuple[TimsData, int], tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray] | None] = OrderedDict()
+
+    for precursor in precursors:
+        td = precursor.timsdata
+
+        def read(frame_id: int, begin: int, end: int, td=td) -> tuple[np.ndarray, np.ndarray]:
+            td._require_open()
+            key = (td, frame_id)
+            if key in cache:
+                cache.move_to_end(key)
+                decoded = cache[key]
+            else:
+                full = td._decode(frame_id)
+                decoded = None if full is None else full[1:]
+                cache[key] = decoded
+                if len(cache) > _PRECURSOR_FRAME_CACHE:
+                    cache.popitem(last=False)
+            if decoded is None or begin == end:
+                return np.empty(0, dtype=np.uint32), np.empty(0, dtype=np.uint32)
+            starts, counts, tof, intensity = decoded
+            lo = int(starts[begin])
+            hi = int(starts[end - 1] + counts[end - 1])
+            return tof[lo:hi], intensity[lo:hi]
+
+        ranges = [(info.frame_id, *info._window_scans()) for info in precursor.pasef_frame_msms_infos]
+        yield precursor, _collapsed_spectrum(td, ranges, read)

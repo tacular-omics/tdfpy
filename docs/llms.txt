@@ -9,7 +9,7 @@ tdfpy decodes `analysis.tdf_bin` directly in Python/NumPy -- no Bruker native li
 - [Full usage guide](https://tacular-omics.github.io/tdfpy/llms-full.txt): single self-contained file with orientation, gotchas, and every docs page with API signatures expanded
 - [Home](https://tacular-omics.github.io/tdfpy/): short overview, install line, and links to the related tacular-omics packages
 - [Getting Started](https://tacular-omics.github.io/tdfpy/getting-started/): installation, acquisition-type detection, iterating frames / precursors / windows / transitions, lookups and queries, lazy spectral access contract
-- [Spectrum batches and file checks](https://tacular-omics.github.io/tdfpy/analysis/): `iter_window_spectra`, `validate_acquisition`, `ValidationReport`, `ValidationIssue` — window batches and acquisition validation (also `tdfpy validate sample.d`)
+- [Spectrum batches and file checks](https://tacular-omics.github.io/tdfpy/analysis/): `iter_window_spectra`, `iter_precursor_spectra`, `validate_acquisition`, `ValidationReport`, `ValidationIssue` — window batches and acquisition validation (also `tdfpy validate sample.d`)
 - [Slicing .d folders](https://tacular-omics.github.io/tdfpy/utilities/): `slice_d_folder` — extract a frame-range subset of a `.d` folder
 - [MCP interface](https://tacular-omics.github.io/tdfpy/mcp/): optional local agent tools (`pip install 'tdfpy[mcp]'`, `tdfpy-mcp`) for metadata queries, spectrum extraction, exports, conversions, and file checks
 

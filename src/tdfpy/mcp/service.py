@@ -364,11 +364,7 @@ class AcquisitionService:
         matches = []
         with READERS[required](path) as reader:
             for index, obj in enumerate(getattr(reader, attribute)):
-                mass = (
-                    (obj.monoisotopic_mz if obj.monoisotopic_mz is not None else obj.largest_peak_mz)
-                    if kind == "precursor"
-                    else (obj.monoisotopic_mz if kind == "prm_target" else obj.isolation_mz)
-                )
+                mass = obj.precursor_mz if kind in ("precursor", "prm_target") else obj.isolation_mz
                 if rt and not rt.contains(obj.rt):
                     continue
                 if mz and not mz.contains(mass):

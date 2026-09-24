@@ -169,7 +169,11 @@ class PressureCompensationStrategy(Enum):
 
 
 def _decode_frame(
-    payload: bytes, scan_count: int, frame_id: int
+    payload: bytes,
+    scan_count: int,
+    frame_id: int,
+    scan_begin: int = 0,
+    scan_end: int | None = None,
 ) -> tuple[
     npt.NDArray[np.int64],
     npt.NDArray[np.int64],
@@ -180,6 +184,11 @@ def _decode_frame(
 
     Returns ``(scan_starts, scan_counts, tof_indices, raw_intensities)``, where the
     per-scan slices are ``tof[start:start + count]``.
+
+    Only scans ``[scan_begin, scan_end)`` are decoded into TOF indices and
+    intensities (default: all of them); ``scan_starts`` is shifted so it indexes
+    into that slice, and is meaningful for those scans only. The structural checks
+    below always cover the whole frame; the TOF-range check covers the slice.
 
     Every layout assumption is checked before any decoding arithmetic runs.
     Without those checks a corrupt payload escapes as an ``IndexError`` or a
@@ -251,19 +260,28 @@ def _decode_frame(
     starts = np.zeros(scan_count, dtype=np.int64)
     np.cumsum(counts[:-1], out=starts[1:])
 
+    # Decode only the requested scans: a precursor or DIA window touches a few
+    # dozen of a frame's ~1000 scans, and the cumsum below is the costly part.
+    end = scan_count if scan_end is None else scan_end
+    begin = scan_begin
+    lo = int(starts[begin]) if begin < scan_count else total_peaks
+    hi = int(starts[end - 1] + counts[end - 1]) if end > begin else lo
+    starts -= lo
+    counts_slice = counts[begin:end]
+
     # TOF indices are a cumulative sum of deltas that resets at every scan
-    # boundary. Done as one global cumsum minus the running total carried in at
-    # each boundary, which avoids a Python loop over scans (5-9x faster).
-    running = np.cumsum(tof_deltas, dtype=np.uint64)
-    carry = np.zeros(scan_count, dtype=np.uint64)
-    non_empty = counts > 0
-    prev_index = starts[non_empty] - 1
+    # boundary. Done as one cumsum minus the running total carried in at each
+    # boundary, which avoids a Python loop over scans (5-9x faster).
+    running = np.cumsum(tof_deltas[lo:hi], dtype=np.uint64)
+    carry = np.zeros(end - begin, dtype=np.uint64)
+    non_empty = counts_slice > 0
+    prev_index = starts[begin:end][non_empty] - 1
     carry[non_empty] = np.where(prev_index >= 0, running[np.maximum(prev_index, 0)], np.uint64(0))
-    tof = running - np.repeat(carry, counts) - np.uint64(1)
+    tof = running - np.repeat(carry, counts_slice) - np.uint64(1)
     if np.any(tof > np.iinfo(np.uint32).max):
         raise UnsupportedTdfError(f"Frame {frame_id}: TOF indices overflow uint32.")
 
-    return starts, counts, tof.astype(np.uint32), intensities
+    return starts, counts, tof.astype(np.uint32), intensities[lo:hi]
 
 
 # ---------------------------------------------------------------------------
@@ -554,7 +572,7 @@ class TimsData:
     # -- spectral data ----------------------------------------------------
 
     def _decode(
-        self, frame_id: int
+        self, frame_id: int, scan_begin: int = 0, scan_end: int | None = None
     ) -> (
         tuple[
             int,
@@ -565,7 +583,11 @@ class TimsData:
         ]
         | None
     ):
-        """Read and decode a whole frame, or ``None`` if it holds no data."""
+        """Read and decode scans ``[scan_begin, scan_end)``, or ``None`` if the frame holds no data.
+
+        The bounds must already be validated (see :meth:`_scan_range`). The
+        returned ``starts`` index into the decoded slice; see :func:`_decode_frame`.
+        """
         offset, num_scans, accum_time, *_ = self._frame(frame_id)
 
         header = self._pread(8, offset)
@@ -610,9 +632,10 @@ class TimsData:
                 raise UnsupportedTdfError(f"Frame {frame_id}: empty packet disagrees with Frames.NumPeaks ({self._peak_counts[frame_id]}).")
             return None
 
-        starts, counts, tof, raw_intensity = _decode_frame(payload, scan_count, frame_id)
-        if tof.size != self._peak_counts[frame_id]:
-            raise UnsupportedTdfError(f"Frame {frame_id}: decoded {tof.size} peaks but Frames.NumPeaks is {self._peak_counts[frame_id]}.")
+        starts, counts, tof, raw_intensity = _decode_frame(payload, scan_count, frame_id, scan_begin, scan_end)
+        decoded_peaks = int(counts.sum())
+        if decoded_peaks != self._peak_counts[frame_id]:
+            raise UnsupportedTdfError(f"Frame {frame_id}: decoded {decoded_peaks} peaks but Frames.NumPeaks is {self._peak_counts[frame_id]}.")
         if np.any(tof >= self._digitizer_num_samples):
             raise UnsupportedTdfError(f"Frame {frame_id}: TOF index exceeds DigitizerNumSamples.")
 
@@ -669,15 +692,12 @@ class TimsData:
         """
         begin, end = self._scan_range(frame_id, scan_begin, scan_end)
         # Decode even for an empty range so a corrupt frame is still reported.
-        decoded = self._decode(frame_id)
+        decoded = self._decode(frame_id, begin, end)
         if decoded is None or begin == end:
             return np.zeros(0, dtype=np.int64), _EMPTY_U32, _EMPTY_U32
-        _, starts, counts, tof, intensity = decoded
-
-        lo = int(starts[begin])
-        hi = int(starts[end - 1] + counts[end - 1])
+        _, _, counts, tof, intensity = decoded
         scan_indices = np.repeat(np.arange(begin, end, dtype=np.int64), counts[begin:end])
-        return scan_indices, tof[lo:hi], intensity[lo:hi]
+        return scan_indices, tof, intensity
 
     def read_scans(self, frame_id: int, scan_begin: int, scan_end: int) -> list[tuple[npt.NDArray[np.uint32], npt.NDArray[np.uint32]]]:
         """Read scans ``[scan_begin, scan_end)`` of a frame.
@@ -696,7 +716,7 @@ class TimsData:
         """
         begin, end = self._scan_range(frame_id, scan_begin, scan_end)
         # Decode even for an empty range so a corrupt frame is still reported.
-        decoded = self._decode(frame_id)
+        decoded = self._decode(frame_id, begin, end)
         if decoded is None:
             return [(_EMPTY_U32, _EMPTY_U32) for _ in range(begin, end)]
         _, starts, counts, tof, intensity = decoded

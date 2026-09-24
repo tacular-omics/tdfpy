@@ -64,7 +64,7 @@ def test_dda_frames():
         assert f1.polarity == "positive"
         assert f1.scan_mode == 8
         assert f1.msms_type == 0
-        assert f1.max_intensity == 35579
+        assert f1.base_peak_intensity == 35579
         assert f1.num_scans == 671
         assert f1.num_peaks == 337047
         assert f1.accumulation_time == pytest.approx(73.03)

@@ -24,8 +24,8 @@ import logging
 import warnings
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass, field
-from enum import IntEnum, StrEnum
-from typing import Literal
+from enum import IntEnum
+from typing import ClassVar, Literal
 
 import numpy as np
 import numpy.typing as npt
@@ -74,41 +74,18 @@ class MsMsType(IntEnum):
     PRM_MS2 = 10
 
 
-class Polarity(StrEnum):
-    """Ion polarity of a frame."""
+Polarity = Literal["positive", "negative"]
+"""Ion polarity of a frame. Fields typed ``Polarity | None`` are ``None`` when unknown or mixed."""
 
-    POSITIVE = "positive"
-    NEGATIVE = "negative"
-    UNKNOWN = "unknown"
-    MIXED = "mixed"
+_POLARITY_STRINGS: dict[str, Polarity] = {"+": "positive", "positive": "positive", "-": "negative", "negative": "negative"}
 
-    @staticmethod
-    def from_str(s: str) -> "Polarity":
-        """Convert a string to a `Polarity` enum value.
 
-        Args:
-            s: Polarity string. Accepted values (case-insensitive):
-                `"positive"` or `"+"` → `Polarity.POSITIVE`;
-                `"negative"` or `"-"` → `Polarity.NEGATIVE`;
-                `"unknown"` or `"?"` → `Polarity.UNKNOWN`;
-                `"mixed"` or `"mix"` → `Polarity.MIXED`.
+def _parse_polarity(value: object) -> Polarity | None:
+    """``Frames.Polarity`` (``"+"`` / ``"-"``, case-insensitive words also accepted) as ``"positive"`` / ``"negative"``.
 
-        Returns:
-            The matching `Polarity` enum member.
-
-        Raises:
-            TdfpyError: If the string does not match any known polarity.
-        """
-        s = s.lower()
-        if s in ("positive", "+"):
-            return Polarity.POSITIVE
-        if s in ("negative", "-"):
-            return Polarity.NEGATIVE
-        if s in ("unknown", "unkown", "?"):
-            return Polarity.UNKNOWN
-        if s in ("mixed", "mix"):
-            return Polarity.MIXED
-        raise TdfpyError(f"Unknown polarity string {s!r}. Expected one of (case-insensitive): 'positive'/'+', 'negative'/'-', 'unknown'/'?', 'mixed'/'mix'.")
+    Anything else gives ``None``; the reader warns once per file for those.
+    """
+    return _POLARITY_STRINGS.get(str(value).strip().lower())
 
 
 # ---------------------------------------------------------------------------
@@ -238,25 +215,23 @@ class _IsolationWindow:
         return (self.scan_num_begin, self.scan_num_end)
 
     @property
-    def mz_begin(self) -> float:
-        """Lower isolation edge, ``isolation_mz - isolation_width / 2``."""
-        return self.isolation_mz - self.isolation_width / 2
-
-    @property
-    def mz_end(self) -> float:
-        """Upper isolation edge, ``isolation_mz + isolation_width / 2``."""
-        return self.isolation_mz + self.isolation_width / 2
-
-    @property
-    def mz_range(self) -> tuple[float, float]:
-        """``(mz_begin, mz_end)``."""
-        return (self.mz_begin, self.mz_end)
+    def isolation_mz_range(self) -> tuple[float, float]:
+        """Quadrupole isolation window ``(isolation_mz - width / 2, isolation_mz + width / 2)``, low first."""
+        half = self.isolation_width / 2
+        return (self.isolation_mz - half, self.isolation_mz + half)
 
 
 class _MobilityWindow(_IsolationWindow, _Spectrum):
     """A scan range in one frame: mobility ranges plus spectrum access."""
 
     __slots__ = ()
+    #: MS/MS type of the frame the window was acquired in. Set by each subclass.
+    msms_type: ClassVar["MsMsType"]
+
+    @property
+    def ms_level(self) -> int:
+        """MS level of the window's spectra: always 2 (an MS/MS isolation window)."""
+        return 2
 
     def _scan_bounds(self) -> tuple[int, int] | None:
         return self._window_scans()
@@ -361,8 +336,10 @@ class PasefFrameMsmsInfo(_MobilityWindow):
     | `collision_energy` | `float` | Collision energy in eV |
     | `precursor_id` | `int \\| None` | Associated precursor ID (`None` when the row has no precursor) |
     | `rt` | `float` | Retention time in seconds of that MS/MS frame |
-    | `polarity` | `Polarity` | Ion polarity |
+    | `polarity` | `Polarity \\| None` | `"positive"` / `"negative"`, `None` if unknown |
     """
+
+    msms_type: ClassVar[MsMsType] = MsMsType.DDA_MS2
 
     frame_id: int
     scan_num_begin: int
@@ -372,7 +349,7 @@ class PasefFrameMsmsInfo(_MobilityWindow):
     collision_energy: float
     precursor_id: int | None
     rt: float
-    polarity: Polarity
+    polarity: Polarity | None
     _timsdata: TimsData = _timsdata_field()
 
     @property
@@ -415,7 +392,7 @@ class Precursor(_TdfData):
     | `precursor_id` | `int` | Unique precursor ID |
     | `largest_peak_mz` | `float` | m/z of the most intense isotope peak |
     | `average_mz` | `float` | Intensity-weighted average m/z |
-    | `monoisotopic_mz` | `float \\| None` | Monoisotopic m/z (if determined) |
+    | `monoisotopic_mz` | `float \\| None` | Monoisotopic m/z (if determined); see also `precursor_mz` |
     | `charge` | `int \\| None` | Charge state (if determined) |
     | `scan_number` | `float` | Fractional mobility scan coordinate |
     | `intensity` | `float` | Summed precursor intensity |
@@ -437,14 +414,19 @@ class Precursor(_TdfData):
     _timsdata: TimsData = _timsdata_field()
 
     @property
+    def precursor_mz(self) -> float:
+        """The precursor m/z: ``monoisotopic_mz`` when Bruker determined it, else ``largest_peak_mz``."""
+        return self.monoisotopic_mz if self.monoisotopic_mz is not None else self.largest_peak_mz
+
+    @property
     def ook0(self) -> float:
         """1/K0 (V·s/cm²) at ``scan_number`` in the parent frame."""
         return float(self.timsdata.scan_num_to_ook0(self.parent_frame_id, [self.scan_number])[0])
 
     @property
     def ccs(self) -> float:
-        """CCS (Å²). Uses charge 1 and ``largest_peak_mz`` when charge or monoisotopic m/z is unknown."""
-        return ook0_to_ccs(self.ook0, self.charge or 1, self.monoisotopic_mz or self.largest_peak_mz)
+        """CCS (Å²) at ``precursor_mz``. Uses charge 1 when the charge is unknown."""
+        return ook0_to_ccs(self.ook0, self.charge or 1, self.precursor_mz)
 
     @property
     def voltage(self) -> float:
@@ -510,9 +492,9 @@ class Precursor(_TdfData):
         return self._single_value({i.voltage_range for i in self.pasef_frame_msms_infos}, "voltage_range")
 
     @property
-    def mz_range(self) -> tuple[float, float] | None:
-        """Shared isolation m/z range of the PASEF windows, or ``None`` (with a warning) if they differ."""
-        return self._single_value({i.mz_range for i in self.pasef_frame_msms_infos}, "mz_range")
+    def isolation_mz_range(self) -> tuple[float, float] | None:
+        """Shared quadrupole isolation m/z range of the PASEF windows, or ``None`` (with a warning) if they differ."""
+        return self._single_value({i.isolation_mz_range for i in self.pasef_frame_msms_infos}, "isolation_mz_range")
 
     @property
     def collision_energy(self) -> float | None:
@@ -520,24 +502,9 @@ class Precursor(_TdfData):
         return self._single_value({i.collision_energy for i in self.pasef_frame_msms_infos}, "collision_energy")
 
     @property
-    def polarity(self) -> Polarity:
-        """Shared polarity of the PASEF windows; ``UNKNOWN`` if none, ``MIXED`` if they differ (both warn)."""
-        polarities = {info.polarity for info in self.pasef_frame_msms_infos}
-        if len(polarities) == 0:
-            warnings.warn(
-                "No polarities found in pasef_frame_msms_infos. Returning 'unknown' for polarity.",
-                UserWarning,
-                stacklevel=2,
-            )
-            return Polarity.UNKNOWN
-        if len(polarities) != 1:
-            warnings.warn(
-                "Multiple polarities found in pasef_frame_msms_infos. Returning 'mixed' for polarity.",
-                UserWarning,
-                stacklevel=2,
-            )
-            return Polarity.MIXED
-        return polarities.pop()
+    def polarity(self) -> Polarity | None:
+        """Shared polarity of the PASEF windows; ``None`` (with a warning) if there are none or they differ."""
+        return self._single_value({info.polarity for info in self.pasef_frame_msms_infos}, "polarity")
 
 
 # ---------------------------------------------------------------------------
@@ -557,18 +524,18 @@ class Frame(_Spectrum):
     """Unique frame ID (1-based)."""
     rt: float
     """Retention time in seconds (the `Time` column)."""
-    polarity: Polarity
-    """Ion polarity of the acquisition."""
+    polarity: Polarity | None
+    """``"positive"`` or ``"negative"``; ``None`` if the file stores anything else."""
     scan_mode: int
     """Scan mode integer from the TDF schema."""
     msms_type: MsMsType
     """MS/MS type of the frame."""
     tims_id: int | None
     """Byte offset of this frame's data block in `analysis.tdf_bin` (the `TimsId` column)."""
-    max_intensity: int
-    """Maximum peak intensity across all scans in this frame."""
-    summed_intensities: int
-    """Sum of all peak intensities in this frame."""
+    base_peak_intensity: int
+    """Most intense peak across all scans in this frame (the `MaxIntensity` column)."""
+    total_ion_current: int
+    """Sum of all peak intensities in this frame (the `SummedIntensities` column)."""
     num_scans: int
     """Number of TIMS scans (mobility bins) in this frame."""
     num_peaks: int
@@ -588,6 +555,11 @@ class Frame(_Spectrum):
     ramp_time: float
     """TIMS ramp time in milliseconds."""
     _timsdata: TimsData = _timsdata_field()
+
+    @property
+    def ms_level(self) -> int:
+        """MS level: 1 for an MS1 frame, 2 for an MS/MS frame (from ``msms_type``)."""
+        return 1 if self.msms_type == MsMsType.MS1 else 2
 
     def _scan_bounds(self) -> tuple[int, int] | None:
         return None
@@ -647,10 +619,12 @@ class DiaWindow(DiaWindowGroup, _MobilityWindow):
 
     frame_id: int
     """MS/MS frame this window was acquired in."""
+    msms_type: ClassVar[MsMsType] = MsMsType.DIA_MS2
+
     rt: float
     """Retention time of that frame in seconds."""
-    polarity: Polarity
-    """Ion polarity."""
+    polarity: Polarity | None
+    """``"positive"`` / ``"negative"``, ``None`` if unknown."""
     _timsdata: TimsData = _timsdata_field()
 
 
@@ -678,7 +652,7 @@ class PrmTarget:
     | `external_id` | `str \\| None` | External identifier |
     | `rt` | `float` | Expected retention time in seconds |
     | `ook0` | `float` | Expected ion mobility 1/K0 (V·s/cm²) |
-    | `monoisotopic_mz` | `float` | Target m/z |
+    | `precursor_mz` | `float` | Target precursor m/z (the `MonoisotopicMz` column) |
     | `charge` | `int` | Charge state |
     | `description` | `str` | Target description |
     | `transitions` | `tuple[PrmTransition, ...]` | Transitions acquired for this target |
@@ -691,7 +665,7 @@ class PrmTarget:
     external_id: str | None
     rt: float
     ook0: float
-    monoisotopic_mz: float
+    precursor_mz: float
     charge: int
     description: str
     transitions: tuple["PrmTransition", ...] = field(default=(), compare=False, repr=False)
@@ -715,8 +689,10 @@ class PrmTransition(_MobilityWindow):
     | `collision_energy` | `float` | Collision energy in eV |
     | `target` | `PrmTarget` | Associated PRM target |
     | `rt` | `float` | Retention time in seconds |
-    | `polarity` | `Polarity` | Ion polarity |
+    | `polarity` | `Polarity \\| None` | `"positive"` / `"negative"`, `None` if unknown |
     """
+
+    msms_type: ClassVar[MsMsType] = MsMsType.PRM_MS2
 
     frame_id: int
     scan_num_begin: int
@@ -726,7 +702,7 @@ class PrmTransition(_MobilityWindow):
     collision_energy: float
     target: PrmTarget
     rt: float
-    polarity: Polarity
+    polarity: Polarity | None
     _timsdata: TimsData = _timsdata_field()
 
 

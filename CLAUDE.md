@@ -74,7 +74,7 @@ src/tdfpy/
 │   ├── structural.py  VerticalNoiseFilter, HorizontalHaloFilter (Numba kernels)
 │   └── gates.py       SelectionPolygonGate (ddaPASEF), DiaMs1WindowGate (diaPASEF)
 ├── regions.py       ChargeStateRegion: drop the singly-charged band
-├── processing.py    iter_window_spectra: decode a shared frame once for adjacent windows
+├── processing.py    iter_window_spectra / iter_precursor_spectra: decode a shared frame once
 ├── validation.py    validate_acquisition, ValidationReport/Issue (backs `tdfpy validate`)
 ├── __main__.py      `tdfpy` console script (validate subcommand)
 ├── slicer.py        slice_d_folder: copy a frame range of a .d into a new .d
@@ -112,13 +112,13 @@ All names below are exported from `tdfpy` (`__all__`); add new exports there.
 - Frame elements (returned by readers, not constructed by users): `Frame`,
   `DDAMs1Frame`, `DIAMs1Frame`, `PRMMs1Frame`, `Precursor`, `PasefFrameMsmsInfo`,
   `DiaWindow`, `DiaWindowGroup`, `PrmTarget`, `PrmTransition`, `MetaData`,
-  `Calibration`, `FrameMetadata`, plus `MsMsType`, `Polarity`, `MetaValue`. Elements are
+  `Calibration`, `FrameMetadata`, plus `MsMsType`, `Polarity` (a `Literal`), `MetaValue`. Elements are
   frozen, slotted, keyword-only dataclasses; ids end in `_id`, retention time is `rt`,
   ion mobility (1/K0) is `ook0`
 - Lookups: `Ms1FrameLookup`, `PrecursorLookup`, `DiaWindowLookup`,
   `PrmTargetLookup`, `PrmTransitionLookup`
 - Convenience extraction: `get_raw_peaks`, `get_centroided_spectrum`,
-  `merge_peaks`, `get_mobility_collapsed_spectrum`, `iter_window_spectra`
+  `merge_peaks`, `get_mobility_collapsed_spectrum`, `iter_window_spectra`, `iter_precursor_spectra`
 - Pipeline ops: `RawSpectrum`, `read_spectrum`, `subset_scans`, `exclude_region`,
   `Smooth`, `smooth`, `box_smooth`, `apply_noise`, `convert`, `centroid_peaks`
 - Centroiders: `Centroider` (ABC), `MergePeaksCentroider` (default), `WatershedCentroider`

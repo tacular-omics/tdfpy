@@ -21,7 +21,7 @@ with PRM("experiment.d") as prm:
     for target in prm.targets:
         print(
             f"Target {target.target_id}: "
-            f"{target.monoisotopic_mz:.4f} m/z, "
+            f"{target.precursor_mz:.4f} m/z, "
             f"charge {target.charge}, "
             f"RT {target.rt:.1f} s, "
             f"1/K0 {target.ook0:.3f}"

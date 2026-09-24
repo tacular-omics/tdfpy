@@ -338,8 +338,17 @@ class MergePeaksCentroider(Centroider):
         *,
         ion_mobility_type: Literal["ook0", "ccs", "voltage"] = "ook0",
     ) -> np.ndarray:
-        from .centroiding import merge_peaks
+        from .centroiding import _tof_order, merge_peaks
 
+        # m/z rises with TOF index, so a stable integer sort here hands
+        # merge_peaks m/z already in order and it skips its float argsort.
+        order = _tof_order(spectrum.mz_indices)
+        spectrum = RawSpectrum(
+            scan_indices=spectrum.scan_indices[order],
+            mz_indices=spectrum.mz_indices[order],
+            intensities=spectrum.intensities[order],
+            num_scans=spectrum.num_scans,
+        )
         peaks = convert(spectrum, td, frame_id, ion_mobility_type=ion_mobility_type)
         if peaks.size == 0:
             return np.empty((0, 3), dtype=np.float64)

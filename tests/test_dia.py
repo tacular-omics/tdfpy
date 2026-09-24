@@ -34,8 +34,8 @@ def test_dia_ms1_frames():
         assert f1.polarity == "positive"
         assert f1.scan_mode == 9
         assert f1.msms_type == 0
-        assert f1.max_intensity == 1325
-        assert f1.summed_intensities == 1925567
+        assert f1.base_peak_intensity == 1325
+        assert f1.total_ion_current == 1925567
         assert f1.num_scans == 918
         assert f1.num_peaks == 57972
         assert f1.accumulation_time == pytest.approx(99.953)
@@ -68,10 +68,8 @@ def test_dia_window_properties():
     with DIA(D_PATH) as dia:
         w0 = next(iter(dia.windows))
         assert w0.scan_num_range == (393, 657)
-        # isolation_mz=813.0, isolation_width=26.0 -> mz_begin=800.0, mz_end=826.0
-        assert w0.mz_begin == pytest.approx(800.0)
-        assert w0.mz_end == pytest.approx(826.0)
-        assert w0.mz_range == (w0.mz_begin, w0.mz_end)
+        # isolation_mz=813.0, isolation_width=26.0 -> isolation range 800.0-826.0
+        assert w0.isolation_mz_range == pytest.approx((800.0, 826.0))
 
 
 def test_dia_window_groups():

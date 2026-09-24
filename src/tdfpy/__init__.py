@@ -72,7 +72,7 @@ from .pipeline import (
     smooth,
     subset_scans,
 )
-from .processing import iter_window_spectra
+from .processing import iter_precursor_spectra, iter_window_spectra
 from .reader import (
     DDA,
     DIA,
@@ -91,6 +91,7 @@ __version__ = "4.1.1"
 
 __all__ = [
     "FrameMetadata",
+    "iter_precursor_spectra",
     "iter_window_spectra",
     "ValidationIssue",
     "ValidationReport",

@@ -34,13 +34,13 @@ def test_prm_targets():
         assert t1.external_id is None
         assert t1.rt == pytest.approx(354.0)
         assert t1.ook0 == pytest.approx(0.81)
-        assert t1.monoisotopic_mz == pytest.approx(487.26)
+        assert t1.precursor_mz == pytest.approx(487.26)
         assert t1.charge == 2
         assert t1.description == ""
 
         # Target 2
         t2 = prm.targets[2]
-        assert t2.monoisotopic_mz == pytest.approx(644.82)
+        assert t2.precursor_mz == pytest.approx(644.82)
         assert t2.rt == pytest.approx(864.0)
         assert t2.ook0 == pytest.approx(0.945, abs=0.001)
         assert t2.charge == 2
@@ -135,7 +135,7 @@ def test_prm_transition_target_reference():
         t1_transitions = prm.transitions[1]
         tr = t1_transitions[0]
         assert tr.target is prm.targets[1]
-        assert tr.target.monoisotopic_mz == pytest.approx(487.26)
+        assert tr.target.precursor_mz == pytest.approx(487.26)
 
 
 def test_prm_transition_properties():
@@ -145,9 +145,7 @@ def test_prm_transition_properties():
         tr = t1_transitions[0]
 
         assert tr.scan_num_range == (1492, 1565)
-        assert tr.mz_begin == pytest.approx(486.76)
-        assert tr.mz_end == pytest.approx(487.76)
-        assert tr.mz_range == (tr.mz_begin, tr.mz_end)
+        assert tr.isolation_mz_range == pytest.approx((486.76, 487.76))
 
 
 def test_prm_transition_query_by_rt():
@@ -245,7 +243,7 @@ def test_prm_transition_mobility_range():
 
         ook0_begin, ook0_end = tr.ook0_range
         # Scan number and 1/K0 run in opposite directions, but ranges are
-        # always (low, high) to match mz_range and query_range(ook0_range=).
+        # always (low, high) to match isolation_mz_range and query_range(ook0_range=).
         assert 0.0 < ook0_begin < ook0_end
         assert tr.ook0_range == (tr.ook0_begin, tr.ook0_end)
         high_scan_ook0 = float(prm.timsdata.scan_num_to_ook0(tr.frame_id, [tr.scan_num_end])[0])

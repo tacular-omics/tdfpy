@@ -244,7 +244,7 @@ with PRM(D_PATH) as prm:
 
     # PRM targets (precursor ions being monitored)
     for target in prm.targets:
-        print(f"Target {target.target_id}: {target.monoisotopic_mz:.4f} m/z, charge {target.charge}")
+        print(f"Target {target.target_id}: {target.precursor_mz:.4f} m/z, charge {target.charge}")
         break
 
     # PRM transitions (MS2 spectra linked to a target)
@@ -302,7 +302,7 @@ When you open a `DDA`, `DIA` or `PRM` reader, it immediately:
 2. Reads all frame and precursor metadata from the SQLite database into memory
 
 The objects you get back — `Frame`, `Precursor`, `DiaWindow`, etc. — all hold a reference
-to that open connection. Their fields (`frame_id`, `rt`, `monoisotopic_mz`, etc.) are
+to that open connection. Their fields (`frame_id`, `rt`, `precursor_mz`, etc.) are
 available immediately. **Spectral data is fetched lazily**: calling `.merged_peaks()`, `.scan_peaks()` or `.centroid()`
 reads from the binary file at that moment.
 
@@ -473,6 +473,26 @@ decode a frame again. Consume the iterator inside the reader's context. It
 retains the current frame and uses no global spectrum cache or worker pool.
 Returned numerical arrays remain usable after the reader closes.
 
+## Precursor batches
+
+A PASEF frame holds windows of many precursors, so calling `merged_peaks()` on
+each precursor decodes the same frame many times. `iter_precursor_spectra`
+decodes each frame once and yields `(precursor, peaks)` pairs, where `peaks`
+equals `precursor.merged_peaks()`: an `(N, 2)` `[m/z, intensity]` array.
+
+```python
+from tdfpy import DDA, iter_precursor_spectra
+
+with DDA(D_PATH) as reader:
+    for precursor, peaks in iter_precursor_spectra(reader.precursors):
+        assert peaks.shape[1] == 2
+        assert precursor.precursor_mz > 0
+```
+
+Pass precursors in reader order (or any subset of it). The last 64 decoded
+frames are kept, so a scattered order is still correct but may decode a frame
+again. Consume the iterator inside the reader's context.
+
 ## File checks
 
 For acquisition checks, run `tdfpy validate sample.d` or
@@ -513,6 +533,9 @@ Python installation.
 
 **`iter_window_spectra(windows: Iterable[DiaWindow | PrmTransition], *, exclude: ChargeStateRegion | None = None, smooth: Smooth | None = None, noise: NoiseSpec = None, centroid: Centroider | None = None, ion_mobility_type: Literal['ook0', 'ccs', 'voltage'] = 'ook0') -> Iterator[tuple[DiaWindow | PrmTransition, np.ndarray]]`**
   Yield (window, peaks) pairs, decoding adjacent windows' frame once.
+
+**`iter_precursor_spectra(precursors: Iterable[Precursor]) -> Iterator[tuple[Precursor, np.ndarray]]`**
+  Yield ``(precursor, peaks)`` pairs, decoding each MS/MS frame once.
 
 **`validate_acquisition(analysis_dir: str | Path, *, full: bool = False) -> ValidationReport`**
   Check supported metadata, optionally decoding every frame.
@@ -780,9 +803,10 @@ below each subclass.
 
 **dataclass `Frame`**
   Base class for a single timsTOF MS1 frame.
-  - fields: `frame_id: int`, `rt: float`, `polarity: Polarity`, `scan_mode: int`, `msms_type: MsMsType`, `tims_id: int | None`, `max_intensity: int`, `summed_intensities: int`, `num_scans: int`, `num_peaks: int`, `mz_calibration_id: int`, `t1: float`, `t2: float`, `tims_calibration_id: int`, `property_group_id: int | None`, `accumulation_time: float`, `ramp_time: float`
+  - fields: `frame_id: int`, `rt: float`, `polarity: typing.Optional[typing.Literal['positive', 'negative']]`, `scan_mode: int`, `msms_type: MsMsType`, `tims_id: int | None`, `base_peak_intensity: int`, `total_ion_current: int`, `num_scans: int`, `num_peaks: int`, `mz_calibration_id: int`, `t1: float`, `t2: float`, `tims_calibration_id: int`, `property_group_id: int | None`, `accumulation_time: float`, `ramp_time: float`
   - returned by the readers; do not construct directly
   - `.centroid(*, exclude: ChargeStateRegion | None = None, smooth: Smooth | None = None, noise: NoiseSpec = None, ion_mobility_type: Literal['ook0', 'ccs', 'voltage'] = 'ook0', centroid: Centroider | None = None) -> NDArray[numpy.float64]`: Centroided peaks as one ``(N, 3)`` ``[m/z, intensity, ion_mobility]`` array.
+  - `.ms_level` -> `int`: MS level: 1 for an MS1 frame, 2 for an MS/MS frame (from ``msms_type``).
   - `.raw_peaks(*, exclude: ChargeStateRegion | None = None, smooth: Smooth | None = None, noise: NoiseSpec = None, ion_mobility_type: Literal['ook0', 'ccs', 'voltage'] = 'ook0') -> NDArray[numpy.float64]`: Raw peaks as one ``(N, 3)`` ``[m/z, intensity, ion_mobility]`` array.
   - `.scan_peaks() -> list[NDArray[numpy.float64]]`: Raw peaks, one ``(N_i, 2)`` ``[m/z, intensity]`` float64 array per mobility scan.
 
@@ -827,31 +851,31 @@ acquisition type from the frame's type. Find the windows or transitions of a run
   A detected precursor ion from a DDA acquisition.
   - fields: `precursor_id: int`, `largest_peak_mz: float`, `average_mz: float`, `monoisotopic_mz: float | None`, `charge: int | None`, `scan_number: float`, `intensity: float`, `parent_frame_id: int`, `pasef_frame_msms_infos: tuple[PasefFrameMsmsInfo, ...]`, `rt: float`
   - returned by the readers; do not construct directly
-  - `.ccs` -> `float`: CCS (Å²). Uses charge 1 and ``largest_peak_mz`` when charge or monoisotopic m/z is unknown.
+  - `.ccs` -> `float`: CCS (Å²) at ``precursor_mz``. Uses charge 1 when the charge is unknown.
   - `.ccs_range` -> `tuple[float, float] | None`: Shared CCS range of the PASEF windows, or ``None`` (with a warning) if they differ.
   - `.collision_energy` -> `float | None`: Shared collision energy (eV) of the PASEF windows, or ``None`` (with a warning) if they differ.
+  - `.isolation_mz_range` -> `tuple[float, float] | None`: Shared quadrupole isolation m/z range of the PASEF windows, or ``None`` (with a warning) if they differ.
   - `.merged_peaks() -> NDArray[numpy.float64]`: Mobility-collapsed MS/MS spectrum, one ``(N, 2)`` ``[m/z, intensity]`` array.
-  - `.mz_range` -> `tuple[float, float] | None`: Shared isolation m/z range of the PASEF windows, or ``None`` (with a warning) if they differ.
   - `.ook0` -> `float`: 1/K0 (V·s/cm²) at ``scan_number`` in the parent frame.
   - `.ook0_range` -> `tuple[float, float] | None`: Shared 1/K0 range of the PASEF windows, or ``None`` (with a warning) if they differ.
   - `.pasef_merged_peaks() -> list[NDArray[numpy.float64]]`: :meth:`PasefFrameMsmsInfo.merged_peaks` of each PASEF window, one ``(N_i, 2)`` array per window.
-  - `.polarity` -> `Polarity`: Shared polarity of the PASEF windows; ``UNKNOWN`` if none, ``MIXED`` if they differ (both warn).
+  - `.polarity` -> `typing.Optional[typing.Literal['positive', 'negative']]`: Shared polarity of the PASEF windows; ``None`` (with a warning) if there are none or they differ.
+  - `.precursor_mz` -> `float`: The precursor m/z: ``monoisotopic_mz`` when Bruker determined it, else ``largest_peak_mz``.
   - `.scan_num_range` -> `tuple[int, int] | None`: Shared scan range of the PASEF windows, or ``None`` (with a warning) if they differ.
   - `.voltage` -> `float`: TIMS voltage (V) at ``scan_number`` in the parent frame.
   - `.voltage_range` -> `tuple[float, float] | None`: Shared voltage range of the PASEF windows, or ``None`` (with a warning) if they differ.
 
 **dataclass `PasefFrameMsmsInfo`**
   A single PASEF MS/MS isolation window within an MS/MS frame.
-  - fields: `frame_id: int`, `scan_num_begin: int`, `scan_num_end: int`, `isolation_mz: float`, `isolation_width: float`, `collision_energy: float`, `precursor_id: int | None`, `rt: float`, `polarity: Polarity`
+  - fields: `frame_id: int`, `scan_num_begin: int`, `scan_num_end: int`, `isolation_mz: float`, `isolation_width: float`, `collision_energy: float`, `precursor_id: int | None`, `rt: float`, `polarity: typing.Optional[typing.Literal['positive', 'negative']]`
   - returned by the readers; do not construct directly
   - `.ccs_begin` -> `float`: Lowest CCS (Å²) of the scan range, for charge 1 at ``isolation_mz``.
   - `.ccs_end` -> `float`: Highest CCS (Å²) of the scan range, for charge 1 at ``isolation_mz``.
   - `.ccs_range` -> `tuple[float, float]`: ``(ccs_begin, ccs_end)``: CCS (Å²) range for charge 1 at ``isolation_mz``, low first.
   - `.centroid(*, exclude: ChargeStateRegion | None = None, smooth: Smooth | None = None, noise: NoiseSpec = None, ion_mobility_type: Literal['ook0', 'ccs', 'voltage'] = 'ook0', centroid: Centroider | None = None) -> NDArray[numpy.float64]`: Centroided peaks as one ``(N, 3)`` ``[m/z, intensity, ion_mobility]`` array.
+  - `.isolation_mz_range` -> `tuple[float, float]`: Quadrupole isolation window ``(isolation_mz - width / 2, isolation_mz + width / 2)``, low first.
   - `.merged_peaks() -> NDArray[numpy.float64]`: Mobility-collapsed MS/MS spectrum, one ``(N, 2)`` ``[m/z, intensity]`` array.
-  - `.mz_begin` -> `float`: Lower isolation edge, ``isolation_mz - isolation_width / 2``.
-  - `.mz_end` -> `float`: Upper isolation edge, ``isolation_mz + isolation_width / 2``.
-  - `.mz_range` -> `tuple[float, float]`: ``(mz_begin, mz_end)``.
+  - `.ms_level` -> `int`: MS level of the window's spectra: always 2 (an MS/MS isolation window).
   - `.ook0_begin` -> `float`: Lowest 1/K0 (V·s/cm²) of the scan range.
   - `.ook0_end` -> `float`: Highest 1/K0 (V·s/cm²) of the scan range.
   - `.ook0_range` -> `tuple[float, float]`: ``(ook0_begin, ook0_end)``: lowest and highest 1/K0 (V·s/cm²) of the scan range, low first.
@@ -871,15 +895,14 @@ acquisition type from the frame's type. Find the windows or transitions of a run
 
 **dataclass `DiaWindow`** (subclass of DiaWindowGroup)
   A DIA isolation window in one specific MS/MS frame.
-  - fields: `frame_id: int`, `rt: float`, `polarity: Polarity`
+  - fields: `frame_id: int`, `rt: float`, `polarity: typing.Optional[typing.Literal['positive', 'negative']]`
   - returned by the readers; do not construct directly
   - `.ccs_begin` -> `float`: Lowest CCS (Å²) of the scan range, for charge 1 at ``isolation_mz``.
   - `.ccs_end` -> `float`: Highest CCS (Å²) of the scan range, for charge 1 at ``isolation_mz``.
   - `.ccs_range` -> `tuple[float, float]`: ``(ccs_begin, ccs_end)``: CCS (Å²) range for charge 1 at ``isolation_mz``, low first.
   - `.centroid(*, exclude: ChargeStateRegion | None = None, smooth: Smooth | None = None, noise: NoiseSpec = None, ion_mobility_type: Literal['ook0', 'ccs', 'voltage'] = 'ook0', centroid: Centroider | None = None) -> NDArray[numpy.float64]`: Centroided peaks as one ``(N, 3)`` ``[m/z, intensity, ion_mobility]`` array.
-  - `.mz_begin` -> `float`: Lower isolation edge, ``isolation_mz - isolation_width / 2``.
-  - `.mz_end` -> `float`: Upper isolation edge, ``isolation_mz + isolation_width / 2``.
-  - `.mz_range` -> `tuple[float, float]`: ``(mz_begin, mz_end)``.
+  - `.isolation_mz_range` -> `tuple[float, float]`: Quadrupole isolation window ``(isolation_mz - width / 2, isolation_mz + width / 2)``, low first.
+  - `.ms_level` -> `int`: MS level of the window's spectra: always 2 (an MS/MS isolation window).
   - `.ook0_begin` -> `float`: Lowest 1/K0 (V·s/cm²) of the scan range.
   - `.ook0_end` -> `float`: Highest 1/K0 (V·s/cm²) of the scan range.
   - `.ook0_range` -> `tuple[float, float]`: ``(ook0_begin, ook0_end)``: lowest and highest 1/K0 (V·s/cm²) of the scan range, low first.
@@ -894,9 +917,7 @@ acquisition type from the frame's type. Find the windows or transitions of a run
 **dataclass `DiaWindowGroup`**
   One window of a DIA window group, shared by every frame that uses the group.
   - fields: `window_index: int`, `window_group_id: int`, `scan_num_begin: int`, `scan_num_end: int`, `isolation_mz: float`, `isolation_width: float`, `collision_energy: float`
-  - `.mz_begin` -> `float`: Lower isolation edge, ``isolation_mz - isolation_width / 2``.
-  - `.mz_end` -> `float`: Upper isolation edge, ``isolation_mz + isolation_width / 2``.
-  - `.mz_range` -> `tuple[float, float]`: ``(mz_begin, mz_end)``.
+  - `.isolation_mz_range` -> `tuple[float, float]`: Quadrupole isolation window ``(isolation_mz - width / 2, isolation_mz + width / 2)``, low first.
   - `.scan_num_range` -> `tuple[int, int]`: ``(scan_num_begin, scan_num_end)``, end exclusive.
 
 ==============================================================================
@@ -926,7 +947,7 @@ with PRM("experiment.d") as prm:
     for target in prm.targets:
         print(
             f"Target {target.target_id}: "
-            f"{target.monoisotopic_mz:.4f} m/z, "
+            f"{target.precursor_mz:.4f} m/z, "
             f"charge {target.charge}, "
             f"RT {target.rt:.1f} s, "
             f"1/K0 {target.ook0:.3f}"
@@ -938,7 +959,7 @@ with PRM("experiment.d") as prm:
 
 **dataclass `PrmTarget`**
   A predefined PRM target ion from the `PrmTargets` table.
-  - fields: `target_id: int`, `external_id: str | None`, `rt: float`, `ook0: float`, `monoisotopic_mz: float`, `charge: int`, `description: str`, `transitions: tuple['PrmTransition', ...]` = ()
+  - fields: `target_id: int`, `external_id: str | None`, `rt: float`, `ook0: float`, `precursor_mz: float`, `charge: int`, `description: str`, `transitions: tuple['PrmTransition', ...]` = ()
 
 ---
 
@@ -969,15 +990,14 @@ with PRM("experiment.d") as prm:
 
 **dataclass `PrmTransition`**
   A PRM isolation window in one specific MS/MS frame.
-  - fields: `frame_id: int`, `scan_num_begin: int`, `scan_num_end: int`, `isolation_mz: float`, `isolation_width: float`, `collision_energy: float`, `target: PrmTarget`, `rt: float`, `polarity: Polarity`
+  - fields: `frame_id: int`, `scan_num_begin: int`, `scan_num_end: int`, `isolation_mz: float`, `isolation_width: float`, `collision_energy: float`, `target: PrmTarget`, `rt: float`, `polarity: typing.Optional[typing.Literal['positive', 'negative']]`
   - returned by the readers; do not construct directly
   - `.ccs_begin` -> `float`: Lowest CCS (Å²) of the scan range, for charge 1 at ``isolation_mz``.
   - `.ccs_end` -> `float`: Highest CCS (Å²) of the scan range, for charge 1 at ``isolation_mz``.
   - `.ccs_range` -> `tuple[float, float]`: ``(ccs_begin, ccs_end)``: CCS (Å²) range for charge 1 at ``isolation_mz``, low first.
   - `.centroid(*, exclude: ChargeStateRegion | None = None, smooth: Smooth | None = None, noise: NoiseSpec = None, ion_mobility_type: Literal['ook0', 'ccs', 'voltage'] = 'ook0', centroid: Centroider | None = None) -> NDArray[numpy.float64]`: Centroided peaks as one ``(N, 3)`` ``[m/z, intensity, ion_mobility]`` array.
-  - `.mz_begin` -> `float`: Lower isolation edge, ``isolation_mz - isolation_width / 2``.
-  - `.mz_end` -> `float`: Upper isolation edge, ``isolation_mz + isolation_width / 2``.
-  - `.mz_range` -> `tuple[float, float]`: ``(mz_begin, mz_end)``.
+  - `.isolation_mz_range` -> `tuple[float, float]`: Quadrupole isolation window ``(isolation_mz - width / 2, isolation_mz + width / 2)``, low first.
+  - `.ms_level` -> `int`: MS level of the window's spectra: always 2 (an MS/MS isolation window).
   - `.ook0_begin` -> `float`: Lowest 1/K0 (V·s/cm²) of the scan range.
   - `.ook0_end` -> `float`: Highest 1/K0 (V·s/cm²) of the scan range.
   - `.ook0_range` -> `tuple[float, float]`: ``(ook0_begin, ook0_end)``: lowest and highest 1/K0 (V·s/cm²) of the scan range, low first.
@@ -1043,8 +1063,7 @@ with PRM("experiment.d") as prm:
   - `.std_ppm` -> `float`: m/z calibration standard deviation in ppm.
   - `.user` -> `str`: User who ran the calibration.
 
-**class `Polarity(*values)`** (subclass of StrEnum)
-  Ion polarity of a frame.
+**`Polarity(*args, **kwargs)`**
 
 ==============================================================================
 # docs/api/lookup.md
@@ -1067,9 +1086,11 @@ support:
 ## MS1 Frame Lookup
 
 **class `Ms1FrameLookup(frames: Mapping[int, T])`**
-  MS1 frames of a reader, indexed by frame ID.
+  MS1 frames of a reader, indexed by frame ID, with RT queries.
   - `.get(key: int, default: object = None) -> object`: Return the entry for ``key``, or ``default`` (``None``) if it is not present.
   - `.ids() -> tuple[int, ...]`: Every ID this lookup is indexed by, in insertion order.
+  - `.query(*, rt: float | None = None, rt_tolerance: float = 30.0) -> Iterator[T]`: MS1 frames within ``rt_tolerance`` of ``rt``, in frame order.
+  - `.query_range(*, rt_range: tuple[float, float] | None = None) -> Iterator[T]`: MS1 frames inside an RT range, in frame order.
 
 ---
 
@@ -1080,7 +1101,7 @@ support:
   - `.get(key: int, default: object = None) -> object`: Return the entry for ``key``, or ``default`` (``None``) if it is not present.
   - `.ids() -> tuple[int, ...]`: Every ID this lookup is indexed by, in insertion order.
   - `.query(*, mz: float | None = None, rt: float | None = None, mz_tolerance: float = 20.0, mz_tolerance_type: Literal['ppm', 'da'] = 'ppm', rt_tolerance: float = 30.0) -> Iterator[Precursor]`: Precursors within a tolerance of ``mz`` and/or ``rt``.
-  - `.query_range(*, mz_range: tuple[float, float] | None = None, rt_range: tuple[float, float] | None = None) -> Iterator[Precursor]`: Precursors inside m/z and/or RT ranges (inclusive).
+  - `.query_range(*, precursor_mz_range: tuple[float, float] | None = None, rt_range: tuple[float, float] | None = None) -> Iterator[Precursor]`: Precursors inside precursor m/z and/or RT ranges (inclusive).
 
 ---
 
@@ -1140,7 +1161,7 @@ from tdfpy import PRM
 with PRM("experiment.d") as prm:
     # Iterate over all targets
     for target in prm.targets:
-        print(target.target_id, target.monoisotopic_mz, target.charge)
+        print(target.target_id, target.precursor_mz, target.charge)
 
     # Access a specific target by ID
     t = prm.targets[1]
@@ -1148,7 +1169,7 @@ with PRM("experiment.d") as prm:
 
     # Query by m/z (20 ppm window)
     for target in prm.targets.query(mz=565.3189, mz_tolerance=20.0):
-        print(target.target_id, target.monoisotopic_mz)
+        print(target.target_id, target.precursor_mz)
 
     # Query by m/z and expected RT (±30 s)
     for target in prm.targets.query(mz=565.3189, rt=480.0, rt_tolerance=30.0):
@@ -1164,7 +1185,7 @@ with PRM("experiment.d") as prm:
   - `.get(key: int, default: object = None) -> object`: Return the entry for ``key``, or ``default`` (``None``) if it is not present.
   - `.ids() -> tuple[int, ...]`: Every ID this lookup is indexed by, in insertion order.
   - `.query(*, mz: float | None = None, rt: float | None = None, ook0: float | None = None, mz_tolerance: float = 20.0, mz_tolerance_type: Literal['ppm', 'da'] = 'ppm', rt_tolerance: float = 30.0, ook0_tolerance: float = 0.05) -> Iterator[PrmTarget]`: Targets within a tolerance of ``mz``, ``rt`` and/or ``ook0``.
-  - `.query_range(*, mz_range: tuple[float, float] | None = None, rt_range: tuple[float, float] | None = None, ook0_range: tuple[float, float] | None = None) -> Iterator[PrmTarget]`: Targets inside m/z, RT and/or 1/K0 ranges (inclusive).
+  - `.query_range(*, precursor_mz_range: tuple[float, float] | None = None, rt_range: tuple[float, float] | None = None, ook0_range: tuple[float, float] | None = None) -> Iterator[PrmTarget]`: Targets inside precursor m/z, RT and/or 1/K0 ranges (inclusive).
 
 ### PRM Transition Lookup
 
