@@ -7,8 +7,7 @@ Requires matplotlib (not installed by default):
 
 from __future__ import annotations
 
-import warnings
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 
@@ -19,50 +18,17 @@ if TYPE_CHECKING:
     from .pipeline import Centroider
     from .timsdata import TimsData
 
-# Defaults of the deprecated tolerance arguments. ``im_tolerance`` differs from
-# MergePeaksCentroider's 0.1; kept so old calls draw the same figure.
-_LEGACY_DEFAULTS: dict[str, Any] = {
-    "mz_tolerance": 8.0,
-    "mz_tolerance_type": "ppm",
-    "im_tolerance": 0.01,
-    "im_tolerance_type": "relative",
-    "min_peaks": 3,
-    "max_peaks": None,
-}
-
-
-def _resolve_centroider(centroid: Centroider | None, **legacy: Any) -> Centroider:
-    """Pick the centroider from ``centroid=`` or the deprecated tolerance kwargs."""
-    from .pipeline import MergePeaksCentroider
-
-    given = {k: v for k, v in legacy.items() if v is not None}
-    if not given:
-        return centroid if centroid is not None else MergePeaksCentroider()
-    names = ", ".join(sorted(given))
-    if centroid is not None:
-        raise TypeError(f"plot_centroiding: pass either centroid= or the deprecated {names}, not both")
-    warnings.warn(
-        f"plot_centroiding: {names} are deprecated; pass centroid=MergePeaksCentroider(...) instead, as for Frame.centroid() and get_centroided_spectrum()",
-        DeprecationWarning,
-        stacklevel=3,
-    )
-    return MergePeaksCentroider(**{**_LEGACY_DEFAULTS, **given})
+__all__ = ["plot_centroiding"]
 
 
 def plot_centroiding(
     td: TimsData,
     frame_id: int,
+    *,
     ion_mobility_type: Literal["ook0", "ccs", "voltage"] = "ook0",
-    mz_tolerance: float | None = None,
-    mz_tolerance_type: Literal["ppm", "da"] | None = None,
-    im_tolerance: float | None = None,
-    im_tolerance_type: Literal["relative", "absolute"] | None = None,
-    min_peaks: int | None = None,
-    max_peaks: int | None = None,
     noise: NoiseSpec = None,
     mz_range: tuple[float, float] | None = None,
     im_range: tuple[float, float] | None = None,
-    *,
     centroid: Centroider | None = None,
 ) -> Figure:
     """Visualize centroiding quality for a single frame.
@@ -76,7 +42,7 @@ def plot_centroiding(
     - **Bottom-left** — peaks that were *discarded* by centroiding (raw points
       that fall outside the tolerance of every centroid), coloured by
       log-intensity.  These are typically low-intensity singletons rejected by
-      ``min_peaks``.
+      the centroider's ``min_peaks``.
     - **Bottom-right** — 1D mass spectrum: raw summed projection vs centroided
       stems, plus a discarded-intensity fill so you can judge how much signal
       was lost.
@@ -89,13 +55,6 @@ def plot_centroiding(
         frame_id: Frame to inspect.
         ion_mobility_type: Ion mobility axis — ``"ook0"``, ``"ccs"``, or
             ``"voltage"``.
-        mz_tolerance: Deprecated; pass
-            ``centroid=MergePeaksCentroider(mz_tolerance=...)`` instead.
-        mz_tolerance_type: Deprecated; see ``mz_tolerance``.
-        im_tolerance: Deprecated; see ``mz_tolerance``.
-        im_tolerance_type: Deprecated; see ``mz_tolerance``.
-        min_peaks: Deprecated; see ``mz_tolerance``.
-        max_peaks: Deprecated; see ``mz_tolerance``.
         noise: Pre-centroiding noise filter pipeline — see
             :func:`tdfpy.noise.coerce_filters` for accepted forms.
         mz_range: Optional ``(min_mz, max_mz)`` to restrict the plot axes.
@@ -112,14 +71,6 @@ def plot_centroiding(
 
     Raises:
         ImportError: If matplotlib is not installed.
-        TypeError: If ``centroid`` is combined with the deprecated tolerance
-            arguments.
-
-    Warns:
-        DeprecationWarning: If any of ``mz_tolerance``, ``mz_tolerance_type``,
-            ``im_tolerance``, ``im_tolerance_type``, ``min_peaks`` or
-            ``max_peaks`` is passed. They still work, with their old defaults
-            for the ones left out (including ``im_tolerance=0.01``).
 
     Example:
         ```python
@@ -131,15 +82,9 @@ def plot_centroiding(
             fig.savefig("centroiding_check.png", dpi=150)
         ```
     """
-    centroider = _resolve_centroider(
-        centroid,
-        mz_tolerance=mz_tolerance,
-        mz_tolerance_type=mz_tolerance_type,
-        im_tolerance=im_tolerance,
-        im_tolerance_type=im_tolerance_type,
-        min_peaks=min_peaks,
-        max_peaks=max_peaks,
-    )
+    from .pipeline import MergePeaksCentroider
+
+    centroider = centroid if centroid is not None else MergePeaksCentroider()
 
     try:
         import matplotlib.pyplot as plt
