@@ -51,12 +51,12 @@ does not change client settings automatically.
 | Tools | Purpose |
 | --- | --- |
 | `server_info`, `discover_acquisitions` | Find configured roots, limits, and available acquisitions |
-| `inspect_acquisition` | Summarize acquisition mode, frame types, retention-time coverage, and source files |
-| `list_metadata_tables`, `read_metadata_table` | Inspect actual SQLite schema and page selected columns with typed filters |
-| `query_frames` | Find frames by RT, polarity, and MS/MS type |
-| `query_precursors` | Find DDA precursors by RT and precursor m/z |
-| `query_dia_windows` | Find DIA windows by RT, isolation-center m/z, and window group |
-| `query_prm_targets`, `query_prm_transitions` | Inspect PRM targets and find their measured transitions |
+| `inspect_acquisition` | Summarize acquisition mode, frame types, RT coverage, and source files |
+| `list_metadata_tables`, `read_metadata_table` | Inspect actual SQLite schema and page selected columns with typed filters (raw SQL column names) |
+| `query_frames` | Find frames by `rt_range`, `polarity` (`"positive"` / `"negative"`), and `msms_type`. Rows use `Frame` names (`frame_id`, `rt`, `total_ion_current`, `base_peak_intensity`, `*_id`, ...) |
+| `query_precursors` | Find DDA precursors by `rt_range` and `precursor_mz_range` |
+| `query_dia_windows` | Find DIA windows by `rt_range`, `isolation_mz_range` (isolation center), and `window_group_id` |
+| `query_prm_targets`, `query_prm_transitions` | PRM targets by scheduled `rt_range`, `precursor_mz_range`, `target_id`; transitions by measured `rt_range`, `isolation_mz_range`, `target_id` |
 | `get_processing_options` | Discover both centroiders, ten noise filters and gates, smoothing, and region exclusion |
 | `preview_spectrum` | Extract a spectrum with full-result statistics and a bounded strongest-peak preview |
 | `export_spectrum` | Save a complete raw or centroided spectrum with extraction settings |
@@ -64,6 +64,12 @@ does not change client settings automatically.
 | `read_artifact` | Inspect an export manifest or page through a numerical array |
 | `convert_coordinates` | Convert TOF, m/z, scan, inverse mobility, voltage, and charge-aware CCS coordinates |
 | `check_acquisition`, `check_frames` | Check supported metadata and page through binary integrity checks |
+
+Every `*_range` argument is a half-open `{"lower": ..., "upper": ...}` interval.
+Unknown arguments are rejected, so a misspelled or pre-5.0 name (such as `rt=`)
+fails instead of silently returning unfiltered rows. Library errors reach the
+agent with their message, for example "precursor queries require DDA, but this
+acquisition is DIA".
 
 The `tdfpy://guide` resource explains units and tool sequencing. The
 `tdfpy://processing` resource supplies configuration schemas, and
@@ -98,6 +104,12 @@ position in the full acquisition lookup, not a window group or frame ID. Query
 pagination does not renumber it. PRM transitions use the same index convention.
 Frames and DDA precursors use their actual stored IDs.
 
+Query rows use the Python attribute names, so `query_frames` returns `frame_id`,
+`rt`, `polarity` (`"positive"` / `"negative"`), `msms_type`, `ms_level`,
+`total_ion_current`, `base_peak_intensity`, `mz_calibration_id` and so on, plus a
+`selection`. `read_metadata_table` is the way to see stored SQL columns such as
+`Time` or `SummedIntensities` as they are.
+
 Pass the selection to `preview_spectrum` or `export_spectrum`. A processing
 configuration can use the existing Python algorithm names:
 
@@ -111,9 +123,13 @@ configuration can use the existing Python algorithm names:
   "noise": [
     {"name": "MadThreshold", "parameters": {"k": 3.0}}
   ],
-  "ion_mobility_type": "ook0"
+  "mobility_type": "ook0"
 }
 ```
+
+`mobility_type` is `"ook0"` (1/K0, the default) or `"voltage"`; it has the same
+name as the mzmlpy MCP parameter. The Python API also offers `"ccs"`, but raw
+ions have no known charge, so the MCP does not.
 
 Parameters are validated against the actual algorithm definitions. Unknown
 names and fields raise errors. All filters run before centroiding. The server
@@ -131,6 +147,7 @@ pre-centroid processing, use the existing exclusion, smoothing, and noise option
 ## Numerical contracts
 
 - RT is in seconds. Selection intervals and scan bounds are half-open.
+  `server_info` lists units under `rt`, `mobility` and `intensity`.
 - Raw mode returns digitizer peaks normalized to a 100 ms accumulation window.
   Smoothing can change intensities. Filtering and centroid thresholds can remove
   intensity. A reported intensity sum describes the selected processed result.

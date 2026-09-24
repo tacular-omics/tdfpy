@@ -51,7 +51,7 @@ Return types at a glance:
 
 | call | returns |
 |---|---|
-| `Frame.raw_peaks()`, `Frame.centroid()`, `DiaWindow.centroid()`, `PrmTransition.centroid()` | `np.ndarray` shape `(N, 3)`: m/z, intensity, ion mobility (`ion_mobility_type="ook0"` default; also `"ccs"`, `"voltage"`) |
+| `Frame.raw_peaks()`, `Frame.centroid()`, `DiaWindow.centroid()`, `PrmTransition.centroid()` | `np.ndarray` shape `(N, 3)`: m/z, intensity, ion mobility (`mobility_type="ook0"` default; also `"ccs"`, `"voltage"`) |
 | `Precursor.merged_peaks()` | `np.ndarray` `(N, 2)`: m/z, intensity |
 | `Frame.scan_peaks()`, `DiaWindow.scan_peaks()`, `PrmTransition.scan_peaks()` | `list[np.ndarray]`, one `(N, 2)` array per mobility scan |
 | `get_acquisition_type(path)` | `AcquisitionType` (a `StrEnum`: `"DDA"`, `"DIA"`, `"PRM"` or `"unknown"`) |
@@ -520,7 +520,7 @@ threads. Metadata needed by those paths is snapshotted when the reader opens.
 Direct access to `td.conn` retains SQLite's thread rules. User-written filters
 must be thread-safe themselves. Wait for workers before closing the reader.
 
-All `ion_mobility_type="ccs"` raw-spectrum conversions assume charge +1.
+All `mobility_type="ccs"` raw-spectrum conversions assume charge +1.
 Raw peaks do not identify charge states. `Precursor.ccs` uses a known precursor
 charge when present, falling back to +1 when it is absent. Precursor scan
 coordinates retain the original fractional metadata value.
@@ -531,7 +531,7 @@ Python installation.
 
 ## API
 
-**`iter_window_spectra(windows: Iterable[DiaWindow | PrmTransition], *, exclude: ChargeStateRegion | None = None, smooth: Smooth | None = None, noise: NoiseSpec = None, centroid: Centroider | None = None, ion_mobility_type: Literal['ook0', 'ccs', 'voltage'] = 'ook0') -> Iterator[tuple[DiaWindow | PrmTransition, np.ndarray]]`**
+**`iter_window_spectra(windows: Iterable[DiaWindow | PrmTransition], *, exclude: ChargeStateRegion | None = None, smooth: Smooth | None = None, noise: NoiseSpec = None, centroid: Centroider | None = None, mobility_type: Literal['ook0', 'ccs', 'voltage'] = 'ook0') -> Iterator[tuple[DiaWindow | PrmTransition, np.ndarray]]`**
   Yield (window, peaks) pairs, decoding adjacent windows' frame once.
 
 **`iter_precursor_spectra(precursors: Iterable[Precursor]) -> Iterator[tuple[Precursor, np.ndarray]]`**
@@ -606,12 +606,12 @@ does not change client settings automatically.
 | Tools | Purpose |
 | --- | --- |
 | `server_info`, `discover_acquisitions` | Find configured roots, limits, and available acquisitions |
-| `inspect_acquisition` | Summarize acquisition mode, frame types, retention-time coverage, and source files |
-| `list_metadata_tables`, `read_metadata_table` | Inspect actual SQLite schema and page selected columns with typed filters |
-| `query_frames` | Find frames by RT, polarity, and MS/MS type |
-| `query_precursors` | Find DDA precursors by RT and precursor m/z |
-| `query_dia_windows` | Find DIA windows by RT, isolation-center m/z, and window group |
-| `query_prm_targets`, `query_prm_transitions` | Inspect PRM targets and find their measured transitions |
+| `inspect_acquisition` | Summarize acquisition mode, frame types, RT coverage, and source files |
+| `list_metadata_tables`, `read_metadata_table` | Inspect actual SQLite schema and page selected columns with typed filters (raw SQL column names) |
+| `query_frames` | Find frames by `rt_range`, `polarity` (`"positive"` / `"negative"`), and `msms_type`. Rows use `Frame` names (`frame_id`, `rt`, `total_ion_current`, `base_peak_intensity`, `*_id`, ...) |
+| `query_precursors` | Find DDA precursors by `rt_range` and `precursor_mz_range` |
+| `query_dia_windows` | Find DIA windows by `rt_range`, `isolation_mz_range` (isolation center), and `window_group_id` |
+| `query_prm_targets`, `query_prm_transitions` | PRM targets by scheduled `rt_range`, `precursor_mz_range`, `target_id`; transitions by measured `rt_range`, `isolation_mz_range`, `target_id` |
 | `get_processing_options` | Discover both centroiders, ten noise filters and gates, smoothing, and region exclusion |
 | `preview_spectrum` | Extract a spectrum with full-result statistics and a bounded strongest-peak preview |
 | `export_spectrum` | Save a complete raw or centroided spectrum with extraction settings |
@@ -619,6 +619,12 @@ does not change client settings automatically.
 | `read_artifact` | Inspect an export manifest or page through a numerical array |
 | `convert_coordinates` | Convert TOF, m/z, scan, inverse mobility, voltage, and charge-aware CCS coordinates |
 | `check_acquisition`, `check_frames` | Check supported metadata and page through binary integrity checks |
+
+Every `*_range` argument is a half-open `{"lower": ..., "upper": ...}` interval.
+Unknown arguments are rejected, so a misspelled or pre-5.0 name (such as `rt=`)
+fails instead of silently returning unfiltered rows. Library errors reach the
+agent with their message, for example "precursor queries require DDA, but this
+acquisition is DIA".
 
 The `tdfpy://guide` resource explains units and tool sequencing. The
 `tdfpy://processing` resource supplies configuration schemas, and
@@ -653,6 +659,12 @@ position in the full acquisition lookup, not a window group or frame ID. Query
 pagination does not renumber it. PRM transitions use the same index convention.
 Frames and DDA precursors use their actual stored IDs.
 
+Query rows use the Python attribute names, so `query_frames` returns `frame_id`,
+`rt`, `polarity` (`"positive"` / `"negative"`), `msms_type`, `ms_level`,
+`total_ion_current`, `base_peak_intensity`, `mz_calibration_id` and so on, plus a
+`selection`. `read_metadata_table` is the way to see stored SQL columns such as
+`Time` or `SummedIntensities` as they are.
+
 Pass the selection to `preview_spectrum` or `export_spectrum`. A processing
 configuration can use the existing Python algorithm names:
 
@@ -666,9 +678,13 @@ configuration can use the existing Python algorithm names:
   "noise": [
     {"name": "MadThreshold", "parameters": {"k": 3.0}}
   ],
-  "ion_mobility_type": "ook0"
+  "mobility_type": "ook0"
 }
 ```
+
+`mobility_type` is `"ook0"` (1/K0, the default) or `"voltage"`; it has the same
+name as the mzmlpy MCP parameter. The Python API also offers `"ccs"`, but raw
+ions have no known charge, so the MCP does not.
 
 Parameters are validated against the actual algorithm definitions. Unknown
 names and fields raise errors. All filters run before centroiding. The server
@@ -686,6 +702,7 @@ pre-centroid processing, use the existing exclusion, smoothing, and noise option
 ## Numerical contracts
 
 - RT is in seconds. Selection intervals and scan bounds are half-open.
+  `server_info` lists units under `rt`, `mobility` and `intensity`.
 - Raw mode returns digitizer peaks normalized to a 100 ms accumulation window.
   Smoothing can change intensities. Filtering and centroid thresholds can remove
   intensity. A reported intensity sum describes the selected processed result.
@@ -805,17 +822,17 @@ below each subclass.
   Base class for a single timsTOF MS1 frame.
   - fields: `frame_id: int`, `rt: float`, `polarity: typing.Optional[typing.Literal['positive', 'negative']]`, `scan_mode: int`, `msms_type: MsMsType`, `tims_id: int | None`, `base_peak_intensity: int`, `total_ion_current: int`, `num_scans: int`, `num_peaks: int`, `mz_calibration_id: int`, `t1: float`, `t2: float`, `tims_calibration_id: int`, `property_group_id: int | None`, `accumulation_time: float`, `ramp_time: float`
   - returned by the readers; do not construct directly
-  - `.centroid(*, exclude: ChargeStateRegion | None = None, smooth: Smooth | None = None, noise: NoiseSpec = None, ion_mobility_type: Literal['ook0', 'ccs', 'voltage'] = 'ook0', centroid: Centroider | None = None) -> NDArray[numpy.float64]`: Centroided peaks as one ``(N, 3)`` ``[m/z, intensity, ion_mobility]`` array.
+  - `.centroid(*, exclude: ChargeStateRegion | None = None, smooth: Smooth | None = None, noise: NoiseSpec = None, mobility_type: Literal['ook0', 'ccs', 'voltage'] = 'ook0', centroid: Centroider | None = None) -> NDArray[numpy.float64]`: Centroided peaks as one ``(N, 3)`` ``[m/z, intensity, ion_mobility]`` array.
   - `.ms_level` -> `int`: MS level: 1 for an MS1 frame, 2 for an MS/MS frame (from ``msms_type``).
-  - `.raw_peaks(*, exclude: ChargeStateRegion | None = None, smooth: Smooth | None = None, noise: NoiseSpec = None, ion_mobility_type: Literal['ook0', 'ccs', 'voltage'] = 'ook0') -> NDArray[numpy.float64]`: Raw peaks as one ``(N, 3)`` ``[m/z, intensity, ion_mobility]`` array.
+  - `.raw_peaks(*, exclude: ChargeStateRegion | None = None, smooth: Smooth | None = None, noise: NoiseSpec = None, mobility_type: Literal['ook0', 'ccs', 'voltage'] = 'ook0') -> NDArray[numpy.float64]`: Raw peaks as one ``(N, 3)`` ``[m/z, intensity, ion_mobility]`` array.
   - `.scan_peaks() -> list[NDArray[numpy.float64]]`: Raw peaks, one ``(N_i, 2)`` ``[m/z, intensity]`` float64 array per mobility scan.
 
 **dataclass `DDAMs1Frame`** (subclass of Frame)
   An MS1 frame from a DDA acquisition.
   - fields: `precursors: tuple[Precursor, ...]`
   - returned by the readers; do not construct directly
-  - `.centroid(*, exclude: ChargeStateRegion | None = None, smooth: Smooth | None = None, noise: NoiseSpec = None, ion_mobility_type: Literal['ook0', 'ccs', 'voltage'] = 'ook0', centroid: Centroider | None = None) -> NDArray[numpy.float64]`: Centroided peaks as one ``(N, 3)`` ``[m/z, intensity, ion_mobility]`` array.
-  - `.raw_peaks(*, exclude: ChargeStateRegion | None = None, smooth: Smooth | None = None, noise: NoiseSpec = None, ion_mobility_type: Literal['ook0', 'ccs', 'voltage'] = 'ook0') -> NDArray[numpy.float64]`: Raw peaks as one ``(N, 3)`` ``[m/z, intensity, ion_mobility]`` array.
+  - `.centroid(*, exclude: ChargeStateRegion | None = None, smooth: Smooth | None = None, noise: NoiseSpec = None, mobility_type: Literal['ook0', 'ccs', 'voltage'] = 'ook0', centroid: Centroider | None = None) -> NDArray[numpy.float64]`: Centroided peaks as one ``(N, 3)`` ``[m/z, intensity, ion_mobility]`` array.
+  - `.raw_peaks(*, exclude: ChargeStateRegion | None = None, smooth: Smooth | None = None, noise: NoiseSpec = None, mobility_type: Literal['ook0', 'ccs', 'voltage'] = 'ook0') -> NDArray[numpy.float64]`: Raw peaks as one ``(N, 3)`` ``[m/z, intensity, ion_mobility]`` array.
   - `.scan_peaks() -> list[NDArray[numpy.float64]]`: Raw peaks, one ``(N_i, 2)`` ``[m/z, intensity]`` float64 array per mobility scan.
   - inherits all fields and methods of Frame
 
@@ -828,16 +845,16 @@ acquisition type from the frame's type. Find the windows or transitions of a run
 **dataclass `DIAMs1Frame`** (subclass of Frame)
   An MS1 frame from a DIA acquisition.
   - returned by the readers; do not construct directly
-  - `.centroid(*, exclude: ChargeStateRegion | None = None, smooth: Smooth | None = None, noise: NoiseSpec = None, ion_mobility_type: Literal['ook0', 'ccs', 'voltage'] = 'ook0', centroid: Centroider | None = None) -> NDArray[numpy.float64]`: Centroided peaks as one ``(N, 3)`` ``[m/z, intensity, ion_mobility]`` array.
-  - `.raw_peaks(*, exclude: ChargeStateRegion | None = None, smooth: Smooth | None = None, noise: NoiseSpec = None, ion_mobility_type: Literal['ook0', 'ccs', 'voltage'] = 'ook0') -> NDArray[numpy.float64]`: Raw peaks as one ``(N, 3)`` ``[m/z, intensity, ion_mobility]`` array.
+  - `.centroid(*, exclude: ChargeStateRegion | None = None, smooth: Smooth | None = None, noise: NoiseSpec = None, mobility_type: Literal['ook0', 'ccs', 'voltage'] = 'ook0', centroid: Centroider | None = None) -> NDArray[numpy.float64]`: Centroided peaks as one ``(N, 3)`` ``[m/z, intensity, ion_mobility]`` array.
+  - `.raw_peaks(*, exclude: ChargeStateRegion | None = None, smooth: Smooth | None = None, noise: NoiseSpec = None, mobility_type: Literal['ook0', 'ccs', 'voltage'] = 'ook0') -> NDArray[numpy.float64]`: Raw peaks as one ``(N, 3)`` ``[m/z, intensity, ion_mobility]`` array.
   - `.scan_peaks() -> list[NDArray[numpy.float64]]`: Raw peaks, one ``(N_i, 2)`` ``[m/z, intensity]`` float64 array per mobility scan.
   - inherits all fields and methods of Frame
 
 **dataclass `PRMMs1Frame`** (subclass of Frame)
   An MS1 frame from a PRM acquisition.
   - returned by the readers; do not construct directly
-  - `.centroid(*, exclude: ChargeStateRegion | None = None, smooth: Smooth | None = None, noise: NoiseSpec = None, ion_mobility_type: Literal['ook0', 'ccs', 'voltage'] = 'ook0', centroid: Centroider | None = None) -> NDArray[numpy.float64]`: Centroided peaks as one ``(N, 3)`` ``[m/z, intensity, ion_mobility]`` array.
-  - `.raw_peaks(*, exclude: ChargeStateRegion | None = None, smooth: Smooth | None = None, noise: NoiseSpec = None, ion_mobility_type: Literal['ook0', 'ccs', 'voltage'] = 'ook0') -> NDArray[numpy.float64]`: Raw peaks as one ``(N, 3)`` ``[m/z, intensity, ion_mobility]`` array.
+  - `.centroid(*, exclude: ChargeStateRegion | None = None, smooth: Smooth | None = None, noise: NoiseSpec = None, mobility_type: Literal['ook0', 'ccs', 'voltage'] = 'ook0', centroid: Centroider | None = None) -> NDArray[numpy.float64]`: Centroided peaks as one ``(N, 3)`` ``[m/z, intensity, ion_mobility]`` array.
+  - `.raw_peaks(*, exclude: ChargeStateRegion | None = None, smooth: Smooth | None = None, noise: NoiseSpec = None, mobility_type: Literal['ook0', 'ccs', 'voltage'] = 'ook0') -> NDArray[numpy.float64]`: Raw peaks as one ``(N, 3)`` ``[m/z, intensity, ion_mobility]`` array.
   - `.scan_peaks() -> list[NDArray[numpy.float64]]`: Raw peaks, one ``(N_i, 2)`` ``[m/z, intensity]`` float64 array per mobility scan.
   - inherits all fields and methods of Frame
 
@@ -872,14 +889,14 @@ acquisition type from the frame's type. Find the windows or transitions of a run
   - `.ccs_begin` -> `float`: Lowest CCS (Å²) of the scan range, for charge 1 at ``isolation_mz``.
   - `.ccs_end` -> `float`: Highest CCS (Å²) of the scan range, for charge 1 at ``isolation_mz``.
   - `.ccs_range` -> `tuple[float, float]`: ``(ccs_begin, ccs_end)``: CCS (Å²) range for charge 1 at ``isolation_mz``, low first.
-  - `.centroid(*, exclude: ChargeStateRegion | None = None, smooth: Smooth | None = None, noise: NoiseSpec = None, ion_mobility_type: Literal['ook0', 'ccs', 'voltage'] = 'ook0', centroid: Centroider | None = None) -> NDArray[numpy.float64]`: Centroided peaks as one ``(N, 3)`` ``[m/z, intensity, ion_mobility]`` array.
+  - `.centroid(*, exclude: ChargeStateRegion | None = None, smooth: Smooth | None = None, noise: NoiseSpec = None, mobility_type: Literal['ook0', 'ccs', 'voltage'] = 'ook0', centroid: Centroider | None = None) -> NDArray[numpy.float64]`: Centroided peaks as one ``(N, 3)`` ``[m/z, intensity, ion_mobility]`` array.
   - `.isolation_mz_range` -> `tuple[float, float]`: Quadrupole isolation window ``(isolation_mz - width / 2, isolation_mz + width / 2)``, low first.
   - `.merged_peaks() -> NDArray[numpy.float64]`: Mobility-collapsed MS/MS spectrum, one ``(N, 2)`` ``[m/z, intensity]`` array.
   - `.ms_level` -> `int`: MS level of the window's spectra: always 2 (an MS/MS isolation window).
   - `.ook0_begin` -> `float`: Lowest 1/K0 (V·s/cm²) of the scan range.
   - `.ook0_end` -> `float`: Highest 1/K0 (V·s/cm²) of the scan range.
   - `.ook0_range` -> `tuple[float, float]`: ``(ook0_begin, ook0_end)``: lowest and highest 1/K0 (V·s/cm²) of the scan range, low first.
-  - `.raw_peaks(*, exclude: ChargeStateRegion | None = None, smooth: Smooth | None = None, noise: NoiseSpec = None, ion_mobility_type: Literal['ook0', 'ccs', 'voltage'] = 'ook0') -> NDArray[numpy.float64]`: Raw peaks as one ``(N, 3)`` ``[m/z, intensity, ion_mobility]`` array.
+  - `.raw_peaks(*, exclude: ChargeStateRegion | None = None, smooth: Smooth | None = None, noise: NoiseSpec = None, mobility_type: Literal['ook0', 'ccs', 'voltage'] = 'ook0') -> NDArray[numpy.float64]`: Raw peaks as one ``(N, 3)`` ``[m/z, intensity, ion_mobility]`` array.
   - `.scan_num_range` -> `tuple[int, int]`: ``(scan_num_begin, scan_num_end)``, end exclusive.
   - `.scan_peaks() -> list[NDArray[numpy.float64]]`: Raw peaks, one ``(N_i, 2)`` ``[m/z, intensity]`` float64 array per mobility scan.
   - `.unique_id` -> `tuple[int, int | None]`: ``(frame_id, precursor_id)``. Warns when ``precursor_id`` is ``None``.
@@ -900,13 +917,13 @@ acquisition type from the frame's type. Find the windows or transitions of a run
   - `.ccs_begin` -> `float`: Lowest CCS (Å²) of the scan range, for charge 1 at ``isolation_mz``.
   - `.ccs_end` -> `float`: Highest CCS (Å²) of the scan range, for charge 1 at ``isolation_mz``.
   - `.ccs_range` -> `tuple[float, float]`: ``(ccs_begin, ccs_end)``: CCS (Å²) range for charge 1 at ``isolation_mz``, low first.
-  - `.centroid(*, exclude: ChargeStateRegion | None = None, smooth: Smooth | None = None, noise: NoiseSpec = None, ion_mobility_type: Literal['ook0', 'ccs', 'voltage'] = 'ook0', centroid: Centroider | None = None) -> NDArray[numpy.float64]`: Centroided peaks as one ``(N, 3)`` ``[m/z, intensity, ion_mobility]`` array.
+  - `.centroid(*, exclude: ChargeStateRegion | None = None, smooth: Smooth | None = None, noise: NoiseSpec = None, mobility_type: Literal['ook0', 'ccs', 'voltage'] = 'ook0', centroid: Centroider | None = None) -> NDArray[numpy.float64]`: Centroided peaks as one ``(N, 3)`` ``[m/z, intensity, ion_mobility]`` array.
   - `.isolation_mz_range` -> `tuple[float, float]`: Quadrupole isolation window ``(isolation_mz - width / 2, isolation_mz + width / 2)``, low first.
   - `.ms_level` -> `int`: MS level of the window's spectra: always 2 (an MS/MS isolation window).
   - `.ook0_begin` -> `float`: Lowest 1/K0 (V·s/cm²) of the scan range.
   - `.ook0_end` -> `float`: Highest 1/K0 (V·s/cm²) of the scan range.
   - `.ook0_range` -> `tuple[float, float]`: ``(ook0_begin, ook0_end)``: lowest and highest 1/K0 (V·s/cm²) of the scan range, low first.
-  - `.raw_peaks(*, exclude: ChargeStateRegion | None = None, smooth: Smooth | None = None, noise: NoiseSpec = None, ion_mobility_type: Literal['ook0', 'ccs', 'voltage'] = 'ook0') -> NDArray[numpy.float64]`: Raw peaks as one ``(N, 3)`` ``[m/z, intensity, ion_mobility]`` array.
+  - `.raw_peaks(*, exclude: ChargeStateRegion | None = None, smooth: Smooth | None = None, noise: NoiseSpec = None, mobility_type: Literal['ook0', 'ccs', 'voltage'] = 'ook0') -> NDArray[numpy.float64]`: Raw peaks as one ``(N, 3)`` ``[m/z, intensity, ion_mobility]`` array.
   - `.scan_num_range` -> `tuple[int, int]`: ``(scan_num_begin, scan_num_end)``, end exclusive.
   - `.scan_peaks() -> list[NDArray[numpy.float64]]`: Raw peaks, one ``(N_i, 2)`` ``[m/z, intensity]`` float64 array per mobility scan.
   - `.voltage_begin` -> `float`: Lowest TIMS voltage (V) of the scan range.
@@ -995,13 +1012,13 @@ with PRM("experiment.d") as prm:
   - `.ccs_begin` -> `float`: Lowest CCS (Å²) of the scan range, for charge 1 at ``isolation_mz``.
   - `.ccs_end` -> `float`: Highest CCS (Å²) of the scan range, for charge 1 at ``isolation_mz``.
   - `.ccs_range` -> `tuple[float, float]`: ``(ccs_begin, ccs_end)``: CCS (Å²) range for charge 1 at ``isolation_mz``, low first.
-  - `.centroid(*, exclude: ChargeStateRegion | None = None, smooth: Smooth | None = None, noise: NoiseSpec = None, ion_mobility_type: Literal['ook0', 'ccs', 'voltage'] = 'ook0', centroid: Centroider | None = None) -> NDArray[numpy.float64]`: Centroided peaks as one ``(N, 3)`` ``[m/z, intensity, ion_mobility]`` array.
+  - `.centroid(*, exclude: ChargeStateRegion | None = None, smooth: Smooth | None = None, noise: NoiseSpec = None, mobility_type: Literal['ook0', 'ccs', 'voltage'] = 'ook0', centroid: Centroider | None = None) -> NDArray[numpy.float64]`: Centroided peaks as one ``(N, 3)`` ``[m/z, intensity, ion_mobility]`` array.
   - `.isolation_mz_range` -> `tuple[float, float]`: Quadrupole isolation window ``(isolation_mz - width / 2, isolation_mz + width / 2)``, low first.
   - `.ms_level` -> `int`: MS level of the window's spectra: always 2 (an MS/MS isolation window).
   - `.ook0_begin` -> `float`: Lowest 1/K0 (V·s/cm²) of the scan range.
   - `.ook0_end` -> `float`: Highest 1/K0 (V·s/cm²) of the scan range.
   - `.ook0_range` -> `tuple[float, float]`: ``(ook0_begin, ook0_end)``: lowest and highest 1/K0 (V·s/cm²) of the scan range, low first.
-  - `.raw_peaks(*, exclude: ChargeStateRegion | None = None, smooth: Smooth | None = None, noise: NoiseSpec = None, ion_mobility_type: Literal['ook0', 'ccs', 'voltage'] = 'ook0') -> NDArray[numpy.float64]`: Raw peaks as one ``(N, 3)`` ``[m/z, intensity, ion_mobility]`` array.
+  - `.raw_peaks(*, exclude: ChargeStateRegion | None = None, smooth: Smooth | None = None, noise: NoiseSpec = None, mobility_type: Literal['ook0', 'ccs', 'voltage'] = 'ook0') -> NDArray[numpy.float64]`: Raw peaks as one ``(N, 3)`` ``[m/z, intensity, ion_mobility]`` array.
   - `.scan_num_range` -> `tuple[int, int]`: ``(scan_num_begin, scan_num_end)``, end exclusive.
   - `.scan_peaks() -> list[NDArray[numpy.float64]]`: Raw peaks, one ``(N_i, 2)`` ``[m/z, intensity]`` float64 array per mobility scan.
   - `.voltage_begin` -> `float`: Lowest TIMS voltage (V) of the scan range.
@@ -1287,7 +1304,7 @@ with timsdata_connect("experiment.d") as td:
     peaks = get_centroided_spectrum(
         td,
         frame_id=1,
-        ion_mobility_type="ccs",
+        mobility_type="ccs",
         centroid=MergePeaksCentroider(mz_tolerance=5.0, im_tolerance=0.03),
     )
 
@@ -1321,7 +1338,7 @@ accepts a [`ChargeStateRegion`](regions.md). The `centroid=` parameter
 swaps the centroiding algorithm — see
 [Pipeline → Centroiders](pipeline.md#centroiders).
 
-**`get_centroided_spectrum(td: TimsData, frame_id: int, *, scan_range: tuple[int, int] | None = None, exclude: ChargeStateRegion | None = None, smooth: Smooth | None = None, noise: NoiseSpec = None, ion_mobility_type: Literal['ook0', 'ccs', 'voltage'] = 'ook0', centroid: Centroider | None = None) -> np.ndarray`**
+**`get_centroided_spectrum(td: TimsData, frame_id: int, *, scan_range: tuple[int, int] | None = None, exclude: ChargeStateRegion | None = None, smooth: Smooth | None = None, noise: NoiseSpec = None, mobility_type: Literal['ook0', 'ccs', 'voltage'] = 'ook0', centroid: Centroider | None = None) -> np.ndarray`**
   Extract a centroided spectrum for a single frame.
 
 ---
@@ -1331,7 +1348,7 @@ swaps the centroiding algorithm — see
 Runs the same read, exclusion, smoothing and noise steps as `get_centroided_spectrum` but
 returns the raw peaks without centroiding.
 
-**`get_raw_peaks(td: TimsData, frame_id: int, *, scan_range: tuple[int, int] | None = None, exclude: ChargeStateRegion | None = None, smooth: Smooth | None = None, noise: NoiseSpec = None, ion_mobility_type: Literal['ook0', 'ccs', 'voltage'] = 'ook0') -> np.ndarray`**
+**`get_raw_peaks(td: TimsData, frame_id: int, *, scan_range: tuple[int, int] | None = None, exclude: ChargeStateRegion | None = None, smooth: Smooth | None = None, noise: NoiseSpec = None, mobility_type: Literal['ook0', 'ccs', 'voltage'] = 'ook0') -> np.ndarray`**
   Return raw peaks for a frame as a ``(N, 3)`` ``[mz, intensity, ion_mobility]`` array.
 
 ---
@@ -1543,7 +1560,7 @@ argument; `smooth` / `box_smooth` are the underlying composable ops.
 
 ## Conversion
 
-**`convert(spectrum: 'RawSpectrum', td: 'TimsData', frame_id: 'int', *, ion_mobility_type: "Literal['ook0', 'ccs', 'voltage']" = 'ook0') -> 'np.ndarray'`**
+**`convert(spectrum: 'RawSpectrum', td: 'TimsData', frame_id: 'int', *, mobility_type: "Literal['ook0', 'ccs', 'voltage']" = 'ook0') -> 'np.ndarray'`**
   Convert integer indices to (m/z, intensity, ion_mobility).
 
 ---
@@ -1557,18 +1574,18 @@ via intensity-ordered region growing.
 
 **class `Centroider()`** (subclass of ABC)
   Base class for centroiding algorithms.
-  - `.__call__(spectrum: 'RawSpectrum', td: 'TimsData', frame_id: 'int', *, ion_mobility_type: "Literal['ook0', 'ccs', 'voltage']" = 'ook0') -> 'np.ndarray'`: Call self as a function.
+  - `.__call__(spectrum: 'RawSpectrum', td: 'TimsData', frame_id: 'int', *, mobility_type: "Literal['ook0', 'ccs', 'voltage']" = 'ook0') -> 'np.ndarray'`: Call self as a function.
 
 **dataclass `MergePeaksCentroider`** (subclass of Centroider)
   Greedy m/z-tolerance centroider — wraps :func:`tdfpy.merge_peaks`.
   - fields: `mz_tolerance: float` = 8.0, `mz_tolerance_unit: ToleranceUnit` = 'ppm', `im_tolerance: float` = 0.1, `im_tolerance_unit: Literal['relative', 'absolute']` = 'relative', `min_peaks: int` = 3, `max_peaks: int | None` = None, `peak_noise_filter: bool` = False, `peak_noise_window: float` = 0.1, `peak_noise_end_fraction: float` = 0.1, `use_numba: bool` = True
-  - `.__call__(spectrum: 'RawSpectrum', td: 'TimsData', frame_id: 'int', *, ion_mobility_type: "Literal['ook0', 'ccs', 'voltage']" = 'ook0') -> 'np.ndarray'`: Call self as a function.
+  - `.__call__(spectrum: 'RawSpectrum', td: 'TimsData', frame_id: 'int', *, mobility_type: "Literal['ook0', 'ccs', 'voltage']" = 'ook0') -> 'np.ndarray'`: Call self as a function.
   - inherits all fields and methods of Centroider
 
 **dataclass `WatershedCentroider`** (subclass of Centroider)
   Intensity-ordered region-growing centroider in integer-index space.
   - fields: `attach_scan_half_width: int` = 10, `attach_mz_idx_half_width: int` = 3, `min_seed_intensity: float` = 0.0, `min_centroid_intensity: float` = 0.0, `smooth_scan_half_width: int` = 5, `smooth_mz_idx_half_width: int` = 3, `max_scan_from_seed: int | None` = None, `max_mz_idx_from_seed: int | None` = 10, `use_numba: bool` = True
-  - `.__call__(spectrum: 'RawSpectrum', td: 'TimsData', frame_id: 'int', *, ion_mobility_type: "Literal['ook0', 'ccs', 'voltage']" = 'ook0') -> 'np.ndarray'`: Call self as a function.
+  - `.__call__(spectrum: 'RawSpectrum', td: 'TimsData', frame_id: 'int', *, mobility_type: "Literal['ook0', 'ccs', 'voltage']" = 'ook0') -> 'np.ndarray'`: Call self as a function.
   - inherits all fields and methods of Centroider
 
 **`centroid_peaks(peaks: 'np.ndarray', centroider: 'MergePeaksCentroider') -> 'np.ndarray'`**
@@ -1772,7 +1789,7 @@ the `viz` extra:
 pip install 'tdfpy[viz]'
 ```
 
-**`plot_centroiding(td: 'TimsData', frame_id: 'int', *, ion_mobility_type: "Literal['ook0', 'ccs', 'voltage']" = 'ook0', noise: 'NoiseSpec' = None, mz_range: 'tuple[float, float] | None' = None, im_range: 'tuple[float, float] | None' = None, centroid: 'Centroider | None' = None) -> 'Figure'`**
+**`plot_centroiding(td: 'TimsData', frame_id: 'int', *, mobility_type: "Literal['ook0', 'ccs', 'voltage']" = 'ook0', noise: 'NoiseSpec' = None, mz_range: 'tuple[float, float] | None' = None, im_range: 'tuple[float, float] | None' = None, centroid: 'Centroider | None' = None) -> 'Figure'`**
   Visualize centroiding quality for a single frame.
 
 ==============================================================================

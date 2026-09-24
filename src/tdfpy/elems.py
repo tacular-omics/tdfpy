@@ -63,7 +63,7 @@ __all__ = [
 
 logger = logging.getLogger(__name__)
 
-IonMobilityType = Literal["ook0", "ccs", "voltage"]
+MobilityType = Literal["ook0", "ccs", "voltage"]
 
 
 class MsMsType(IntEnum):
@@ -146,7 +146,7 @@ class _Spectrum(_TdfData):
         exclude: ChargeStateRegion | None = None,
         smooth: Smooth | None = None,
         noise: NoiseSpec = None,
-        ion_mobility_type: IonMobilityType = "ook0",
+        mobility_type: MobilityType = "ook0",
     ) -> npt.NDArray[np.float64]:
         """Raw peaks as one ``(N, 3)`` ``[m/z, intensity, ion_mobility]`` array.
 
@@ -164,7 +164,7 @@ class _Spectrum(_TdfData):
             exclude=exclude,
             smooth=smooth,
             noise=noise,
-            ion_mobility_type=ion_mobility_type,
+            mobility_type=mobility_type,
         )
 
     def centroid(
@@ -173,7 +173,7 @@ class _Spectrum(_TdfData):
         exclude: ChargeStateRegion | None = None,
         smooth: Smooth | None = None,
         noise: NoiseSpec = None,
-        ion_mobility_type: IonMobilityType = "ook0",
+        mobility_type: MobilityType = "ook0",
         centroid: Centroider | None = None,
     ) -> npt.NDArray[np.float64]:
         """Centroided peaks as one ``(N, 3)`` ``[m/z, intensity, ion_mobility]`` array.
@@ -193,7 +193,7 @@ class _Spectrum(_TdfData):
             exclude=exclude,
             smooth=smooth,
             noise=noise,
-            ion_mobility_type=ion_mobility_type,
+            mobility_type=mobility_type,
             centroid=centroid,
         )
 

@@ -65,7 +65,7 @@ with st.sidebar:
         st.caption("This target has no transitions.")
 
     st.header("Display")
-    ion_mobility_type = st.selectbox("Ion mobility axis", ["ook0", "ccs", "voltage"], index=0)
+    mobility_type = st.selectbox("Ion mobility axis", ["ook0", "ccs", "voltage"], index=0)
     log_intensity = st.checkbox("Log-scale color", value=True)
 
     exclude, smooth, halo, noise_filters, centroider, centroid_log_y = build_pipeline_ui("prmtgt")
@@ -109,7 +109,7 @@ frame_id = tr["frame_id"]
 # -- Scoped raw + centroided spectrum ---------------------------------------
 
 peaks = fetch_raw_peaks(
-    analysis_dir, frame_id, ion_mobility_type, noise_filters, exclude, scan_scope,
+    analysis_dir, frame_id, mobility_type, noise_filters, exclude, scan_scope,
     smooth=smooth, halo=halo)
 if peaks.size == 0:
     st.warning("No peaks survive the filter chain in this transition's scan scope.")
@@ -123,7 +123,7 @@ st.subheader("Fragment ions (raw, scoped to transition)")
 st.caption(f"Raw points: {peaks.shape[0]:,}  ·  frame {frame_id}, scans {tr['scan_begin']}–{tr['scan_end']}")
 fig = scatter_mz_im(
     mz, intensity, im,
-    ion_mobility_type=ion_mobility_type, log_intensity=log_intensity,
+    mobility_type=mobility_type, log_intensity=log_intensity,
     mz_range=mz_range, exclude=exclude)
 st.plotly_chart(fig, use_container_width=True)
 
@@ -131,7 +131,7 @@ if centroider is not None:
     st.subheader(f"Centroided fragments — {type(centroider).__name__}")
     try:
         centroided = fetch_centroided(
-            analysis_dir, frame_id, ion_mobility_type,
+            analysis_dir, frame_id, mobility_type,
             noise_filters, exclude, centroider, scan_scope, smooth=smooth, halo=halo)
     except Exception as exc:  # noqa: BLE001
         st.error(f"Centroiding failed: {exc}")
@@ -145,6 +145,6 @@ if centroider is not None:
         d2.metric("Intensity retained", f"{100.0 * c_int.sum() / max(peaks[:, 1].sum(), 1):.1f}%")
         fig_c = stick_spectrum_im(
             c_mz, c_int, c_im,
-            ion_mobility_type=ion_mobility_type, im_range=im_range,
+            mobility_type=mobility_type, im_range=im_range,
             mz_range=mz_range, log_y=centroid_log_y)
         st.plotly_chart(fig_c, use_container_width=True)

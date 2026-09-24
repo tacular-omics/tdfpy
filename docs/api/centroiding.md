@@ -59,7 +59,7 @@ with timsdata_connect("experiment.d") as td:
     peaks = get_centroided_spectrum(
         td,
         frame_id=1,
-        ion_mobility_type="ccs",
+        mobility_type="ccs",
         centroid=MergePeaksCentroider(mz_tolerance=5.0, im_tolerance=0.03),
     )
 

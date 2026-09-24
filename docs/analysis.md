@@ -76,7 +76,7 @@ threads. Metadata needed by those paths is snapshotted when the reader opens.
 Direct access to `td.conn` retains SQLite's thread rules. User-written filters
 must be thread-safe themselves. Wait for workers before closing the reader.
 
-All `ion_mobility_type="ccs"` raw-spectrum conversions assume charge +1.
+All `mobility_type="ccs"` raw-spectrum conversions assume charge +1.
 Raw peaks do not identify charge states. `Precursor.ccs` uses a known precursor
 charge when present, falling back to +1 when it is absent. Precursor scan
 coordinates retain the original fractional metadata value.

@@ -633,7 +633,7 @@ def get_raw_peaks(
     exclude: ChargeStateRegion | None = None,
     smooth: Smooth | None = None,
     noise: NoiseSpec = None,
-    ion_mobility_type: Literal["ook0", "ccs", "voltage"] = "ook0",
+    mobility_type: Literal["ook0", "ccs", "voltage"] = "ook0",
 ) -> np.ndarray:
     """Return raw peaks for a frame as a ``(N, 3)`` ``[mz, intensity, ion_mobility]`` array.
 
@@ -671,7 +671,7 @@ def get_raw_peaks(
             / ``"histogram"`` / ``"baseline"`` / ``"iterative_median"``), or
             a numeric absolute threshold — see
             :func:`tdfpy.noise.coerce_filters`. ``None`` (default) disables.
-        ion_mobility_type: Ion mobility representation — ``"ook0"`` (1/K0),
+        mobility_type: Ion mobility representation — ``"ook0"`` (1/K0),
             ``"ccs"``, or ``"voltage"``.
     """
     spectrum = _prepare_spectrum(
@@ -682,9 +682,9 @@ def get_raw_peaks(
         exclude=exclude,
         smoothing=smooth,
         noise=noise,
-        ion_mobility_type=ion_mobility_type,
+        mobility_type=mobility_type,
     )
-    return convert(spectrum, td, frame_id, ion_mobility_type=ion_mobility_type)
+    return convert(spectrum, td, frame_id, mobility_type=mobility_type)
 
 
 def get_centroided_spectrum(
@@ -695,7 +695,7 @@ def get_centroided_spectrum(
     exclude: ChargeStateRegion | None = None,
     smooth: Smooth | None = None,
     noise: NoiseSpec = None,
-    ion_mobility_type: Literal["ook0", "ccs", "voltage"] = "ook0",
+    mobility_type: Literal["ook0", "ccs", "voltage"] = "ook0",
     centroid: Centroider | None = None,
 ) -> np.ndarray:
     """Extract a centroided spectrum for a single frame.
@@ -722,7 +722,7 @@ def get_centroided_spectrum(
         exclude=exclude,
         smoothing=smooth,
         noise=noise,
-        ion_mobility_type=ion_mobility_type,
+        mobility_type=mobility_type,
     )
     if spectrum.empty:
         # An empty frame is common on sparse acquisitions, so this is INFO, not
@@ -735,7 +735,7 @@ def get_centroided_spectrum(
         return np.empty((0, 3), dtype=np.float64)
 
     centroider = centroid if centroid is not None else MergePeaksCentroider()
-    centroids = centroider(spectrum, td, frame_id, ion_mobility_type=ion_mobility_type)
+    centroids = centroider(spectrum, td, frame_id, mobility_type=mobility_type)
     logger.info(
         "Centroided frame %d: %d raw → %d centroids",
         frame_id,

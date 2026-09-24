@@ -115,7 +115,7 @@ Return types at a glance:
 
 | call | returns |
 |---|---|
-| `Frame.raw_peaks()`, `Frame.centroid()`, `DiaWindow.centroid()`, `PrmTransition.centroid()` | `np.ndarray` shape `(N, 3)`: m/z, intensity, ion mobility (`ion_mobility_type="ook0"` default; also `"ccs"`, `"voltage"`) |
+| `Frame.raw_peaks()`, `Frame.centroid()`, `DiaWindow.centroid()`, `PrmTransition.centroid()` | `np.ndarray` shape `(N, 3)`: m/z, intensity, ion mobility (`mobility_type="ook0"` default; also `"ccs"`, `"voltage"`) |
 | `Precursor.merged_peaks()` | `np.ndarray` `(N, 2)`: m/z, intensity |
 | `Frame.scan_peaks()`, `DiaWindow.scan_peaks()`, `PrmTransition.scan_peaks()` | `list[np.ndarray]`, one `(N, 2)` array per mobility scan |
 | `get_acquisition_type(path)` | `AcquisitionType` (a `StrEnum`: `"DDA"`, `"DIA"`, `"PRM"` or `"unknown"`) |

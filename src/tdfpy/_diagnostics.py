@@ -47,7 +47,7 @@ class ProcessingProvenance:
     frame: FrameMetadata
     mz_calibration: tuple[float, ...]
     configuration: tuple[tuple[str, str], ...]
-    ion_mobility_type: str
+    mobility_type: str
 
 
 @dataclass(frozen=True, eq=False)
@@ -69,7 +69,7 @@ def _process(
     smooth: Smooth | None,
     noise: NoiseSpec,
     centroid: Centroider | None,
-    ion_mobility_type: Literal["ook0", "ccs", "voltage"],
+    mobility_type: Literal["ook0", "ccs", "voltage"],
 ) -> ProcessedSpectrum:
     from . import __version__
 
@@ -92,10 +92,10 @@ def _process(
         exclude=exclude,
         smoothing=smooth,
         noise=filters,
-        ion_mobility_type=ion_mobility_type,
+        mobility_type=mobility_type,
         observe=observe,
     )
-    peaks = cfg(prepared, td, frame_id, ion_mobility_type=ion_mobility_type) if not prepared.empty else np.empty((0, 3), dtype=np.float64)
+    peaks = cfg(prepared, td, frame_id, mobility_type=mobility_type) if not prepared.empty else np.empty((0, 3), dtype=np.float64)
     stages.append(StageDiagnostics("centroid", len(peaks), float(peaks[:, 1].sum()), basis))
     configuration = [
         ("scan_range", repr(scan_range)),
@@ -111,7 +111,7 @@ def _process(
         td.frame_metadata(frame_id),
         td.mz_calibration_key(frame_id),
         tuple(configuration),
-        ion_mobility_type,
+        mobility_type,
     )
     return ProcessedSpectrum(peaks, tuple(stages), provenance)
 
@@ -125,7 +125,7 @@ def process_frame(
     smooth: Smooth | None = None,
     noise: NoiseSpec = None,
     centroid: Centroider | None = None,
-    ion_mobility_type: Literal["ook0", "ccs", "voltage"] = "ook0",
+    mobility_type: Literal["ook0", "ccs", "voltage"] = "ook0",
 ) -> ProcessedSpectrum:
     """Centroid a frame using the standard pipeline and record diagnostics.
 
@@ -141,5 +141,5 @@ def process_frame(
         smooth=smooth,
         noise=noise,
         centroid=centroid,
-        ion_mobility_type=ion_mobility_type,
+        mobility_type=mobility_type,
     )

@@ -197,7 +197,7 @@ def acquisition_type(analysis_dir: str) -> str:
 
 @st.cache_data(show_spinner=False)
 def full_axis_ranges(
-    analysis_dir: str, ion_mobility_type: str
+    analysis_dir: str, mobility_type: str
 ) -> tuple[tuple[float | None, float | None], tuple[float | None, float | None]]:
     """Full instrument acquisition ranges ``((mz_lo, mz_hi), (im_lo, im_hi))``.
 
@@ -220,7 +220,7 @@ def full_axis_ranges(
             return None
 
     mz = (_f("MzAcqRangeLower"), _f("MzAcqRangeUpper"))
-    if ion_mobility_type == "ook0":
+    if mobility_type == "ook0":
         im = (_f("OneOverK0AcqRangeLower"), _f("OneOverK0AcqRangeUpper"))
     else:
         im = (None, None)
@@ -411,7 +411,7 @@ def _build_precursor_spectrum(
 def fetch_raw_peaks(
     analysis_dir: str,
     frame_id: int,
-    ion_mobility_type: str,
+    mobility_type: str,
     noise_filters: tuple[NoiseFilter, ...],
     exclude: ChargeStateRegion | None,
     scan_range: tuple[int, int] | None = None,
@@ -422,14 +422,14 @@ def fetch_raw_peaks(
         spectrum = _build_spectrum(
             td, frame_id, scan_range=scan_range, exclude=exclude,
             smooth=smooth, halo=halo, noise_filters=noise_filters)
-        return convert(spectrum, td, frame_id, ion_mobility_type=ion_mobility_type)  # type: ignore[arg-type]
+        return convert(spectrum, td, frame_id, mobility_type=mobility_type)  # type: ignore[arg-type]
 
 
 @st.cache_data(show_spinner=True, hash_funcs={NoiseFilter: lambda f: hash(f)})
 def fetch_centroided(
     analysis_dir: str,
     frame_id: int,
-    ion_mobility_type: str,
+    mobility_type: str,
     noise_filters: tuple[NoiseFilter, ...],
     exclude: ChargeStateRegion | None,
     centroider: Centroider,
@@ -444,14 +444,14 @@ def fetch_centroided(
         if spectrum.empty:
             return np.empty((0, 3), dtype=np.float64)
         return centroider(
-            spectrum, td, frame_id, ion_mobility_type=ion_mobility_type)  # type: ignore[arg-type]
+            spectrum, td, frame_id, mobility_type=mobility_type)  # type: ignore[arg-type]
 
 
 @st.cache_data(show_spinner=True, hash_funcs={NoiseFilter: lambda f: hash(f)})
 def fetch_precursor_raw_peaks(
     analysis_dir: str,
     precursor_id: int,
-    ion_mobility_type: str,
+    mobility_type: str,
     noise_filters: tuple[NoiseFilter, ...],
     exclude: ChargeStateRegion | None,
     smooth: SmoothSpec | None = None,
@@ -469,14 +469,14 @@ def fetch_precursor_raw_peaks(
             noise_filters=noise_filters)
         if spectrum.empty or rep is None:
             return np.empty((0, 3), dtype=np.float64)
-        return convert(spectrum, td, rep, ion_mobility_type=ion_mobility_type)  # type: ignore[arg-type]
+        return convert(spectrum, td, rep, mobility_type=mobility_type)  # type: ignore[arg-type]
 
 
 @st.cache_data(show_spinner=True, hash_funcs={NoiseFilter: lambda f: hash(f)})
 def fetch_precursor_centroided(
     analysis_dir: str,
     precursor_id: int,
-    ion_mobility_type: str,
+    mobility_type: str,
     noise_filters: tuple[NoiseFilter, ...],
     exclude: ChargeStateRegion | None,
     centroider: Centroider,
@@ -495,7 +495,7 @@ def fetch_precursor_centroided(
             noise_filters=noise_filters)
         if spectrum.empty or rep is None:
             return np.empty((0, 3), dtype=np.float64)
-        return centroider(spectrum, td, rep, ion_mobility_type=ion_mobility_type)  # type: ignore[arg-type]
+        return centroider(spectrum, td, rep, mobility_type=mobility_type)  # type: ignore[arg-type]
 
 
 @st.cache_data(show_spinner=True)
@@ -1330,7 +1330,7 @@ def scatter_mz_im(
     intensity: np.ndarray,
     im: np.ndarray,
     *,
-    ion_mobility_type: str,
+    mobility_type: str,
     log_intensity: bool,
     mz_range: tuple[float, float] | None = None,
     im_range: tuple[float, float] | None = None,
@@ -1357,14 +1357,14 @@ def scatter_mz_im(
             customdata=np.column_stack([intensity]),
             hovertemplate=(
                 "m/z: %{x:.4f}<br>"
-                f"{ion_mobility_type}: " + "%{y:.4f}<br>"
+                f"{mobility_type}: " + "%{y:.4f}<br>"
                 "intensity: %{customdata[0]:,.0f}<extra></extra>"
             ),
             name="raw peaks",
             showlegend=False,  # the colorbar already labels intensity
         )
     )
-    if exclude is not None and ion_mobility_type == "ook0" and mz_range is not None:
+    if exclude is not None and mobility_type == "ook0" and mz_range is not None:
         (mz_a, ook0_a), (mz_b, ook0_b) = exclude.line
         slope = (ook0_b - ook0_a) / (mz_b - mz_a)
         sample_mz = np.linspace(float(mz_range[0]), float(mz_range[1]), 200)
@@ -1380,7 +1380,7 @@ def scatter_mz_im(
         )
     fig.update_layout(
         xaxis_title="m/z",
-        yaxis_title=f"Ion mobility ({ion_mobility_type})",
+        yaxis_title=f"Ion mobility ({mobility_type})",
         height=height, margin=dict(l=40, r=20, t=40, b=40), template="plotly_white",
         # Horizontal legend above the plot so overlay labels (precursors /
         # targets / bands) don't collide with the intensity colorbar.
@@ -1398,7 +1398,7 @@ def stick_spectrum_im(
     c_int: np.ndarray,
     c_im: np.ndarray,
     *,
-    ion_mobility_type: str,
+    mobility_type: str,
     im_range: tuple[float, float],
     mz_range: tuple[float, float] | None = None,
     log_y: bool = False,
@@ -1435,12 +1435,12 @@ def stick_spectrum_im(
         x=c_mz, y=c_int, mode="markers",
         marker=dict(
             size=4, color=c_im, colorscale="Viridis", cmin=im_lo, cmax=im_hi,
-            colorbar=dict(title=f"IM ({ion_mobility_type})"), showscale=True, line=dict(width=0),
+            colorbar=dict(title=f"IM ({mobility_type})"), showscale=True, line=dict(width=0),
         ),
         customdata=np.column_stack([c_im]),
         hovertemplate=(
             "m/z: %{x:.4f}<br>intensity: %{y:,.0f}<br>"
-            f"{ion_mobility_type}: " + "%{customdata[0]:.4f}<extra></extra>"
+            f"{mobility_type}: " + "%{customdata[0]:.4f}<extra></extra>"
         ),
         showlegend=False,
     ))

@@ -123,15 +123,15 @@ def ms1_spectrum(td: timsdata.TimsData, ms1_frame_id: int) -> RawSpectrum:
 
 
 def test_convert_ook0_shape_and_positive(td: timsdata.TimsData, ms1_frame_id: int, ms1_spectrum: RawSpectrum) -> None:
-    out = convert(ms1_spectrum, td, ms1_frame_id, ion_mobility_type="ook0")
+    out = convert(ms1_spectrum, td, ms1_frame_id, mobility_type="ook0")
     assert out.shape == (ms1_spectrum.num_peaks, 3)
     assert np.all(out[:, 0] > 0)  # m/z
     assert np.all(np.isfinite(out[:, 2]))  # 1/K0
 
 
 def test_convert_ccs_differs_from_ook0(td: timsdata.TimsData, ms1_frame_id: int, ms1_spectrum: RawSpectrum) -> None:
-    ook0 = convert(ms1_spectrum, td, ms1_frame_id, ion_mobility_type="ook0")
-    ccs = convert(ms1_spectrum, td, ms1_frame_id, ion_mobility_type="ccs")
+    ook0 = convert(ms1_spectrum, td, ms1_frame_id, mobility_type="ook0")
+    ccs = convert(ms1_spectrum, td, ms1_frame_id, mobility_type="ccs")
     assert ccs.shape == ook0.shape
     # CCS is a different physical quantity; the mobility column must change.
     assert not np.allclose(ccs[:, 2], ook0[:, 2])
@@ -142,7 +142,7 @@ def test_convert_voltage_matches_scannum_mapping(td: timsdata.TimsData, ms1_fram
     # numbers* (not 1/K0 values) through scan_num_to_voltage. Verify each peak's
     # voltage equals the ground-truth voltage for its scan number. Feeding 1/K0
     # values in (the old bug) produced entirely different numbers.
-    out = convert(ms1_spectrum, td, ms1_frame_id, ion_mobility_type="voltage")
+    out = convert(ms1_spectrum, td, ms1_frame_id, mobility_type="voltage")
     assert out.shape == (ms1_spectrum.num_peaks, 3)
     expected = np.asarray(td.scan_num_to_voltage(ms1_frame_id, ms1_spectrum.scan_indices))
     np.testing.assert_allclose(out[:, 2], expected, rtol=1e-9)

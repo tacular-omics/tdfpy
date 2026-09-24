@@ -29,6 +29,7 @@ from tdfpy import (
 )
 from tdfpy import noise as noise_module
 from tdfpy.calibration import ccs_to_ook0, ook0_to_ccs
+from tdfpy.elems import _parse_polarity
 from tdfpy.errors import TdfpyError
 from tdfpy.pipeline import MergePeaksCentroider, Smooth, WatershedCentroider
 from tdfpy.regions import ChargeStateRegion
@@ -52,6 +53,26 @@ FILTERS = {
     )
 }
 READERS = {"DDA": DDA, "DIA": DIA, "PRM": PRM}
+#: ``Frames`` columns returned by query_frames, under their :class:`tdfpy.Frame` attribute names.
+FRAME_FIELDS = {
+    "Id": "frame_id",
+    "Time": "rt",
+    "Polarity": "polarity",
+    "ScanMode": "scan_mode",
+    "MsMsType": "msms_type",
+    "TimsId": "tims_id",
+    "MaxIntensity": "base_peak_intensity",
+    "SummedIntensities": "total_ion_current",
+    "NumScans": "num_scans",
+    "NumPeaks": "num_peaks",
+    "MzCalibration": "mz_calibration_id",
+    "T1": "t1",
+    "T2": "t2",
+    "TimsCalibration": "tims_calibration_id",
+    "PropertyGroup": "property_group_id",
+    "AccumulationTime": "accumulation_time",
+    "RampTime": "ramp_time",
+}
 MAX_ARTIFACT_BYTES = 512 * 1024 * 1024
 
 
@@ -100,7 +121,7 @@ def _options(config: Processing) -> dict:
         "exclude": _operation(config.exclusion, {"ChargeStateRegion": ChargeStateRegion}),
         "smooth": _operation(config.smoothing, {"Smooth": Smooth}),
         "noise": tuple(_operation(spec, FILTERS) for spec in config.noise),
-        "ion_mobility_type": config.ion_mobility_type,
+        "mobility_type": config.mobility_type,
     }
     if config.mode == "centroid":
         options["centroid"] = _operation(config.centroider, CENTROIDERS)
@@ -134,6 +155,13 @@ def _metadata(obj: Any) -> dict:
                 result["target_id"] = value.target_id
         else:
             result[field.name] = _scalar(value)
+    return result
+
+
+def _frame_metadata(metadata: Any) -> dict:
+    """``FrameMetadata`` as a dict, with ``polarity`` spelled like :attr:`tdfpy.Frame.polarity`."""
+    result = asdict(metadata)
+    result["polarity"] = _parse_polarity(result["polarity"])
     return result
 
 
@@ -209,7 +237,7 @@ class AcquisitionService:
                 "artifact_bytes": MAX_ARTIFACT_BYTES,
             },
             "units": {
-                "retention_time": "seconds",
+                "rt": "seconds",
                 "mobility": "1/K0 in V s/cm^2",
                 "intensity": "raw intensities normalized to a 100 ms accumulation window",
             },
@@ -304,6 +332,47 @@ class AcquisitionService:
             "offset": offset,
             "rows": [{k: _scalar(row[k]) for k in row.keys()} for row in rows[:limit]],
             "next_offset": offset + limit if len(rows) > limit else None,
+        }
+
+    def frames(
+        self,
+        acquisition: str,
+        rt_range: Interval | None,
+        msms_type: int | None,
+        polarity: str | None,
+        offset: int,
+        limit: int,
+    ) -> dict:
+        """A page of ``Frames`` rows under :class:`tdfpy.Frame` names. Raw columns stay in read_table."""
+        path = self.acquisition(acquisition)
+        clauses: list[str] = []
+        args: list[Any] = []
+        if rt_range is not None:
+            clauses += ['"Time" >= ?', '"Time" < ?']
+            args += [rt_range.lower, rt_range.upper]
+        if msms_type is not None:
+            clauses.append('"MsMsType" = ?')
+            args.append(msms_type)
+        if polarity is not None:
+            clauses.append('"Polarity" = ?')
+            args.append("+" if polarity == "positive" else "-")
+        where = " WHERE " + " AND ".join(clauses) if clauses else ""
+        columns = ", ".join(_quote(c) for c in FRAME_FIELDS)
+        with self.connection(path) as conn:
+            total = conn.execute(f'SELECT COUNT(*) FROM "Frames"{where}', args).fetchone()[0]
+            rows = conn.execute(f'SELECT {columns} FROM "Frames"{where} ORDER BY "Id" LIMIT ? OFFSET ?', [*args, limit, offset]).fetchall()
+        items = []
+        for row in rows:
+            item = {name: _scalar(row[column]) for column, name in FRAME_FIELDS.items()}
+            item["polarity"] = _parse_polarity(item["polarity"])
+            item["ms_level"] = 1 if item["msms_type"] == 0 else 2
+            item["selection"] = {"kind": "frame", "id": item["frame_id"]}
+            items.append(item)
+        return {
+            "items": items,
+            "total": total,
+            "offset": offset,
+            "next_offset": offset + limit if offset + limit < total else None,
         }
 
     def inspect(self, acquisition: str) -> dict:
@@ -402,7 +471,7 @@ class AcquisitionService:
                     scan_range = (selection.scan_begin, selection.scan_end)
                 extract = get_raw_peaks if processing.mode == "raw" else get_centroided_spectrum
                 peaks = extract(td, selection.id, scan_range=scan_range, **options)
-                frames = [asdict(td.frame_metadata(selection.id))]
+                frames = [_frame_metadata(td.frame_metadata(selection.id))]
         else:
             required = {
                 "precursor": "DDA",
@@ -431,8 +500,8 @@ class AcquisitionService:
                     ids = [obj.frame_id]
                     self.frame_budget(reader.timsdata, ids)
                     peaks = obj.raw_peaks(**options) if processing.mode == "raw" else obj.centroid(**options)
-                frames = [asdict(reader.timsdata.frame_metadata(fid)) for fid in ids]
-        columns = ["mz", "intensity"] if selection.kind == "precursor" else ["mz", "intensity", processing.ion_mobility_type]
+                frames = [_frame_metadata(reader.timsdata.frame_metadata(fid)) for fid in ids]
+        columns = ["mz", "intensity"] if selection.kind == "precursor" else ["mz", "intensity", processing.mobility_type]
         keep = np.ones(len(peaks), dtype=bool)
         for column, interval in (
             (0, selection.mz_range),
@@ -547,7 +616,7 @@ class AcquisitionService:
                             "columns": [
                                 "mz",
                                 "intensity",
-                                processing.ion_mobility_type,
+                                processing.mobility_type,
                             ],
                             "intensity_units": "normalized to a 100 ms accumulation window",
                         },
@@ -646,7 +715,7 @@ class AcquisitionService:
                 "conversion": conversion,
                 "values": result.tolist(),
                 "frame_id": frame_id,
-                "frame": asdict(td.frame_metadata(frame_id)),
+                "frame": _frame_metadata(td.frame_metadata(frame_id)),
                 "mz": mz,
                 "charge_magnitude": charge,
             }

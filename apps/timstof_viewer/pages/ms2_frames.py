@@ -72,7 +72,7 @@ segments = ms2_segment_rects(analysis_dir, frame_id, acquisition)
 
 with st.sidebar:
     st.header("Display")
-    ion_mobility_type = st.selectbox("Ion mobility axis", ["ook0", "ccs", "voltage"], index=0)
+    mobility_type = st.selectbox("Ion mobility axis", ["ook0", "ccs", "voltage"], index=0)
     log_intensity = st.checkbox("Log-scale color (log10 intensity)", value=True)
     max_points = int(st.number_input(
         "Max points to plot", 10_000, 2_000_000, 500_000, 50_000,
@@ -98,7 +98,7 @@ with st.sidebar:
 # -- Fetch raw peaks --------------------------------------------------------
 
 peaks = fetch_raw_peaks(
-    analysis_dir, frame_id, ion_mobility_type, noise_filters, exclude, scan_scope,
+    analysis_dir, frame_id, mobility_type, noise_filters, exclude, scan_scope,
     smooth=smooth, halo=halo)
 if peaks.size == 0:
     st.warning("No peaks survive the current filter chain / scan scope.")
@@ -112,7 +112,7 @@ im_min, im_max = float(im.min()), float(im.max())
 # the bounds stable (and giving each slider a key) means the selected range
 # persists when you change frames or filters, instead of resetting every rerun.
 # Fall back to this frame's data extent only when metadata is unavailable.
-(fmz_lo, fmz_hi), (fim_lo, fim_hi) = full_axis_ranges(analysis_dir, ion_mobility_type)
+(fmz_lo, fmz_hi), (fim_lo, fim_hi) = full_axis_ranges(analysis_dir, mobility_type)
 mz_lo = fmz_lo if fmz_lo is not None else float(np.floor(mz_min))
 mz_hi = fmz_hi if fmz_hi is not None else float(np.ceil(mz_max))
 im_lo = fim_lo if fim_lo is not None else im_min
@@ -122,8 +122,8 @@ with st.sidebar:
     st.header("Ranges (display only)")
     mz_range = st.slider("m/z range", mz_lo, mz_hi, (mz_lo, mz_hi), key="ms2_mz_range")
     im_range = st.slider(
-        f"Ion mobility ({ion_mobility_type}) range", im_lo, im_hi, (im_lo, im_hi),
-        key=f"ms2_im_range_{ion_mobility_type}")
+        f"Ion mobility ({mobility_type}) range", im_lo, im_hi, (im_lo, im_hi),
+        key=f"ms2_im_range_{mobility_type}")
 
 mask = (mz >= mz_range[0]) & (mz <= mz_range[1]) & (im >= im_range[0]) & (im <= im_range[1])
 mz, intensity, im = mz[mask], intensity[mask], im[mask]
@@ -152,10 +152,10 @@ st.caption(f"Scope: {scope_opts[scope_idx]}  ·  Filter chain: {filter_chain_lab
 
 fig = scatter_mz_im(
     mz, intensity, im,
-    ion_mobility_type=ion_mobility_type, log_intensity=log_intensity,
+    mobility_type=mobility_type, log_intensity=log_intensity,
     mz_range=mz_range, im_range=im_range, exclude=exclude)
 
-if show_bands and segments and ion_mobility_type == "ook0":
+if show_bands and segments and mobility_type == "ook0":
     # Fragments span the full m/z axis, so each band is a full-width 1/K0
     # band (its mobility-scan range). The isolation m/z is the *precursor*
     # m/z and lives only in the hover text, not the rectangle width.
@@ -181,7 +181,7 @@ if show_bands and segments and ion_mobility_type == "ook0":
         x=hx, y=hy, mode="markers", marker=dict(size=5, color="#7f1d1d"),
         text=htext, hovertemplate="%{text}<extra></extra>",
         name=f"{BAND_NOUN} bands", showlegend=False))
-elif show_bands and segments and ion_mobility_type != "ook0":
+elif show_bands and segments and mobility_type != "ook0":
     st.caption(f"{BAND_NOUN.capitalize()} band overlay is drawn only on the 1/K0 axis — switch ion mobility to `ook0`.")
 
 st.plotly_chart(fig, use_container_width=True)
@@ -202,7 +202,7 @@ if centroider is not None:
     st.subheader(f"Centroided spectrum — {type(centroider).__name__}")
     try:
         centroided = fetch_centroided(
-            analysis_dir, frame_id, ion_mobility_type,
+            analysis_dir, frame_id, mobility_type,
             noise_filters, exclude, centroider, scan_scope, smooth=smooth, halo=halo)
     except Exception as exc:  # noqa: BLE001
         st.error(f"Centroiding failed: {exc}")
@@ -223,6 +223,6 @@ if centroider is not None:
             d3.metric("Intensity retained", f"{100.0 * centroided[:, 1].sum() / max(peaks[:, 1].sum(), 1):.1f}%")
             fig_c = stick_spectrum_im(
                 c_mz, c_int, c_im,
-                ion_mobility_type=ion_mobility_type, im_range=im_range,
+                mobility_type=mobility_type, im_range=im_range,
                 mz_range=mz_range, log_y=centroid_log_y)
             st.plotly_chart(fig_c, use_container_width=True)
