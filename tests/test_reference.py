@@ -1,7 +1,8 @@
 """tdfpy checked against sources that do not share its code.
 
 * CCS: the Mason-Schamp equation evaluated here from CODATA 2018 constants, and
-  published drift-tube CCS values for the Agilent ESI-L tune mix.
+  Bruker's tune-mix 1/K0 reference values against published drift-tube CCS for
+  the Agilent ESI-L tune mix (agreement to about 1%).
 * Metadata: the DDA/DIA/PRM readers compared field by field with direct sqlite3
   queries on the bundled fixtures.
 * Centroiding: merge_peaks on hand-built clusters against hand-computed
@@ -63,19 +64,23 @@ def test_ccs_matches_mason_schamp(one_over_k0, charge, mz):
     assert ccs_to_one_over_k0(ccs, charge, mz) == pytest.approx(one_over_k0, rel=1e-12)
 
 
-# Agilent ESI-L tune mix, [M+H]+ / singly charged ions. 1/K0 from Bruker's
-# timsTOF tune-mix calibration table; DTCCS_N2 from Stow et al., Anal. Chem.
-# 2017, 89, 9048-9055 (interlaboratory drift-tube study).
+# Agilent ESI-L tune mix, singly charged ions. The 1/K0 values are Bruker's
+# timsTOF tune-mix reference mobilities (as tabulated in the AlphaTims preprint,
+# bioRxiv 2021.07.27.453933), measured independently of any CCS. DTCCS_N2 is the
+# drift-tube consensus from Stow et al., Anal. Chem. 2017, 89, 9048-9055, Table 2.
+# The two sources are different instruments and conventions (TIMS vs drift tube,
+# Bruker's fixed 305 K), so they agree to about 1%, not to ppm; the tolerance
+# checks the Mason-Schamp conversion lands in the right place, nothing finer.
 TUNE_MIX = [
-    (622.0290, 0.9915, 202.96),
-    (922.0098, 1.1986, 243.64),
-    (1221.9906, 1.3934, 282.20),
+    (622.0289, 0.9848, 202.96),
+    (922.0097, 1.1895, 243.64),
+    (1221.9906, 1.3820, 282.20),
 ]
 
 
 @pytest.mark.parametrize(("mz", "one_over_k0", "published_ccs"), TUNE_MIX)
 def test_ccs_matches_published_tune_mix(mz, one_over_k0, published_ccs):
-    assert one_over_k0_to_ccs(one_over_k0, 1, mz) == pytest.approx(published_ccs, rel=2e-4)
+    assert one_over_k0_to_ccs(one_over_k0, 1, mz) == pytest.approx(published_ccs, rel=1e-2)
 
 
 def _rows(d: Path, sql: str) -> list[sqlite3.Row]:

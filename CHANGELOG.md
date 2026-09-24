@@ -12,11 +12,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `slice_d_folder` now drops `FrameMsMsInfo` and `CollisionEnergySweepingInfo` rows for frames outside the kept range. Before, they were copied unchanged and pointed at deleted frames.
 - `TimsData` closes its sqlite connection when `analysis.tdf_bin` exists but cannot be opened. Before, the connection stayed open until the half-built object was garbage collected, which keeps `analysis.tdf` locked on Windows.
 - `PasefFrameMsmsInfo` docstring: `frame_id` and `rt` are those of the MS/MS frame the window was acquired in, not of the parent MS1 frame.
+- `scripts/release_version.py sync --set X.Y.Z` also sets `date-released` in `CITATION.cff` to today's date.
 - `scripts/noise_comparison.py` ported from the removed `tdfpy.noise.estimate_noise_level` to `coerce_filters(...)[0].compute_threshold(...)`; it takes an optional output directory.
 
 ### Added
 
-- Reference tests: CCS against the Mason-Schamp equation from CODATA 2018 constants and against published drift-tube CCS for the Agilent tune mix; DDA/DIA/PRM metadata against direct sqlite queries.
+- Reference tests: CCS against the Mason-Schamp equation from CODATA 2018 constants, and Bruker's tune-mix reference 1/K0 values converted to CCS against published drift-tube CCS for the Agilent tune mix (Stow et al. 2017; agreement to about 1%); DDA/DIA/PRM metadata against direct sqlite queries.
 - Hypothesis property tests for `merge_peaks` (intensity conservation, both kernels agree, degenerate frames), `_sum_by_tof_index` and the CCS round trip. `hypothesis` joins the dev group.
 
 ## [4.1.0] (2026-09-23)

@@ -6,8 +6,8 @@ and re-sync, do not edit a package's copy by hand.
 
 The version lives only in ``__version__`` in the file named by
 ``[tool.hatch.version] path``. ``sync`` copies it to CITATION.cff.
-``sync --set X.Y.Z`` also turns the changelog's ``## [Unreleased]`` section into
-``## [X.Y.Z] (today)``. .zenodo.json must not carry a version (Zenodo takes it from
+``sync --set X.Y.Z`` also sets CITATION.cff ``date-released`` to today and turns
+the changelog's ``## [Unreleased]`` section into ``## [X.Y.Z] (today)``. .zenodo.json must not carry a version (Zenodo takes it from
 the release tag) or grants (Zenodo rejects the release when an award is unknown).
 """
 
@@ -54,6 +54,17 @@ def replace_field(text: str, pattern: str, value: str) -> str:
     return updated
 
 
+def set_date_released(citation: str) -> str:
+    """Set CITATION.cff ``date-released`` to today, adding it after ``version`` if missing."""
+    today = json.dumps(date.today().isoformat())
+    if re.search(r"^date-released:", citation, flags=re.MULTILINE):
+        return replace_field(citation, r"^(date-released: *)[^\n]+$", date.today().isoformat())
+    updated, count = re.subn(r"^(version: *[^\n]+\n)", lambda match: f"{match[1]}date-released: {today}\n", citation, count=1, flags=re.MULTILINE)
+    if count != 1:
+        raise ValueError("CITATION.cff needs a 'version:' field")
+    return updated
+
+
 def metadata(root: Path) -> tuple[str, dict[Path, str]]:
     source = (root / SOURCE).read_text(encoding="utf-8")
     version = source_version(source)
@@ -76,7 +87,7 @@ def sync(root: Path, new_version: str | None = None) -> str:
     if new_version is not None:
         version = validate_version(new_version)
         updates[root / SOURCE] = replace_field((root / SOURCE).read_text(encoding="utf-8"), r"^(__version__ = )[^\n]+$", version)
-        updates[root / "CITATION.cff"] = replace_field(updates[root / "CITATION.cff"], r"^(version: *)[^\n]+$", version)
+        updates[root / "CITATION.cff"] = set_date_released(replace_field(updates[root / "CITATION.cff"], r"^(version: *)[^\n]+$", version))
         changelog = (root / "CHANGELOG.md").read_text(encoding="utf-8")
         if f"## [{version}]" not in changelog:
             heading = f"## [Unreleased]\n\n## [{version}] ({date.today().isoformat()})"
