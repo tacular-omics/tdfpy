@@ -328,6 +328,40 @@ def test_protocol_tool_schemas_errors_resources_and_prompts(tmp_path):
     asyncio.run(run())
 
 
+@pytest.mark.parametrize(
+    ("tool", "acquisition", "mz_name", "mz_attr"),
+    [
+        ("query_precursors", "example_dda.d", "precursor_mz_range", "precursor_mz"),
+        ("query_dia_windows", "example_dia.d", "isolation_mz_range", "isolation_mz"),
+        ("query_prm_targets", "example_prm.d", "precursor_mz_range", "precursor_mz"),
+        ("query_prm_transitions", "example_prm.d", "isolation_mz_range", "isolation_mz"),
+    ],
+)
+def test_entity_tools_take_named_ranges(tmp_path, tool, acquisition, mz_name, mz_attr):
+    """Range parameters are ``rt_range`` and a precursor/isolation ``*_mz_range``; the 4.x ``rt`` / ``mz`` are gone."""
+    reader = {"example_dda.d": DDA, "example_dia.d": DIA, "example_prm.d": PRM}[acquisition]
+    attribute = {"query_precursors": "precursors", "query_dia_windows": "windows", "query_prm_targets": "targets", "query_prm_transitions": "transitions"}[tool]
+    with reader(DATA / acquisition) as r:
+        first = next(iter(getattr(r, attribute)))
+        mz, rt = getattr(first, mz_attr), first.rt
+
+    async def run():
+        server = create_server([DATA], tmp_path / "output")
+        async with Client(server, read_timeout_seconds=15) as client:
+            schema = {t.name: t for t in (await client.list_tools()).tools}[tool].input_schema["properties"]
+            assert {"rt_range", mz_name} <= set(schema)
+            assert "rt" not in schema and "mz" not in schema
+            window = {"lower": mz - 1e-6, "upper": mz + 1e-6}
+            hit = await client.call_tool(tool, {"acquisition": acquisition, "rt_range": {"lower": rt - 1e-6, "upper": rt + 1e-6}, mz_name: window, "limit": 5})
+            assert not hit.is_error
+            assert hit.structured_content["items"]
+            miss = await client.call_tool(tool, {"acquisition": acquisition, mz_name: {"lower": 1.0, "upper": 2.0}})
+            assert not miss.is_error
+            assert miss.structured_content["items"] == []
+
+    asyncio.run(run())
+
+
 def test_stdio_server_launch_and_real_extraction(tmp_path):
     async def run():
         params = StdioServerParameters(

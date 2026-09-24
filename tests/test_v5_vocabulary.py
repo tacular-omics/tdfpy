@@ -426,33 +426,54 @@ def test_empty_lookup_miss_message():
 # -- centroid tie-break ----------------------------------------------------------
 
 
-@settings(max_examples=80, deadline=None)
+@settings(max_examples=100, deadline=None)
 @given(
-    mz=st.lists(st.floats(500, 500.2, allow_nan=False), min_size=1, max_size=60, unique=True),
+    mz_pool=st.lists(st.floats(500, 500.2, allow_nan=False), min_size=1, max_size=20, unique=True),
+    n=st.integers(1, 60),
     levels=st.integers(1, 3),
     seed=st.integers(0, 2**16),
 )
-def test_merge_peaks_equal_intensities_are_order_independent(mz, levels, seed):
-    """Equal-intensity seeds break ties by ascending m/z in both kernels.
+def test_merge_peaks_equal_intensities_are_order_independent(mz_pool, n, levels, seed):
+    """Equal intensities and repeated m/z values: input order must not matter.
 
-    Many equal intensities in a narrow m/z band make the greedy seed order
-    decide the clusters, so shuffled and presorted input, and numba and pure
-    Python, must still agree.
+    Points are drawn from a small m/z pool (so many share one m/z, like one TOF
+    index seen in many scans) with few intensity and mobility levels, so the
+    greedy seed order and the within-m/z order both decide the clusters. Two
+    shuffles and the canonical (m/z, descending 1/K0, intensity) order must give
+    the same centroids, in numba and in pure Python.
     """
     rng = np.random.default_rng(seed)
-    mz_arr = np.asarray(mz)
-    intensity = rng.integers(1, levels + 1, len(mz_arr)).astype(np.float64) * 100.0
-    im = np.full(len(mz_arr), 1.0)
-    shuffle = rng.permutation(len(mz_arr))
-    order = np.argsort(mz_arr)
+    mz_arr = rng.choice(np.asarray(mz_pool), n)
+    intensity = rng.integers(1, levels + 1, n).astype(np.float64) * 100.0
+    im = rng.choice([0.9, 1.0, 1.02], n)
+    canonical = np.lexsort((intensity, -im, mz_arr))
     kwargs = {"mz_tolerance": 0.01, "mz_tolerance_type": "da", "min_peaks": 1}
-    results = []
     for use_numba in (True, False):
-        for idx in (shuffle, order):
-            results.append(merge_peaks(mz_arr[idx], intensity[idx], im[idx], use_numba=use_numba, **kwargs))
-    np.testing.assert_array_equal(results[0], results[1])
-    np.testing.assert_array_equal(results[2], results[3])
-    np.testing.assert_allclose(results[0], results[2], rtol=1e-12)
+        results = [
+            merge_peaks(mz_arr[idx], intensity[idx], im[idx], use_numba=use_numba, **kwargs)
+            for idx in (rng.permutation(n), rng.permutation(n), canonical)
+        ]
+        np.testing.assert_array_equal(results[0], results[2])
+        np.testing.assert_array_equal(results[1], results[2])
+        if use_numba:
+            numba_result = results[2]
+    np.testing.assert_allclose(numba_result, results[2], rtol=1e-12)
+
+
+@pytest.mark.parametrize("use_numba", [True, False])
+def test_merge_peaks_shuffled_frame_matches_tof_scan_order(dda_td, use_numba):
+    """A real MS1 frame (many points per TOF index) gives the same centroids shuffled."""
+    from tdfpy.pipeline import convert, read_spectrum
+
+    frame_id = max(dda_td._peak_counts, key=dda_td._peak_counts.get)
+    spectrum = read_spectrum(dda_td, frame_id)
+    order = _tof_order(spectrum.mz_indices)
+    peaks = convert(spectrum, dda_td, frame_id)[order]
+    assert np.unique(peaks[:, 0]).size < len(peaks)  # repeated m/z values present
+    expected = merge_peaks(peaks[:, 0], peaks[:, 1], peaks[:, 2], use_numba=use_numba)
+    shuffled = peaks[np.random.default_rng(0).permutation(len(peaks))]
+    got = merge_peaks(shuffled[:, 0], shuffled[:, 1], shuffled[:, 2], use_numba=use_numba)
+    np.testing.assert_array_equal(got, expected)
 
 
 @pytest.mark.parametrize("use_numba", [True, False])

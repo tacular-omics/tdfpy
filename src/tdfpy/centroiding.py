@@ -239,6 +239,27 @@ def _tof_order(tof_indices: np.ndarray) -> np.ndarray:
     return np.argsort(tof_indices, kind="stable")
 
 
+def _canonical_peak_order(
+    mz_array: np.ndarray, intensity_array: np.ndarray, ion_mobility_array: np.ndarray
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Order peaks by m/z, then descending ion mobility, then intensity.
+
+    This is the (TOF, scan) order the reader produces (1/K0 falls as the scan
+    number rises), so frame data passes the O(n) check and is used as is. Any
+    other input is lexsorted into the same order, which makes the greedy merge
+    independent of input order even when many points share one m/z.
+    """
+    if mz_array.size < 2:
+        return mz_array, intensity_array, ion_mobility_array
+    d_mz = mz_array[1:] - mz_array[:-1]
+    d_im = ion_mobility_array[1:] - ion_mobility_array[:-1]
+    in_order = (d_mz > 0) | ((d_mz == 0) & ((d_im < 0) | ((d_im == 0) & (intensity_array[1:] >= intensity_array[:-1]))))
+    if np.all(in_order):
+        return mz_array, intensity_array, ion_mobility_array
+    sort_idx = np.lexsort((intensity_array, -ion_mobility_array, mz_array))
+    return mz_array[sort_idx], intensity_array[sort_idx], ion_mobility_array[sort_idx]
+
+
 def _merge_peaks_numba(
     mz_array: np.ndarray,
     intensity_array: np.ndarray,
@@ -265,18 +286,14 @@ def _merge_peaks_numba(
     # A non-positive (or None) max_peaks means "no limit" — must match the
     # pure-Python kernel, which treats a falsy max_peaks as unlimited.
     _max_peaks = -1 if (max_peaks is None or max_peaks <= 0) else int(max_peaks)
-    if mz_array.size > 1 and not np.all(mz_array[1:] >= mz_array[:-1]):
-        sort_idx = np.argsort(mz_array, kind="stable")
-        mz_array = mz_array[sort_idx]
-        intensity_array = intensity_array[sort_idx]
-        ion_mobility_array = ion_mobility_array[sort_idx]
-    # Already ascending (MergePeaksCentroider pre-sorts on the integer TOF
-    # index): the O(n) check replaces an O(n log n) float argsort.
+    # MergePeaksCentroider pre-sorts on the integer TOF index, so frame data
+    # passes an O(n) check instead of an O(n log n) float sort.
+    mz_array, intensity_array, ion_mobility_array = _canonical_peak_order(mz_array, intensity_array, ion_mobility_array)
     mz_s = np.ascontiguousarray(mz_array, dtype=np.float64)
     int_s = np.ascontiguousarray(intensity_array, dtype=np.float64)
     im_s = np.ascontiguousarray(ion_mobility_array, dtype=np.float64)
-    # Stable sort on negated intensity: equal-intensity seeds keep ascending
-    # m/z order, independent of the NumPy version and sort backend.
+    # Stable sort on negated intensity: equal-intensity seeds keep the canonical
+    # (m/z, scan) order, independent of the NumPy version and sort backend.
     intensity_order = np.ascontiguousarray(np.argsort(-int_s, kind="stable").astype(np.int64))
     out_mz, out_int, out_im = _merge_peaks_numba_kernel(
         mz_s,
@@ -458,17 +475,12 @@ def _merge_peaks_python(
         mobility_tol_abs = im_tolerance
         mobility_tol_factor = 0.0
 
-    # Sort by mz for binary search (skipped when already ascending, as in the
-    # numba kernel, so both kernels see the same peak order).
-    if mz_array.size > 1 and not np.all(mz_array[1:] >= mz_array[:-1]):
-        sort_idx = np.argsort(mz_array, kind="stable")
-        mz_array = mz_array[sort_idx]
-        intensity_array = intensity_array[sort_idx]
-        ion_mobility_array = ion_mobility_array[sort_idx]
-        logger.debug("Sorted %d peaks by m/z", len(mz_array))
+    # Sort by m/z for binary search, in the same canonical order as the numba
+    # kernel so both see the same peak order.
+    mz_array, intensity_array, ion_mobility_array = _canonical_peak_order(mz_array, intensity_array, ion_mobility_array)
 
     # Sort by intensity for greedy clustering; stable so equal-intensity seeds
-    # keep ascending m/z order.
+    # keep the canonical (m/z, scan) order.
     intensity_order = np.argsort(-intensity_array, kind="stable")
     logger.debug("Created intensity-ordered index for greedy clustering")
 

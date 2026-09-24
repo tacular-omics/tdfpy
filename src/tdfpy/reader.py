@@ -4,6 +4,7 @@ import warnings
 from collections.abc import Iterable, Iterator
 from contextlib import closing, contextmanager
 from enum import StrEnum
+from functools import cached_property
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Self
@@ -115,7 +116,7 @@ class _Frames:
                 stacklevel=3,
             )
 
-    @property
+    @cached_property
     def msms_types(self) -> set[int]:
         return {int(row[4]) for row in self.rows}
 

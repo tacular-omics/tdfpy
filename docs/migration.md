@@ -32,12 +32,16 @@ the sections after it cover changes of type or behaviour.
 | `tdfpy.calibration.one_over_k0_to_ccs`, `ccs_to_one_over_k0` | `ook0_to_ccs`, `ccs_to_ook0` |
 | `TimsCalibration.scan_to_one_over_k0`, `one_over_k0_to_scan` | `scan_to_ook0`, `ook0_to_scan` |
 | MCP tool `query_dia_windows(window_group=...)` | `window_group_id=` |
+| MCP tools `query_precursors`, `query_dia_windows`, `query_prm_targets`, `query_prm_transitions`: `rt=` | `rt_range=` |
+| MCP `query_precursors` / `query_prm_targets`: `mz=` | `precursor_mz_range=` |
+| MCP `query_dia_windows` / `query_prm_transitions`: `mz=` | `isolation_mz_range=` (matched on the isolation center) |
 | `PasefFrameMsmsInfo.mz_range`, `DiaWindow.mz_range`, `PrmTransition.mz_range`, `Precursor.mz_range` | `.isolation_mz_range` |
 | `.mz_begin`, `.mz_end` (isolation windows) | removed: `lo, hi = w.isolation_mz_range` |
 | `PrmTarget.monoisotopic_mz` | `PrmTarget.precursor_mz` |
 | `Frame.summed_intensities` | `Frame.total_ion_current` |
 | `Frame.max_intensity` | `Frame.base_peak_intensity` |
 | `PrecursorLookup.query_range(mz_range=...)`, `PrmTargetLookup.query_range(mz_range=...)` | `precursor_mz_range=` |
+| `PrecursorLookup.query(mz=...)`, `PrmTargetLookup.query(mz=...)` | `precursor_mz=` |
 | `Polarity.POSITIVE`, `Polarity.NEGATIVE` | `"positive"`, `"negative"` |
 
 These names match mzmlpy, so code can read both formats with one vocabulary.
@@ -99,8 +103,10 @@ Every spectral accessor is now a method, so each call visibly decodes the frame:
   to `query`, as in mzmlpy 0.10. `query(mz=...)` is now `query(precursor_mz=...)`
   and the range is `precursor_mz_range=`; `mz_tolerance` / `mz_tolerance_type` are unchanged.
 - **MS1 centroids.** `MergePeaksCentroider` now sorts on the integer TOF index
-  before converting to m/z, and `merge_peaks` seeds equal-intensity peaks in
-  ascending m/z (TOF, scan) order with a stable sort. About 1.2-1.4% of centroids
+  before converting to m/z, and `merge_peaks` orders its input by m/z, then
+  descending 1/K0 (TOF, then scan), then intensity, and seeds equal-intensity
+  peaks in that order with a stable sort, so the result does not depend on input
+  order even when many points share one m/z. About 1.2-1.4% of centroids
   on dense MS1 frames differ from 4.x (1.43% diaPASEF, 1.16% DDA, 15-min runs);
   summed intensity moves by under 0.02%. `merged_peaks()` is unchanged.
 - **Elements are frozen, slotted and keyword-only.** Assigning to a field raises

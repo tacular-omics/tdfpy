@@ -339,8 +339,8 @@ class AcquisitionService:
         self,
         acquisition: str,
         kind: str,
-        rt: Interval | None,
-        mz: Interval | None,
+        rt_range: Interval | None,
+        mz_range: Interval | None,
         group_or_target: int | None,
         offset: int,
         limit: int,
@@ -365,9 +365,9 @@ class AcquisitionService:
         with READERS[required](path) as reader:
             for index, obj in enumerate(getattr(reader, attribute)):
                 mass = obj.precursor_mz if kind in ("precursor", "prm_target") else obj.isolation_mz
-                if rt and not rt.contains(obj.rt):
+                if rt_range and not rt_range.contains(obj.rt):
                     continue
-                if mz and not mz.contains(mass):
+                if mz_range and not mz_range.contains(mass):
                     continue
                 if group_or_target is not None:
                     actual = obj.window_group_id if kind == "dia_window" else (obj.target_id if kind == "prm_target" else obj.target.target_id)

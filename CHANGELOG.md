@@ -48,25 +48,26 @@ Breaking API cleanup for 5.0. [docs/migration.md](docs/migration.md) has the ful
 - `MetaData` and `Calibration` are read-only `Mapping`s; the `df` field is replaced by `table`.
 - `plot_centroiding`: every argument after `frame_id` is keyword-only, including `ion_mobility_type`.
 - MCP `query_dia_windows`: parameter `window_group` -> `window_group_id`.
+- MCP entity tools (`query_precursors`, `query_dia_windows`, `query_prm_targets`, `query_prm_transitions`): range parameter `rt` -> `rt_range`; `mz` -> `precursor_mz_range` on the precursor and PRM-target tools and `isolation_mz_range` on the DIA-window and PRM-transition tools.
 - Reader vocabulary shared with mzmlpy, renamed with no alias: `mz_range` -> `isolation_mz_range` on `PasefFrameMsmsInfo`, `DiaWindow`, `PrmTransition` and `Precursor`; `mz_begin` / `mz_end` removed (use `isolation_mz_range`); `PrmTarget.monoisotopic_mz` -> `precursor_mz`; `Frame.summed_intensities` -> `total_ion_current`; `Frame.max_intensity` -> `base_peak_intensity`.
 - `Polarity` is `Literal["positive", "negative"]`, not a `StrEnum`, and every `polarity` field is `Polarity | None`. A frame whose `Polarity` column is not `+` / `-` gives `None` and one `UserWarning` per file; a precursor whose PASEF frames disagree gives `None` with a warning. `FrameMetadata.polarity` stays the raw `"+"` / `"-"` string.
 - Lookup keywords (same as mzmlpy 0.10): a `(low, high)` tuple is `*_range`, a point is `rt=` / `precursor_mz=` / `ook0=` plus a tolerance. `PrecursorLookup.query_range(mz_range=)` and `PrmTargetLookup.query_range(mz_range=)` -> `precursor_mz_range=`; `PrecursorLookup.query(mz=)` and `PrmTargetLookup.query(mz=)` -> `precursor_mz=`. `mz_tolerance` / `mz_tolerance_type` keep their names.
 - The `DDA`, `DIA` and `PRM` readers load their tables with plain sqlite queries instead of pandas `iterrows`; SQLite errors there raise `TdfpyError` ("Failed to read TDF database ...").
 - Reading a scan range (`read_frame_arrays`, `read_scans`, every window accessor) decodes TOF indices for those scans only. Whole-frame layout checks still run; the TOF-bounds check now covers the scans read.
-- `MergePeaksCentroider` sorts peaks on the integer TOF index (a counting sort under numba) before converting to m/z, and `merge_peaks` (both kernels) skips its m/z argsort when the input is already ascending. The greedy seed order is now a stable sort on descending intensity, so equal-intensity seeds are taken in ascending m/z order (TOF, then scan, for frame data) instead of an unstable quicksort order; results no longer depend on the NumPy version, and shuffled and presorted input give the same centroids. Measured against 4.x on 12 dense MS1 frames each: 1.43% of centroids differ on a 15-min diaPASEF run (11,919 of 834,389) and 1.16% on a 15-min DDA run (4,278 of 368,896); summed intensity per frame moves by under 0.02%. `merged_peaks()` output is unchanged.
+- `MergePeaksCentroider` sorts peaks on the integer TOF index (a counting sort under numba) before converting to m/z, and `merge_peaks` (both kernels) puts its input in one canonical order: m/z, then descending 1/K0 (that is, TOF then scan for frame data), then intensity. Input already in that order, as the reader produces it, skips the sort after an O(n) check; anything else is lexsorted into it. The greedy seed order is a stable sort on descending intensity, so equal-intensity seeds are taken in that canonical order instead of an unstable quicksort order. Results no longer depend on the NumPy version or on input order, including when many points share one m/z; only points identical in m/z, 1/K0 and intensity keep their input order, and those are interchangeable. Measured against 4.x on 12 dense MS1 frames each: 1.43% of centroids differ on a 15-min diaPASEF run (11,919 of 834,389) and 1.16% on a 15-min DDA run (4,278 of 368,896); summed intensity per frame moves by under 0.02%. `merged_peaks()` output is unchanged.
 
 ### Performance
 
-**Indicative only, not an exclusive benchmark:** one core (`taskset`, one numba thread), direct runs on a shared, loaded machine (load 12-19); absolute times will differ, the ratios are the point. "Before" is commit b783db4, which still built the readers with pandas `iterrows` as 4.1 did.
+Speedups only, **indicative, not exclusive timing**: single-core direct runs on a shared, loaded machine, 5.0 against commit b783db4 (readers still built with pandas `iterrows`, as in 4.1).
 
-| workload | before | after |
-|---|---|---|
-| open `DDA`, 35-min plasma run (174,658 precursors, 283,910 PASEF rows) | 21.4 s | 2.2-2.4 s |
-| open `DDA`, 15-min HeLa run | 13.2 s | 1.6 s |
-| open `DIA`, 15-min run | 1.19 s | 0.34 s |
-| `centroid()` on 300 MS1 frames | 8.7 s | 7.9 s |
-| `merged_peaks()` on 2000 precursors | 2.31 s | 1.85 s (loop), 0.70 s (`iter_precursor_spectra`) |
-| `centroid()` on 1500 DIA windows | 5.84 s | 3.12 s (2.24 s via `iter_window_spectra`, was 3.98 s) |
+| workload | speedup |
+|---|---|
+| open `DDA`, 35-min plasma run (174,658 precursors) | about 9x |
+| open `DDA`, 15-min HeLa run | about 8x |
+| open `DIA`, 15-min run | about 3.5x |
+| `centroid()` on MS1 frames | about 1.1x |
+| `merged_peaks()` over 2000 precursors | about 1.25x in a loop, about 3.3x with `iter_precursor_spectra` |
+| `centroid()` over 1500 DIA windows | about 1.9x in a loop; `iter_window_spectra` itself about 1.8x |
 
 ## [4.1.1] (2026-09-23)
 
