@@ -8,7 +8,10 @@ from typing import Literal
 import numpy as np
 
 from .calibration import UnsupportedCalibrationError
+from .errors import TdfpyError
 from .timsdata import TimsData, UnsupportedTdfError
+
+__all__ = ["ValidationIssue", "ValidationReport", "validate_acquisition"]
 
 
 @dataclass(frozen=True)
@@ -57,14 +60,14 @@ def validate_acquisition(analysis_dir: str | Path, *, full: bool = False) -> Val
                 checked += 1
                 try:
                     frame = td.frame_metadata(fid)
-                    if frame.num_scans < 0 or frame.num_peaks < 0 or not np.isfinite(frame.time):
-                        raise ValueError("Invalid frame counts or retention time.")
+                    if frame.num_scans < 0 or frame.num_peaks < 0 or not np.isfinite(frame.rt):
+                        raise TdfpyError("Invalid frame counts or retention time.")
                     td.calibration_key(fid)
                     # Exercise calibration references and finite conversion values.
-                    mz = td.indexToMz(fid, [0])
-                    mobility = td.scanNumToOneOverK0(fid, [0])
+                    mz = td.index_to_mz(fid, [0])
+                    mobility = td.scan_num_to_ook0(fid, [0])
                     if not np.all(np.isfinite(mz)) or not np.all(np.isfinite(mobility)):
-                        raise ValueError("Calibration produces non-finite coordinates.")
+                        raise TdfpyError("Calibration produces non-finite coordinates.")
                     if full:
                         td.read_frame_arrays(fid)
                 except failures as exc:

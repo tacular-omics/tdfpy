@@ -28,7 +28,8 @@ from tdfpy import (
     validate_acquisition,
 )
 from tdfpy import noise as noise_module
-from tdfpy.calibration import ccs_to_one_over_k0, one_over_k0_to_ccs
+from tdfpy.calibration import ccs_to_ook0, ook0_to_ccs
+from tdfpy.errors import TdfpyError
 from tdfpy.pipeline import MergePeaksCentroider, Smooth, WatershedCentroider
 from tdfpy.regions import ChargeStateRegion
 
@@ -84,11 +85,11 @@ def _operation(spec: Operation | None, registry: dict) -> Any:
     if spec is None:
         return None
     if spec.name not in registry:
-        raise ValueError(f"Unknown operation {spec.name!r}. Choose from {sorted(registry)}")
+        raise TdfpyError(f"Unknown operation {spec.name!r}. Choose from {sorted(registry)}")
     cls = registry[spec.name]
     unknown = set(spec.parameters) - {f.name for f in fields(cls)}
     if unknown:
-        raise ValueError(f"Unknown parameters for {spec.name}: {sorted(unknown)}")
+        raise TdfpyError(f"Unknown parameters for {spec.name}: {sorted(unknown)}")
     # JSON strict mode accepts JSON arrays for tuples, while rejecting string
     # numbers and booleans where the algorithm expects a numeric parameter.
     return TypeAdapter(cls).validate_json(json.dumps(spec.parameters, allow_nan=False), strict=True)
@@ -154,13 +155,13 @@ class AcquisitionService:
 
     def __init__(self, roots: list[Path], output_dir: Path, max_frame_peaks: int = 5_000_000):
         if not roots or max_frame_peaks < 1:
-            raise ValueError("Provide data roots and a positive max_frame_peaks")
+            raise TdfpyError("Provide data roots and a positive max_frame_peaks")
         self.roots = tuple(root.expanduser().resolve(strict=True) for root in roots)
         if not all(root.is_dir() for root in self.roots):
-            raise ValueError("Every data root must be a directory")
+            raise TdfpyError("Every data root must be a directory")
         output = output_dir.expanduser().resolve()
         if any(p.suffix.lower() == ".d" for p in (output, *output.parents)):
-            raise ValueError("The output directory must be outside acquisition folders")
+            raise TdfpyError("The output directory must be outside acquisition folders")
         output.mkdir(parents=True, exist_ok=True)
         self.output_dir = output.resolve(strict=True)
         self.max_frame_peaks = max_frame_peaks
@@ -169,17 +170,17 @@ class AcquisitionService:
         candidate = Path(path).expanduser()
         if not candidate.is_absolute():
             if len(self.roots) != 1:
-                raise ValueError("Use an absolute acquisition path when multiple roots are configured")
+                raise TdfpyError("Use an absolute acquisition path when multiple roots are configured")
             candidate = self.roots[0] / candidate
         candidate = candidate.resolve(strict=True)
         if not any(candidate.is_relative_to(root) for root in self.roots):
-            raise ValueError("Acquisition is outside the configured data roots")
+            raise TdfpyError("Acquisition is outside the configured data roots")
         if not candidate.is_dir():
-            raise ValueError("Expected an acquisition directory")
+            raise TdfpyError("Expected an acquisition directory")
         for name in ("analysis.tdf", "analysis.tdf_bin"):
             source = (candidate / name).resolve(strict=True)
             if not source.is_file() or not source.is_relative_to(candidate):
-                raise ValueError(f"{name} must be a file within the acquisition directory")
+                raise TdfpyError(f"{name} must be a file within the acquisition directory")
         return candidate
 
     @contextmanager
@@ -228,7 +229,7 @@ class AcquisitionService:
             seen.add(path)
             visited += 1
             if visited > 20_000:
-                raise ValueError("Discovery exceeded 20,000 directories. Configure a narrower data root")
+                raise TdfpyError("Discovery exceeded 20,000 directories. Configure a narrower data root")
             if (path / "analysis.tdf").is_file():
                 found.append(
                     {
@@ -267,11 +268,11 @@ class AcquisitionService:
         path = self.acquisition(acquisition)
         schema = {t["name"]: t["columns"] for t in self.tables(str(path))["tables"]}
         if table not in schema:
-            raise ValueError(f"Unknown table {table!r}. Call list_metadata_tables")
+            raise TdfpyError(f"Unknown table {table!r}. Call list_metadata_tables")
         available = [c["name"] for c in schema[table]]
         columns = available if columns is None else columns
         if not columns or len(columns) > 50 or any(c not in available for c in columns):
-            raise ValueError("Select 1 to 50 existing columns")
+            raise TdfpyError("Select 1 to 50 existing columns")
         operators = {
             "eq": "=",
             "ne": "!=",
@@ -283,12 +284,12 @@ class AcquisitionService:
         clauses, args = [], []
         for predicate in predicates:
             if predicate.column not in available:
-                raise ValueError(f"Unknown column {predicate.column!r}")
+                raise TdfpyError(f"Unknown column {predicate.column!r}")
             if predicate.operator == "is_null":
                 clauses.append(f"{_quote(predicate.column)} IS NULL")
             else:
                 if predicate.value is None:
-                    raise ValueError("Use is_null to query NULL values")
+                    raise TdfpyError("Use is_null to query NULL values")
                 clauses.append(f"{_quote(predicate.column)} {operators[predicate.operator]} ?")
                 args.append(predicate.value)
         where = " WHERE " + " AND ".join(clauses) if clauses else ""
@@ -353,7 +354,7 @@ class AcquisitionService:
             "prm_transition": "PRM",
         }[kind]
         if mode != required:
-            raise ValueError(f"{kind} queries require {required}, but this acquisition is {mode}")
+            raise TdfpyError(f"{kind} queries require {required}, but this acquisition is {mode}")
         attribute = {
             "precursor": "precursors",
             "dia_window": "windows",
@@ -363,18 +364,17 @@ class AcquisitionService:
         matches = []
         with READERS[required](path) as reader:
             for index, obj in enumerate(getattr(reader, attribute)):
-                time = obj.time if kind == "prm_target" else obj.rt
                 mass = (
                     (obj.monoisotopic_mz if obj.monoisotopic_mz is not None else obj.largest_peak_mz)
                     if kind == "precursor"
                     else (obj.monoisotopic_mz if kind == "prm_target" else obj.isolation_mz)
                 )
-                if rt and not rt.contains(time):
+                if rt and not rt.contains(obj.rt):
                     continue
                 if mz and not mz.contains(mass):
                     continue
                 if group_or_target is not None:
-                    actual = obj.window_group if kind == "dia_window" else (obj.target_id if kind == "prm_target" else obj.target.target_id)
+                    actual = obj.window_group_id if kind == "dia_window" else (obj.target_id if kind == "prm_target" else obj.target.target_id)
                     if actual != group_or_target:
                         continue
                 item = _metadata(obj)
@@ -388,10 +388,10 @@ class AcquisitionService:
 
     def frame_budget(self, td: TimsData, ids: list[int]) -> None:
         if len(set(ids)) > 128:
-            raise ValueError("A spectrum selection may reference at most 128 frames")
+            raise TdfpyError("A spectrum selection may reference at most 128 frames")
         for fid in set(ids):
             if td.frame_metadata(fid).num_peaks > self.max_frame_peaks:
-                raise ValueError(f"Frame {fid} exceeds max-frame-peaks. Raise the server startup limit deliberately for this dataset")
+                raise TdfpyError(f"Frame {fid} exceeds max-frame-peaks. Raise the server startup limit deliberately for this dataset")
 
     def spectrum(self, acquisition: str, selection: SpectrumSelection, processing: Processing) -> tuple[np.ndarray, dict]:
         path = self.acquisition(acquisition)
@@ -402,7 +402,7 @@ class AcquisitionService:
                 scan_range = None
                 if selection.scan_begin is not None and selection.scan_end is not None:
                     if selection.scan_end > td.frame_metadata(selection.id).num_scans:
-                        raise ValueError("scan_end exceeds the frame's scan count")
+                        raise TdfpyError("scan_end exceeds the frame's scan count")
                     scan_range = (selection.scan_begin, selection.scan_end)
                 extract = get_raw_peaks if processing.mode == "raw" else get_centroided_spectrum
                 peaks = extract(td, selection.id, scan_range=scan_range, **options)
@@ -414,11 +414,11 @@ class AcquisitionService:
                 "prm_transition": "PRM",
             }[selection.kind]
             if get_acquisition_type(path) != required:
-                raise ValueError(f"This selection requires a {required} acquisition")
+                raise TdfpyError(f"This selection requires a {required} acquisition")
             with READERS[required](path) as reader:
                 if selection.kind == "precursor":
                     if processing != Processing():
-                        raise ValueError(
+                        raise TdfpyError(
                             "Precursor spectra use the existing mobility-collapsed picker. Omit "
                             "processing overrides, or select individual PASEF frames for custom processing"
                         )
@@ -430,7 +430,7 @@ class AcquisitionService:
                 else:
                     windows = list(getattr(reader, "windows" if required == "DIA" else "transitions"))
                     if selection.id >= len(windows):
-                        raise ValueError(f"Selection index {selection.id} is out of range. Query the acquisition's windows first")
+                        raise TdfpyError(f"Selection index {selection.id} is out of range. Query the acquisition's windows first")
                     obj = windows[selection.id]
                     ids = [obj.frame_id]
                     self.frame_budget(reader.timsdata, ids)
@@ -473,7 +473,7 @@ class AcquisitionService:
 
     def write_artifact(self, arrays: Iterator[tuple[str, np.ndarray, dict]]) -> dict:
         if self.output_dir.resolve(strict=True) != self.output_dir:
-            raise ValueError("Output directory changed since server startup")
+            raise TdfpyError("Output directory changed since server startup")
         artifact_id = uuid4().hex
         path = self.output_dir / f"{artifact_id}.npz"
         entries = []
@@ -489,7 +489,7 @@ class AcquisitionService:
                 for name, peaks, metadata in arrays:
                     size += peaks.nbytes
                     if size > MAX_ARTIFACT_BYTES:
-                        raise ValueError("Export exceeds 512 MiB of numerical arrays. Request a smaller batch")
+                        raise TdfpyError("Export exceeds 512 MiB of numerical arrays. Request a smaller batch")
                     with archive.open(name + ".npy", "w", force_zip64=True) as stream:
                         np.lib.format.write_array(stream, peaks, allow_pickle=False)
                     entries.append(
@@ -520,16 +520,16 @@ class AcquisitionService:
 
     def export_batch(self, acquisition: str, indices: list[int], processing: Processing) -> dict:
         if processing.mode != "centroid":
-            raise ValueError("Window batches currently support centroided output only")
+            raise TdfpyError("Window batches currently support centroided output only")
         path = self.acquisition(acquisition)
         mode = get_acquisition_type(path)
         if mode not in {"DIA", "PRM"}:
-            raise ValueError("Window batches require DIA or PRM")
+            raise TdfpyError("Window batches require DIA or PRM")
         options = _options(processing)
         with READERS[mode](path) as reader:
             windows = list(getattr(reader, "windows" if mode == "DIA" else "transitions"))
             if any(i < 0 or i >= len(windows) for i in indices):
-                raise ValueError("A window index is out of range. Query the windows first")
+                raise TdfpyError("A window index is out of range. Query the windows first")
             selected = [windows[i] for i in indices]
             self.frame_budget(reader.timsdata, [w.frame_id for w in selected])
 
@@ -561,17 +561,17 @@ class AcquisitionService:
 
     def artifact(self, artifact_id: str, array: str | None, offset: int, limit: int) -> dict:
         if len(artifact_id) != 32 or any(c not in "0123456789abcdef" for c in artifact_id):
-            raise ValueError("Use an artifact_id returned by an export tool")
+            raise TdfpyError("Use an artifact_id returned by an export tool")
         path = self.output_dir / f"{artifact_id}.npz"
         if path.is_symlink() or path.resolve(strict=True).parent != self.output_dir:
-            raise ValueError("Artifact must be a regular file in the output directory")
+            raise TdfpyError("Artifact must be a regular file in the output directory")
         with np.load(path, allow_pickle=False) as data:
             manifest = json.loads(str(data["metadata"]))
             if array is None:
                 return {"artifact_id": artifact_id, **manifest}
             names = {s["array"] for s in manifest["spectra"]}
             if array not in names:
-                raise ValueError(f"Unknown array. Choose from {sorted(names)}")
+                raise TdfpyError(f"Unknown array. Choose from {sorted(names)}")
             peaks = data[array]
             return {
                 "array": array,
@@ -629,11 +629,11 @@ class AcquisitionService:
     ) -> dict:
         path = self.acquisition(acquisition)
         methods = {
-            "tof_to_mz": "indexToMz",
-            "mz_to_tof": "mzToIndex",
-            "scan_to_ook0": "scanNumToOneOverK0",
-            "ook0_to_scan": "oneOverK0ToScanNum",
-            "scan_to_voltage": "scanNumToVoltage",
+            "tof_to_mz": "index_to_mz",
+            "mz_to_tof": "mz_to_index",
+            "scan_to_ook0": "scan_num_to_ook0",
+            "ook0_to_scan": "ook0_to_scan_num",
+            "scan_to_voltage": "scan_num_to_voltage",
         }
         with TimsData(path) as td:
             td.frame_metadata(frame_id)
@@ -641,11 +641,11 @@ class AcquisitionService:
                 result = getattr(td, methods[conversion])(frame_id, values)
             else:
                 if mz is None or charge is None or mz <= 0 or charge <= 0:
-                    raise ValueError("CCS conversions require a positive m/z and explicit positive charge magnitude")
-                convert = one_over_k0_to_ccs if conversion == "ook0_to_ccs" else ccs_to_one_over_k0
+                    raise TdfpyError("CCS conversions require a positive m/z and explicit positive charge magnitude")
+                convert = ook0_to_ccs if conversion == "ook0_to_ccs" else ccs_to_ook0
                 result = np.asarray([convert(v, charge, mz) for v in values])
             if not np.all(np.isfinite(result)):
-                raise ValueError("Conversion produced non-finite values")
+                raise TdfpyError("Conversion produced non-finite values")
             return {
                 "conversion": conversion,
                 "values": result.tolist(),

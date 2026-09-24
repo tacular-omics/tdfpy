@@ -140,7 +140,7 @@ def test_collapsed_spectrum_conserves_total_intensity() -> None:
     entry = GOLDEN["dda_precursors"][0]
     ranges = [tuple(r) for r in entry["scan_ranges"]]
     with timsdata_connect(str(DDA_PATH)) as td:
-        raw_total = sum(int(intensities.sum()) for frame_id, begin, end in ranges for _, intensities in td.readScans(frame_id, begin, end))
+        raw_total = sum(int(intensities.sum()) for frame_id, begin, end in ranges for _, intensities in td.read_scans(frame_id, begin, end))
         peaks = get_mobility_collapsed_spectrum(td, ranges)
     assert peaks[:, 1].sum() == pytest.approx(raw_total)
 

@@ -145,12 +145,12 @@ def create_server(roots: list[Path], output_dir: Path, max_frame_peaks: int = 5_
         acquisition: str,
         rt: Interval | None = None,
         mz: Interval | None = None,
-        window_group: int | None = None,
+        window_group_id: int | None = None,
         offset: Offset = 0,
         limit: PageSize = 50,
     ) -> dict[str, Any]:
-        "Find DIA windows by half-open RT, isolation-center m/z, and group. Returned selection IDs identify individual windows across frames."
-        return service.entities(acquisition, "dia_window", rt, mz, window_group, offset, limit)
+        "Find DIA windows by half-open RT, isolation-center m/z, and window_group_id. Returned selection IDs identify individual windows across frames."
+        return service.entities(acquisition, "dia_window", rt, mz, window_group_id, offset, limit)
 
     @server.tool(annotations=read)
     def query_prm_targets(

@@ -245,7 +245,7 @@ if dia_windows and ion_mobility_type == "ook0":
         hx.append(w["isolation_mz"])
         hy.append((w["ook0_begin"] + w["ook0_end"]) / 2)
         htext.append(
-            f"WG{w['window_group']}<br>m/z {w['mz_begin']:.1f}–{w['mz_end']:.1f}<br>"
+            f"WG{w['window_group_id']}<br>m/z {w['mz_begin']:.1f}–{w['mz_end']:.1f}<br>"
             f"1/K0 {min(w['ook0_begin'], w['ook0_end']):.3f}–{max(w['ook0_begin'], w['ook0_end']):.3f}<br>"
             f"CE {w['collision_energy']:.1f}")
     fig.update_layout(shapes=shapes)

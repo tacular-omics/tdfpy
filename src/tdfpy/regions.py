@@ -16,6 +16,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from .errors import TdfpyError
 from .timsdata import TimsData
 
 
@@ -42,18 +43,18 @@ class ChargeStateRegion:
     def __post_init__(self) -> None:
         (mz_1, ook0_1), (mz_2, ook0_2) = self.line
         if mz_1 == mz_2:
-            raise ValueError(
+            raise TdfpyError(
                 "ChargeStateRegion line endpoints must differ in m/z; got both at "
                 f"m/z={mz_1}. Provide two points with distinct m/z, e.g. "
                 "line=((350.0, 0.7), (1200.0, 1.4))."
             )
         if ook0_1 == ook0_2:
-            raise ValueError(f"ChargeStateRegion line endpoints must differ in 1/K0; got both at 1/K0={ook0_1}. Provide two points with distinct 1/K0.")
+            raise TdfpyError(f"ChargeStateRegion line endpoints must differ in 1/K0; got both at 1/K0={ook0_1}. Provide two points with distinct 1/K0.")
         # The exclusion mask assumes 1/K0 increases with m/z (positive slope),
         # as real timsTOF charge-state bands do. A negative slope would silently
         # exclude the opposite half-plane, so reject it rather than mislead.
         if (mz_2 - mz_1) * (ook0_2 - ook0_1) < 0:
-            raise ValueError(
+            raise TdfpyError(
                 "ChargeStateRegion requires a non-negative m/z-vs-1/K0 slope "
                 f"(1/K0 must increase with m/z), but line={self.line} has 1/K0 "
                 "decreasing as m/z increases. Order the points so the higher-m/z "
@@ -75,11 +76,11 @@ class ChargeStateRegion:
         ook0_cap = max(ook0_1, ook0_2)
 
         ook0_per_scan = np.asarray(
-            td.scanNumToOneOverK0(frame_id, np.arange(num_scans))  # type: ignore[call-arg]
+            td.scan_num_to_ook0(frame_id, np.arange(num_scans))  # type: ignore[call-arg]
         )
         mz_cutoff = mz_1 + (ook0_per_scan - ook0_1) * mz_per_ook0
         mz_cutoff_clipped = np.clip(mz_cutoff, a_min=1e-6, a_max=None)
-        index_cutoff = np.asarray(td.mzToIndex(frame_id, mz_cutoff_clipped)).astype(np.float64, copy=True)
+        index_cutoff = np.asarray(td.mz_to_index(frame_id, mz_cutoff_clipped)).astype(np.float64, copy=True)
         index_cutoff = np.where(mz_cutoff > 0, index_cutoff, 0.0)
         if self.cap_at_upper_endpoint:
             index_cutoff[ook0_per_scan > ook0_cap] = np.inf

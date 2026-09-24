@@ -45,7 +45,7 @@ class TestDiaWindowGroup:
     def window(self):
         return DiaWindowGroup(
             window_index=0,
-            window_group=1,
+            window_group_id=1,
             scan_num_begin=10,
             scan_num_end=50,
             isolation_mz=500.0,

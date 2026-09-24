@@ -30,7 +30,7 @@ def test_dia_ms1_frames():
         f1 = dia.ms1[1]
         assert isinstance(f1, DIAMs1Frame)
         assert f1.frame_id == 1
-        assert f1.time == pytest.approx(0.765083)
+        assert f1.rt == pytest.approx(0.765083)
         assert f1.polarity == "positive"
         assert f1.scan_mode == 9
         assert f1.msms_type == 0
@@ -52,7 +52,7 @@ def test_dia_windows():
         # First window: WindowGroup 1, IsolationMz 813.0, Frame 2
         w0 = all_windows[0]
         assert isinstance(w0, DiaWindow)
-        assert w0.window_group == 1
+        assert w0.window_group_id == 1
         assert w0.isolation_mz == pytest.approx(813.0)
         assert w0.isolation_width == pytest.approx(26.0)
         assert w0.collision_energy == pytest.approx(37.191436)
@@ -85,7 +85,7 @@ def test_dia_window_groups():
 
         # First entry is the first sub-window of group 1
         g0 = groups[0]
-        assert g0.window_group == 1
+        assert g0.window_group_id == 1
         assert g0.isolation_mz == pytest.approx(813.0)
         assert g0.isolation_width == pytest.approx(26.0)
         assert g0.scan_num_begin == 393
@@ -93,14 +93,14 @@ def test_dia_window_groups():
 
 
 def test_dia_window_lookup_by_group():
-    """Test DiaWindowLookup indexing by window_group ID."""
+    """Test DiaWindowLookup indexing by window_group_id."""
     with DIA(D_PATH) as dia:
         # Window group 1 occurs in multiple frames; each occurrence contributes
         # 2 sub-windows. There are 30 frames assigned to group 1 -> 60 entries.
         group1_windows = dia.windows[1]
         assert len(group1_windows) == 60
         for w in group1_windows:
-            assert w.window_group == 1
+            assert w.window_group_id == 1
 
         # Invalid group raises KeyError
         with pytest.raises(KeyError):
@@ -128,12 +128,12 @@ def test_dia_window_query_by_rt():
 def test_dia_window_query_by_window_group():
     """Test querying DIA windows by window group."""
     with DIA(D_PATH) as dia:
-        results = list(dia.windows.query(window_group_index=1))
+        results = list(dia.windows.query(window_group=1))
         assert len(results) > 0
         # Querying by window group returns every window belonging to that
         # group (matching how the lookup is keyed and indexed elsewhere).
         for w in results:
-            assert w.window_group == 1
+            assert w.window_group_id == 1
 
 
 def test_dia_ms1_frame_lookup():
@@ -195,17 +195,17 @@ def test_dia_access_after_close():
         frame = dia.ms1[1]
         window = next(iter(dia.windows))
         # Warm up: these all work while the reader is open.
-        assert len(frame.peaks) > 0
+        assert len(frame.scan_peaks()) > 0
         assert window.centroid().shape[1] == 3
 
     with pytest.raises(RuntimeError, match="closed"):
-        _ = frame.peaks
+        _ = frame.scan_peaks()
 
     with pytest.raises(RuntimeError, match="closed"):
         frame.centroid()
 
     with pytest.raises(RuntimeError, match="closed"):
-        _ = window.peaks
+        _ = window.scan_peaks()
 
     with pytest.raises(RuntimeError, match="closed"):
         window.centroid()

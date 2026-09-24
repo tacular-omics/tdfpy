@@ -16,7 +16,18 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from .._validation import integer, nonnegative
+from ..errors import TdfpyError
 from . import NoiseFilter
+
+__all__ = [
+    "AbsoluteThreshold",
+    "BaselineThreshold",
+    "HistogramThreshold",
+    "IntensityThreshold",
+    "IterativeMedianThreshold",
+    "MadThreshold",
+    "PercentileThreshold",
+]
 
 if TYPE_CHECKING:
     from ..timsdata import TimsData
@@ -41,7 +52,7 @@ class IntensityThreshold(NoiseFilter):
             elif field.name in ("value", "k", "scale", "inner_k", "final_k", "q"):
                 nonnegative(field.name, value)
                 if field.name == "q" and value > 100:
-                    raise ValueError("q must not exceed 100.")
+                    raise TdfpyError("q must not exceed 100.")
 
     @abstractmethod
     def compute_threshold(self, intensities: np.ndarray) -> float:

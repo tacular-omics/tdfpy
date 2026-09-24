@@ -17,6 +17,8 @@ from .pipeline import (
 )
 from .regions import ChargeStateRegion
 
+__all__ = ["iter_window_spectra"]
+
 
 def iter_window_spectra(
     windows: Iterable[DiaWindow | PrmTransition],

@@ -32,8 +32,8 @@ def test_prm_targets():
         assert isinstance(t1, PrmTarget)
         assert t1.target_id == 1
         assert t1.external_id is None
-        assert t1.time == pytest.approx(354.0)
-        assert t1.one_over_k0 == pytest.approx(0.81)
+        assert t1.rt == pytest.approx(354.0)
+        assert t1.ook0 == pytest.approx(0.81)
         assert t1.monoisotopic_mz == pytest.approx(487.26)
         assert t1.charge == 2
         assert t1.description == ""
@@ -41,8 +41,8 @@ def test_prm_targets():
         # Target 2
         t2 = prm.targets[2]
         assert t2.monoisotopic_mz == pytest.approx(644.82)
-        assert t2.time == pytest.approx(864.0)
-        assert t2.one_over_k0 == pytest.approx(0.945, abs=0.001)
+        assert t2.rt == pytest.approx(864.0)
+        assert t2.ook0 == pytest.approx(0.945, abs=0.001)
         assert t2.charge == 2
 
 
@@ -169,7 +169,7 @@ def test_prm_ms1_frames():
         # First MS1 frame
         f1 = prm.ms1[1]
         assert f1.frame_id == 1
-        assert f1.time == pytest.approx(1.723616)
+        assert f1.rt == pytest.approx(1.723616)
         assert f1.polarity == "positive"
         assert f1.msms_type == 0
 
@@ -194,10 +194,10 @@ def test_prm_metadata():
 
 @SKIP_NO_DATA
 def test_prm_transition_peaks():
-    """PrmTransition.peaks returns one (N, 2) array per mobility scan."""
+    """PrmTransition.scan_peaks() returns one (N, 2) array per mobility scan."""
     with PRM(D_PATH) as prm:
         tr = next(t for t in prm.transitions[1] if t.frame_id == 275)
-        per_scan = tr.peaks
+        per_scan = tr.scan_peaks()
 
         assert isinstance(per_scan, list)
         # One entry per scan in [scan_num_begin, scan_num_end).
@@ -259,17 +259,17 @@ def test_prm_access_after_close():
         frame = prm.ms1[1]
         transition = prm.transitions[1][0]
         # Warm up: these all work while the reader is open.
-        assert len(frame.peaks) > 0
+        assert len(frame.scan_peaks()) > 0
         assert transition.raw_peaks().shape[1] == 3
 
     with pytest.raises(RuntimeError, match="closed"):
-        _ = frame.peaks
+        _ = frame.scan_peaks()
 
     with pytest.raises(RuntimeError, match="closed"):
         frame.centroid()
 
     with pytest.raises(RuntimeError, match="closed"):
-        _ = transition.peaks
+        _ = transition.scan_peaks()
 
     with pytest.raises(RuntimeError, match="closed"):
         transition.centroid()

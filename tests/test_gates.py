@@ -309,7 +309,7 @@ def test_dia_ms1_gate_is_noop_on_dda(dda_td):
 def test_polygon_gate_filters_with_injected_polygon(dda_td, monkeypatch):
     # This DDA fixture stores no polygon, so inject a synthetic one spanning
     # m/z 500..800 across the full mobility range to exercise the real
-    # conversion path (td.mzToIndex / scanNumToOneOverK0) end-to-end.
+    # conversion path (td.mz_to_index / scan_num_to_ook0) end-to-end.
     from tdfpy import read_spectrum
     from tdfpy.noise import gates as gates_mod
 
@@ -336,7 +336,7 @@ def test_polygon_gate_filters_with_injected_polygon(dda_td, monkeypatch):
     assert 0 < int(mask.sum()) < mask.size
     # Every kept point's m/z must lie within the polygon's m/z band (±1 TOF
     # index of rounding slack, converted back to m/z).
-    kept_mz = np.asarray(dda_td.indexToMz(fid, spec.mz_indices[mask]))
+    kept_mz = np.asarray(dda_td.index_to_mz(fid, spec.mz_indices[mask]))
     assert kept_mz.min() > 495.0 and kept_mz.max() < 805.0
     dda_td._gate_cache.clear()  # don't leak the injected gate
 

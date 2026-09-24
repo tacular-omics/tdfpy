@@ -1,12 +1,30 @@
-from collections.abc import Iterable, Iterator
-from typing import Literal
+"""ID-indexed lookups returned by the reader properties (``dda.precursors``, ``dia.windows``, ...).
+
+Every lookup is iterable, has ``len()``, is indexed by an integer ID and has
+``get(id, default)``. A missing ID raises :class:`~tdfpy.TdfpyKeyError`.
+Lookups that map one ID to several elements (``DiaWindowLookup``,
+``PrmTransitionLookup``) return a ``tuple``. ``query`` / ``query_range``
+arguments are keyword-only.
+"""
+
+from collections.abc import Callable, Iterable, Iterator, Mapping
+from typing import Literal, overload
 
 from ._validation import choice, nonnegative
 from .elems import DiaWindow, DiaWindowGroup, Frame, Precursor, PrmTarget, PrmTransition
+from .errors import TdfpyKeyError
+
+__all__ = [
+    "DiaWindowLookup",
+    "Ms1FrameLookup",
+    "PrecursorLookup",
+    "PrmTargetLookup",
+    "PrmTransitionLookup",
+]
 
 
-def _missing_id_error(label: str, requested: int, available: Iterable[int]) -> KeyError:
-    """Build an actionable ``KeyError`` for a lookup miss.
+def _missing_id_error(label: str, requested: int, available: Iterable[int]) -> TdfpyKeyError:
+    """Build an actionable ``TdfpyKeyError`` for a lookup miss.
 
     Names the requested id and summarises what *is* available so callers (and
     LLM agents) can immediately see the valid range instead of guessing.
@@ -18,268 +36,237 @@ def _missing_id_error(label: str, requested: int, available: Iterable[int]) -> K
         detail = f"only {ids[0]} is loaded"
     else:
         detail = f"loaded range is {ids[0]}..{ids[-1]}, count={len(ids)}"
-    return KeyError(f"{label} {requested} not found ({detail}). Use .get(id, default) to avoid raising, or iterate this lookup to list what is available.")
+    return TdfpyKeyError(f"{label} {requested} not found ({detail}). Use .get(id, default) to avoid raising, or iterate this lookup to list what is available.")
 
 
-class Ms1FrameLookup[T: Frame]:
-    """
-    A class to perform lookups on MS1 frames.
-    Can be iterated over to yield all frames.
-    Can be indexed by frame ID.
-    """
-
-    def __init__(self, frames: dict[int, T]):
-        self._frames = frames
-
-    def __iter__(self) -> Iterator[T]:
-        """Iterate over all frames."""
-        return iter(self._frames.values())
-
-    def __getitem__(self, frame_id: int) -> T:
-        """Get a frame by its ID."""
-        if frame_id not in self._frames:
-            raise _missing_id_error("MS1 frame ID", frame_id, self._frames)
-        return self._frames[frame_id]
-
-    def __len__(self) -> int:
-        return len(self._frames)
-
-    def get(self, frame_id: int, default=None):
-        """Return the frame with the given ID, or `default` if not found."""
-        return self._frames.get(frame_id, default)
+def _tolerance_range(value: float | None, tolerance: float) -> tuple[float, float] | None:
+    return None if value is None else (value - tolerance, value + tolerance)
 
 
-class DiaWindowLookup:
-    """
-    A class to perform lookups on DIA windows.
-    Can be iterated over to yield all windows.
-    Can be indexed by window ID (which is equivalent to window_group).
-    """
+def _mz_range(mz: float | None, tolerance: float, tolerance_type: Literal["ppm", "da"]) -> tuple[float, float] | None:
+    choice("mz_tolerance_type", tolerance_type, ("ppm", "da"))
+    nonnegative("mz_tolerance", tolerance)
+    if mz is None:
+        return None
+    width = mz * tolerance / 1e6 if tolerance_type == "ppm" else tolerance
+    return (mz - width, mz + width)
 
-    def __init__(self, windows: list[DiaWindow]):
-        self._windows = windows
-        # Map window_group to list of windows with that group ID
-        self._window_map: dict[int, list[DiaWindow]] = {}
-        for w in windows:
-            if w.window_group not in self._window_map:
-                self._window_map[w.window_group] = []
-            self._window_map[w.window_group].append(w)
 
-    def __iter__(self) -> Iterator[DiaWindow]:
-        """Iterate over all windows."""
-        return iter(self._windows)
+def _in(value: float, bounds: tuple[float, float] | None) -> bool:
+    return bounds is None or bounds[0] <= value <= bounds[1]
 
-    def __getitem__(self, window_group_id: int) -> list[DiaWindow]:
-        """Get windows by window_group ID. Returns a list as multiple frames can share a window group."""
-        if window_group_id not in self._window_map:
-            raise _missing_id_error("DIA window group ID", window_group_id, self._window_map)
-        return self._window_map[window_group_id]
+
+class _IdLookup[V, R]:
+    """Shared ID-indexing behaviour. ``R`` is what one ID maps to."""
+
+    _label = "ID"
+
+    def __init__(self, items: Iterable[V], index: Mapping[int, R]):
+        self._items: tuple[V, ...] = tuple(items)
+        self._index: dict[int, R] = dict(index)
+
+    def __iter__(self) -> Iterator[V]:
+        """Iterate over every element."""
+        return iter(self._items)
 
     def __len__(self) -> int:
-        return len(self._windows)
+        return len(self._items)
 
-    def get(self, window_group_id: int, default=None):
-        """Return windows for the given window group ID, or `default` if not found."""
-        return self._window_map.get(window_group_id, default)
+    def __contains__(self, key: object) -> bool:
+        return key in self._index
+
+    def __getitem__(self, key: int) -> R:
+        """Look up by ID.
+
+        Raises:
+            TdfpyKeyError: If the ID is not present.
+        """
+        try:
+            return self._index[key]
+        except KeyError:
+            raise _missing_id_error(self._label, key, self._index) from None
+
+    @overload
+    def get(self, key: int) -> R | None: ...
+    @overload
+    def get[D](self, key: int, default: D) -> R | D: ...
+    def get(self, key: int, default: object = None) -> object:
+        """Return the entry for ``key``, or ``default`` (``None``) if it is not present."""
+        return self._index.get(key, default)
+
+    def ids(self) -> tuple[int, ...]:
+        """Every ID this lookup is indexed by, in insertion order."""
+        return tuple(self._index)
+
+
+def _group[V](items: Iterable[V], by: Callable[[V], int]) -> dict[int, tuple[V, ...]]:
+    grouped: dict[int, list[V]] = {}
+    for item in items:
+        grouped.setdefault(by(item), []).append(item)
+    return {k: tuple(v) for k, v in grouped.items()}
+
+
+class Ms1FrameLookup[T: Frame](_IdLookup[T, T]):
+    """MS1 frames of a reader, indexed by frame ID."""
+
+    _label = "MS1 frame ID"
+
+    def __init__(self, frames: Mapping[int, T]):
+        super().__init__(frames.values(), frames)
+
+
+class DiaWindowLookup(_IdLookup[DiaWindow, tuple[DiaWindow, ...]]):
+    """Per-frame DIA windows, indexed by window group ID.
+
+    ``lookup[group_id]`` returns a tuple: every frame that used the group
+    contributes one window per window definition.
+    """
+
+    _label = "DIA window group ID"
+
+    def __init__(self, windows: Iterable[DiaWindow]):
+        windows = tuple(windows)
+        super().__init__(windows, _group(windows, lambda w: w.window_group_id))
 
     def query_range(
         self,
-        window_group_index: int | DiaWindowGroup | None = None,
+        *,
+        window_group: int | DiaWindowGroup | None = None,
         rt_range: tuple[float, float] | None = None,
     ) -> Iterator[DiaWindow]:
-        """
-        Query windows by window group and/or retention time range.
+        """Windows in a window group and/or retention time range.
 
         Args:
-            window_group_index: Window group index or `DiaWindowGroup` to filter by.
-                If None, all window groups are included.
-            rt_range: Tuple of (min_rt, max_rt) in seconds. If None, RT filtering is skipped.
+            window_group: Window group ID, or a `DiaWindowGroup` (its
+                `window_group_id` is used). ``None`` keeps every group.
+            rt_range: ``(min_rt, max_rt)`` in seconds, inclusive. ``None`` skips RT filtering.
 
         Yields:
-            DiaWindow objects matching the criteria.
+            Matching `DiaWindow` objects.
         """
-        for window in self._windows:
-            if window_group_index is not None:
-                if isinstance(window_group_index, DiaWindowGroup):
-                    if window.window_group != window_group_index.window_group:
-                        continue
-                elif window.window_group != window_group_index:
-                    continue
-            if rt_range is not None:
-                if not (rt_range[0] <= window.rt <= rt_range[1]):
-                    continue
-            yield window
+        group_id = window_group.window_group_id if isinstance(window_group, DiaWindowGroup) else window_group
+        for window in self._items:
+            if group_id is not None and window.window_group_id != group_id:
+                continue
+            if _in(window.rt, rt_range):
+                yield window
 
     def query(
         self,
-        window_group_index: int | DiaWindowGroup | None = None,
+        *,
+        window_group: int | DiaWindowGroup | None = None,
         rt: float | None = None,
         rt_tolerance: float = 30.0,
     ) -> Iterator[DiaWindow]:
-        """
-        Query windows by retention time.
+        """Windows in a window group and/or within ``rt_tolerance`` of ``rt``.
 
         Args:
-            rt: Target retention time (in seconds). If None, RT filtering is skipped.
-            rt_tolerance: Tolerance for retention time matching (in seconds). Default is 30s.
+            window_group: Window group ID or `DiaWindowGroup`. ``None`` keeps every group.
+            rt: Target retention time in seconds. ``None`` skips RT filtering.
+            rt_tolerance: RT tolerance in seconds (default 30).
+
         Yields:
-            DiaWindow objects matching the criteria.
+            Matching `DiaWindow` objects.
+
+        Raises:
+            TdfpyError: If ``rt_tolerance`` is negative.
         """
         nonnegative("rt_tolerance", rt_tolerance)
-        rt_range: tuple[float, float] | None = None
-        if rt is not None:
-            rt_range = (rt - rt_tolerance, rt + rt_tolerance)
-        return self.query_range(window_group_index=window_group_index, rt_range=rt_range)
+        return self.query_range(window_group=window_group, rt_range=_tolerance_range(rt, rt_tolerance))
 
 
-class PrecursorLookup:
-    """
-    A class to perform lookups on precursors.
-    Can be iterated over to yield all precursors.
-    Can be indexed by precursor ID.
-    Provides methods to query by m/z and retention time.
-    """
+class PrecursorLookup(_IdLookup[Precursor, Precursor]):
+    """DDA precursors, indexed by precursor ID, with m/z and RT queries."""
 
-    def __init__(self, precursors: dict[int, Precursor]):
-        self._precursors = precursors
+    _label = "Precursor ID"
 
-    def __iter__(self) -> Iterator[Precursor]:
-        """Iterate over all precursors."""
-        return iter(self._precursors.values())
-
-    def __getitem__(self, precursor_id: int) -> Precursor:
-        """Get a precursor by its ID."""
-        if precursor_id not in self._precursors:
-            raise _missing_id_error("Precursor ID", precursor_id, self._precursors)
-        return self._precursors[precursor_id]
-
-    def __len__(self) -> int:
-        return len(self._precursors)
-
-    def get(self, precursor_id: int, default=None):
-        """Return the precursor with the given ID, or `default` if not found."""
-        return self._precursors.get(precursor_id, default)
+    def __init__(self, precursors: Mapping[int, Precursor]):
+        super().__init__(precursors.values(), precursors)
 
     def query_range(
         self,
+        *,
         mz_range: tuple[float, float] | None = None,
         rt_range: tuple[float, float] | None = None,
     ) -> Iterator[Precursor]:
-        """
-        Query precursors by m/z and/or retention time ranges.
+        """Precursors inside m/z and/or RT ranges (inclusive).
+
+        Uses `monoisotopic_mz` when known, otherwise `largest_peak_mz`.
 
         Args:
-            mz_range: Tuple of (min_mz, max_mz). If None, m/z filtering is skipped.
-            rt_range: Tuple of (min_rt, max_rt) in seconds. If None, RT filtering is skipped.
+            mz_range: ``(min_mz, max_mz)``. ``None`` skips m/z filtering.
+            rt_range: ``(min_rt, max_rt)`` in seconds. ``None`` skips RT filtering.
+
         Yields:
-            Precursor objects matching the criteria.
+            Matching `Precursor` objects.
         """
-        for precursor in self._precursors.values():
-            if mz_range is not None:
-                prec_mz = precursor.monoisotopic_mz
-                if prec_mz is None:
-                    prec_mz = precursor.largest_peak_mz
-                if not (mz_range[0] <= prec_mz <= mz_range[1]):
-                    continue
-
-            if rt_range is not None:
-                if not (rt_range[0] <= precursor.rt <= rt_range[1]):
-                    continue
-
-            yield precursor
+        for precursor in self._items:
+            mz = precursor.monoisotopic_mz if precursor.monoisotopic_mz is not None else precursor.largest_peak_mz
+            if _in(mz, mz_range) and _in(precursor.rt, rt_range):
+                yield precursor
 
     def query(
         self,
+        *,
         mz: float | None = None,
         rt: float | None = None,
         mz_tolerance: float = 20.0,
         mz_tolerance_type: Literal["ppm", "da"] = "ppm",
         rt_tolerance: float = 30.0,
     ) -> Iterator[Precursor]:
-        """
-        Query precursors by m/z and/or retention time.
+        """Precursors within a tolerance of ``mz`` and/or ``rt``.
 
         Args:
-            mz: Target m/z value. If None, m/z filtering is skipped.
-            rt: Target retention time (in seconds). If None, RT filtering is skipped.
-            mz_tolerance: Tolerance for m/z matching.
-            mz_tolerance_type: Unit for m/z tolerance ("ppm" or "da"). Default is "ppm".
-            rt_tolerance: Tolerance for retention time matching (in seconds). Default is 30s.
+            mz: Target m/z. ``None`` skips m/z filtering.
+            rt: Target retention time in seconds. ``None`` skips RT filtering.
+            mz_tolerance: m/z tolerance (default 20).
+            mz_tolerance_type: ``"ppm"`` (default) or ``"da"``.
+            rt_tolerance: RT tolerance in seconds (default 30).
 
         Yields:
-            Precursor objects matching the criteria.
+            Matching `Precursor` objects. Uses `monoisotopic_mz` when known,
+            otherwise `largest_peak_mz`.
 
-        Note:
-            Uses `monoisotopic_mz` if available, otherwise `largest_peak_mz`.
+        Raises:
+            TdfpyError: If a tolerance is negative or ``mz_tolerance_type`` is unknown.
         """
-        choice("mz_tolerance_type", mz_tolerance_type, ("ppm", "da"))
-        nonnegative("mz_tolerance", mz_tolerance)
-        mz_range: tuple[float, float] | None = None
-        if mz is not None:
-            if mz_tolerance_type == "ppm":
-                mz_range = (mz - mz * mz_tolerance / 1e6, mz + mz * mz_tolerance / 1e6)
-            else:  # da
-                mz_range = (mz - mz_tolerance, mz + mz_tolerance)
-
+        mz_range = _mz_range(mz, mz_tolerance, mz_tolerance_type)
         nonnegative("rt_tolerance", rt_tolerance)
-        rt_range: tuple[float, float] | None = None
-        if rt is not None:
-            rt_range = (rt - rt_tolerance, rt + rt_tolerance)
-
-        return self.query_range(mz_range=mz_range, rt_range=rt_range)
+        return self.query_range(mz_range=mz_range, rt_range=_tolerance_range(rt, rt_tolerance))
 
 
-class PrmTargetLookup:
-    """Lookup for PRM targets by target ID, m/z, RT, and 1/K0."""
+class PrmTargetLookup(_IdLookup[PrmTarget, PrmTarget]):
+    """PRM targets, indexed by target ID, with m/z, RT and 1/K0 queries."""
 
-    def __init__(self, targets: dict[int, PrmTarget]):
-        self._targets = targets
+    _label = "PRM target ID"
 
-    def __iter__(self) -> Iterator[PrmTarget]:
-        return iter(self._targets.values())
-
-    def __getitem__(self, target_id: int) -> PrmTarget:
-        if target_id not in self._targets:
-            raise _missing_id_error("PRM target ID", target_id, self._targets)
-        return self._targets[target_id]
-
-    def __len__(self) -> int:
-        return len(self._targets)
-
-    def get(self, target_id: int, default=None):
-        """Return the target with the given ID, or `default` if not found."""
-        return self._targets.get(target_id, default)
+    def __init__(self, targets: Mapping[int, PrmTarget]):
+        super().__init__(targets.values(), targets)
 
     def query_range(
         self,
+        *,
         mz_range: tuple[float, float] | None = None,
         rt_range: tuple[float, float] | None = None,
         ook0_range: tuple[float, float] | None = None,
     ) -> Iterator[PrmTarget]:
-        """Query targets by m/z, RT, and/or 1/K0 ranges.
+        """Targets inside m/z, RT and/or 1/K0 ranges (inclusive).
 
         Args:
-            mz_range: Tuple of (min_mz, max_mz). If None, m/z filtering is skipped.
-            rt_range: Tuple of (min_rt, max_rt) in seconds. If None, RT filtering is skipped.
-            ook0_range: Tuple of (min_ook0, max_ook0). If None, 1/K0 filtering is skipped.
+            mz_range: ``(min_mz, max_mz)``. ``None`` skips m/z filtering.
+            rt_range: ``(min_rt, max_rt)`` in seconds. ``None`` skips RT filtering.
+            ook0_range: ``(min_ook0, max_ook0)``. ``None`` skips 1/K0 filtering.
 
         Yields:
-            PrmTarget objects matching the criteria.
+            Matching `PrmTarget` objects.
         """
-        for target in self._targets.values():
-            if mz_range is not None:
-                if not (mz_range[0] <= target.monoisotopic_mz <= mz_range[1]):
-                    continue
-            if rt_range is not None:
-                if not (rt_range[0] <= target.time <= rt_range[1]):
-                    continue
-            if ook0_range is not None:
-                if not (ook0_range[0] <= target.one_over_k0 <= ook0_range[1]):
-                    continue
-            yield target
+        for target in self._items:
+            if _in(target.monoisotopic_mz, mz_range) and _in(target.rt, rt_range) and _in(target.ook0, ook0_range):
+                yield target
 
     def query(
         self,
+        *,
         mz: float | None = None,
         rt: float | None = None,
         ook0: float | None = None,
@@ -288,115 +275,86 @@ class PrmTargetLookup:
         rt_tolerance: float = 30.0,
         ook0_tolerance: float = 0.05,
     ) -> Iterator[PrmTarget]:
-        """Query targets by m/z, RT, and/or 1/K0 with tolerances.
+        """Targets within a tolerance of ``mz``, ``rt`` and/or ``ook0``.
 
         Args:
-            mz: Target m/z value. If None, m/z filtering is skipped.
-            rt: Target retention time (in seconds). If None, RT filtering is skipped.
-            ook0: Target 1/K0 value. If None, 1/K0 filtering is skipped.
-            mz_tolerance: Tolerance for m/z matching.
-            mz_tolerance_type: Unit for m/z tolerance ("ppm" or "da"). Default is "ppm".
-            rt_tolerance: Tolerance for retention time matching (in seconds). Default is 30s.
-            ook0_tolerance: Absolute tolerance for 1/K0 matching. Default is 0.05.
+            mz: Target m/z. ``None`` skips m/z filtering.
+            rt: Target retention time in seconds. ``None`` skips RT filtering.
+            ook0: Target 1/K0. ``None`` skips 1/K0 filtering.
+            mz_tolerance: m/z tolerance (default 20).
+            mz_tolerance_type: ``"ppm"`` (default) or ``"da"``.
+            rt_tolerance: RT tolerance in seconds (default 30).
+            ook0_tolerance: Absolute 1/K0 tolerance (default 0.05).
 
         Yields:
-            PrmTarget objects matching the criteria.
+            Matching `PrmTarget` objects.
+
+        Raises:
+            TdfpyError: If a tolerance is negative or ``mz_tolerance_type`` is unknown.
         """
-        choice("mz_tolerance_type", mz_tolerance_type, ("ppm", "da"))
-        nonnegative("mz_tolerance", mz_tolerance)
-        mz_range: tuple[float, float] | None = None
-        if mz is not None:
-            if mz_tolerance_type == "ppm":
-                mz_range = (mz - mz * mz_tolerance / 1e6, mz + mz * mz_tolerance / 1e6)
-            else:
-                mz_range = (mz - mz_tolerance, mz + mz_tolerance)
-
+        mz_range = _mz_range(mz, mz_tolerance, mz_tolerance_type)
         nonnegative("rt_tolerance", rt_tolerance)
-        rt_range: tuple[float, float] | None = None
-        if rt is not None:
-            rt_range = (rt - rt_tolerance, rt + rt_tolerance)
-
         nonnegative("ook0_tolerance", ook0_tolerance)
-        ook0_range: tuple[float, float] | None = None
-        if ook0 is not None:
-            ook0_range = (ook0 - ook0_tolerance, ook0 + ook0_tolerance)
+        return self.query_range(
+            mz_range=mz_range,
+            rt_range=_tolerance_range(rt, rt_tolerance),
+            ook0_range=_tolerance_range(ook0, ook0_tolerance),
+        )
 
-        return self.query_range(mz_range=mz_range, rt_range=rt_range, ook0_range=ook0_range)
 
+class PrmTransitionLookup(_IdLookup[PrmTransition, tuple[PrmTransition, ...]]):
+    """PRM transitions, indexed by target ID.
 
-class PrmTransitionLookup:
-    """Lookup for PRM transitions by target ID and RT."""
+    ``lookup[target_id]`` returns a tuple: a target is acquired in many frames.
+    """
 
-    def __init__(self, transitions: list[PrmTransition]):
-        self._transitions = transitions
-        self._target_map: dict[int, list[PrmTransition]] = {}
-        for t in transitions:
-            tid = t.target.target_id
-            if tid not in self._target_map:
-                self._target_map[tid] = []
-            self._target_map[tid].append(t)
+    _label = "PRM transition target ID"
 
-    def __iter__(self) -> Iterator[PrmTransition]:
-        return iter(self._transitions)
-
-    def __getitem__(self, target_id: int) -> list[PrmTransition]:
-        """Get transitions by target ID. Returns a list as multiple frames target the same ion."""
-        if target_id not in self._target_map:
-            raise _missing_id_error("PRM transition target ID", target_id, self._target_map)
-        return self._target_map[target_id]
-
-    def __len__(self) -> int:
-        return len(self._transitions)
-
-    def get(self, target_id: int, default=None):
-        """Return transitions for the given target ID, or `default` if not found."""
-        return self._target_map.get(target_id, default)
+    def __init__(self, transitions: Iterable[PrmTransition]):
+        transitions = tuple(transitions)
+        super().__init__(transitions, _group(transitions, lambda t: t.target.target_id))
 
     def query_range(
         self,
+        *,
         target: int | PrmTarget | None = None,
         rt_range: tuple[float, float] | None = None,
     ) -> Iterator[PrmTransition]:
-        """Query transitions by target and/or retention time range.
+        """Transitions of one target and/or inside an RT range.
 
         Args:
-            target: Target ID or PrmTarget to filter by. If None, all targets are included.
-            rt_range: Tuple of (min_rt, max_rt) in seconds. If None, RT filtering is skipped.
+            target: Target ID or `PrmTarget`. ``None`` keeps every target.
+            rt_range: ``(min_rt, max_rt)`` in seconds. ``None`` skips RT filtering.
 
         Yields:
-            PrmTransition objects matching the criteria.
+            Matching `PrmTransition` objects.
         """
-        target_id: int | None = None
-        if target is not None:
-            target_id = target.target_id if isinstance(target, PrmTarget) else target
-
-        for transition in self._transitions:
-            if target_id is not None:
-                if transition.target.target_id != target_id:
-                    continue
-            if rt_range is not None:
-                if not (rt_range[0] <= transition.rt <= rt_range[1]):
-                    continue
-            yield transition
+        target_id = target.target_id if isinstance(target, PrmTarget) else target
+        for transition in self._items:
+            if target_id is not None and transition.target.target_id != target_id:
+                continue
+            if _in(transition.rt, rt_range):
+                yield transition
 
     def query(
         self,
+        *,
         target: int | PrmTarget | None = None,
         rt: float | None = None,
         rt_tolerance: float = 30.0,
     ) -> Iterator[PrmTransition]:
-        """Query transitions by target and/or retention time.
+        """Transitions of one target and/or within ``rt_tolerance`` of ``rt``.
 
         Args:
-            target: Target ID or PrmTarget to filter by. If None, all targets are included.
-            rt: Target retention time (in seconds). If None, RT filtering is skipped.
-            rt_tolerance: Tolerance for retention time matching (in seconds). Default is 30s.
+            target: Target ID or `PrmTarget`. ``None`` keeps every target.
+            rt: Target retention time in seconds. ``None`` skips RT filtering.
+            rt_tolerance: RT tolerance in seconds (default 30).
 
         Yields:
-            PrmTransition objects matching the criteria.
+            Matching `PrmTransition` objects.
+
+        Raises:
+            TdfpyError: If ``rt_tolerance`` is negative.
         """
         nonnegative("rt_tolerance", rt_tolerance)
-        rt_range: tuple[float, float] | None = None
-        if rt is not None:
-            rt_range = (rt - rt_tolerance, rt + rt_tolerance)
-        return self.query_range(target=target, rt_range=rt_range)
+        return self.query_range(target=target, rt_range=_tolerance_range(rt, rt_tolerance))

@@ -308,7 +308,7 @@ def read_selection_polygon(td: TimsData, frame_id: int | None = None) -> tuple[n
     if frame_id is None:
         candidates = list(groups.values())
     else:
-        candidates = [groups.get(td.frame_metadata(frame_id).property_group, {})]
+        candidates = [groups.get(td.frame_metadata(frame_id).property_group_id, {})]
     for values in candidates:
         mz_blob, im_blob = values.get(mz_id), values.get(im_id)
         if mz_blob is None or im_blob is None:
@@ -392,7 +392,7 @@ class SelectionPolygonGate(NoiseFilter):
             self.mz_pad,
             self.im_pad,
             td.calibration_key(frame_id),
-            td.frame_metadata(frame_id).property_group,
+            td.frame_metadata(frame_id).property_group_id,
         )
         gate = _cached(td, key, lambda: _build_polygon_gate(td, frame_id, num_scans, self))
         if gate is None:
@@ -464,13 +464,13 @@ def _build_polygon_gate(td: TimsData, frame_id: int, num_scans: int, params: Sel
         return None
     poly_mz, poly_im = poly
     ook0_per_scan = np.asarray(
-        td.scanNumToOneOverK0(frame_id, np.arange(num_scans))  # type: ignore[call-arg]
+        td.scan_num_to_ook0(frame_id, np.arange(num_scans))  # type: ignore[call-arg]
     )
     return build_polygon_intervals(
         poly_mz,
         poly_im,
         ook0_per_scan,
-        lambda mz: np.asarray(td.mzToIndex(frame_id, mz)),
+        lambda mz: np.asarray(td.mz_to_index(frame_id, mz)),
         mz_pad=params.mz_pad,
         im_pad=params.im_pad,
     )
@@ -484,14 +484,14 @@ def _build_dia_ms1_gate(td: TimsData, frame_id: int, num_scans: int, params: Dia
     tof_boxes: list[tuple[int, int, int, int]] = []
     for scan_begin, scan_end, mz_lo, mz_hi in boxes:
         # m/z edges -> TOF indices (monotonic increasing), padded by mz_pad Da.
-        t0, t1 = np.asarray(td.mzToIndex(frame_id, [mz_lo - params.mz_pad, mz_hi + params.mz_pad]))
+        t0, t1 = np.asarray(td.mz_to_index(frame_id, [mz_lo - params.mz_pad, mz_hi + params.mz_pad]))
         tof_lo = int(np.floor(max(min(t0, t1), 0.0)))
         tof_hi = int(np.ceil(max(max(t0, t1), 0.0)))
 
         # Scan range -> 1/K0 (monotonic decreasing), padded by im_pad, back to
         # scans. min/max keep it correct regardless of conversion direction.
-        im0, im1 = np.asarray(td.scanNumToOneOverK0(frame_id, [scan_begin, scan_end]))
-        s0, s1 = np.asarray(td.oneOverK0ToScanNum(frame_id, [max(im0, im1) + params.im_pad, min(im0, im1) - params.im_pad]))
+        im0, im1 = np.asarray(td.scan_num_to_ook0(frame_id, [scan_begin, scan_end]))
+        s0, s1 = np.asarray(td.ook0_to_scan_num(frame_id, [max(im0, im1) + params.im_pad, min(im0, im1) - params.im_pad]))
         # Preserve [begin, end) after padding. Snap numerical round-trip
         # residue at integer boundaries before taking the ceiling.
         bounds = np.array([min(s0, s1), max(s0, s1)])

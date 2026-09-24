@@ -54,12 +54,12 @@ def test_metadata_mz_acq_range_upper_is_float(dda: DDA) -> None:
     assert isinstance(dda.metadata.mz_acq_range_upper, float)
 
 
-def test_metadata_one_over_k0_acq_range_lower_is_float(dda: DDA) -> None:
-    assert isinstance(dda.metadata.one_over_k0_acq_range_lower, float)
+def test_metadata_ook0_acq_range_lower_is_float(dda: DDA) -> None:
+    assert isinstance(dda.metadata.ook0_acq_range_lower, float)
 
 
-def test_metadata_one_over_k0_acq_range_upper_is_float(dda: DDA) -> None:
-    assert isinstance(dda.metadata.one_over_k0_acq_range_upper, float)
+def test_metadata_ook0_acq_range_upper_is_float(dda: DDA) -> None:
+    assert isinstance(dda.metadata.ook0_acq_range_upper, float)
 
 
 def test_metadata_acquisition_datetime_is_datetime(dda: DDA) -> None:
@@ -127,12 +127,12 @@ def test_metadata_mz_acq_range_upper_value(dda: DDA) -> None:
     assert dda.metadata.mz_acq_range_upper == pytest.approx(1700.0)
 
 
-def test_metadata_one_over_k0_acq_range_lower_value(dda: DDA) -> None:
-    assert dda.metadata.one_over_k0_acq_range_lower == pytest.approx(0.578703)
+def test_metadata_ook0_acq_range_lower_value(dda: DDA) -> None:
+    assert dda.metadata.ook0_acq_range_lower == pytest.approx(0.578703)
 
 
-def test_metadata_one_over_k0_acq_range_upper_value(dda: DDA) -> None:
-    assert dda.metadata.one_over_k0_acq_range_upper == pytest.approx(1.524471)
+def test_metadata_ook0_acq_range_upper_value(dda: DDA) -> None:
+    assert dda.metadata.ook0_acq_range_upper == pytest.approx(1.524471)
 
 
 def test_metadata_acquisition_software_value(dda: DDA) -> None:
@@ -179,21 +179,21 @@ def test_metadata_mz_acq_range_matches_individual_properties(dda: DDA) -> None:
     assert md.mz_acq_range == (md.mz_acq_range_lower, md.mz_acq_range_upper)
 
 
-def test_metadata_one_over_k0_acq_range_is_tuple(dda: DDA) -> None:
-    assert isinstance(dda.metadata.one_over_k0_acq_range, tuple)
-    assert len(dda.metadata.one_over_k0_acq_range) == 2
+def test_metadata_ook0_acq_range_is_tuple(dda: DDA) -> None:
+    assert isinstance(dda.metadata.ook0_acq_range, tuple)
+    assert len(dda.metadata.ook0_acq_range) == 2
 
 
-def test_metadata_one_over_k0_acq_range_lower_less_than_upper(dda: DDA) -> None:
-    lower, upper = dda.metadata.one_over_k0_acq_range
+def test_metadata_ook0_acq_range_lower_less_than_upper(dda: DDA) -> None:
+    lower, upper = dda.metadata.ook0_acq_range
     assert lower < upper
 
 
-def test_metadata_one_over_k0_acq_range_matches_individual_properties(dda: DDA) -> None:
+def test_metadata_ook0_acq_range_matches_individual_properties(dda: DDA) -> None:
     md = dda.metadata
-    assert md.one_over_k0_acq_range == (
-        md.one_over_k0_acq_range_lower,
-        md.one_over_k0_acq_range_upper,
+    assert md.ook0_acq_range == (
+        md.ook0_acq_range_lower,
+        md.ook0_acq_range_upper,
     )
 
 

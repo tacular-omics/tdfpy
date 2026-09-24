@@ -29,7 +29,7 @@ def test_dda_precursors():
         assert p1.charge == 2
         assert p1.scan_number == pytest.approx(162.94034090909093)
         assert p1.intensity == pytest.approx(3603.0)
-        assert p1.parent_frame == 1
+        assert p1.parent_frame_id == 1
 
         print(p1)
 
@@ -49,7 +49,7 @@ def test_dda_precursors():
         assert p_last.average_mz == pytest.approx(636.152187)
         assert p_last.charge == 2
         assert p_last.scan_number == pytest.approx(375.340166)
-        assert p_last.parent_frame == 700
+        assert p_last.parent_frame_id == 700
 
 
 def test_dda_frames():
@@ -60,7 +60,7 @@ def test_dda_frames():
         # Frame 1
         # Row 0: 1, 2400.831487, +, 8, 0, 0, 35579, 31546080, 671, 337047, ...
         f1 = next(f for f in ms1_frames if f.frame_id == 1)
-        assert f1.time == pytest.approx(2400.831487)
+        assert f1.rt == pytest.approx(2400.831487)
         assert f1.polarity == "positive"
         assert f1.scan_mode == 8
         assert f1.msms_type == 0
@@ -191,11 +191,11 @@ def test_dda_access_after_close():
         frame = dda.ms1[1]
         precursor = dda.precursors[1]
         # Warm up: these all work while the reader is open.
-        assert len(frame.peaks) > 0
+        assert len(frame.scan_peaks()) > 0
         assert precursor.peaks.shape[1] == 2
 
     with pytest.raises(RuntimeError, match="closed"):
-        _ = frame.peaks
+        _ = frame.scan_peaks()
 
     with pytest.raises(RuntimeError, match="closed"):
         frame.centroid()

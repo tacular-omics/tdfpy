@@ -210,7 +210,7 @@ def test_physical_output_selection_is_explicit_and_empty_is_valid(service):
 
 def test_calibration_conversions_match_frame_and_roundtrip_ccs(service):
     with TimsData(DATA / "example_dia.d") as td:
-        expected = td.indexToMz(1, [100, 1000])
+        expected = td.index_to_mz(1, [100, 1000])
     result = service.convert("example_dia.d", 1, "tof_to_mz", [100, 1000], None, None)
     np.testing.assert_array_equal(result["values"], expected)
     inverse = service.convert("example_dia.d", 1, "mz_to_tof", result["values"], None, None)

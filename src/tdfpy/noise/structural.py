@@ -20,7 +20,10 @@ from typing import TYPE_CHECKING, Literal, overload
 import numpy as np
 
 from .._validation import index_arrays, integer, nonnegative
+from ..errors import TdfpyError
 from . import NoiseFilter
+
+__all__ = ["HorizontalHaloFilter", "VerticalNoiseDiagnostics", "VerticalNoiseFilter"]
 
 try:
     from numba import njit as _njit
@@ -578,7 +581,7 @@ class HorizontalHaloFilter(NoiseFilter):
     def __post_init__(self) -> None:
         nonnegative("peak_fraction", self.peak_fraction)
         if self.peak_fraction > 1:
-            raise ValueError("peak_fraction must not exceed 1.")
+            raise TdfpyError("peak_fraction must not exceed 1.")
         integer("mz_idx_half_width", self.mz_idx_half_width)
         integer("scan_half_width", self.scan_half_width)
 

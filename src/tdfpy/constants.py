@@ -4,6 +4,8 @@ This module defines constants and an enumeration related to the 'tdfpy' package.
 
 from enum import StrEnum
 
+__all__ = ["PROTON_MASS", "TableNames"]
+
 PROTON_MASS = 1.007276466
 
 
