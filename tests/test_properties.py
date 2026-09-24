@@ -41,7 +41,7 @@ merge_options = st.fixed_dictionaries(
     {
         "mz_tolerance": st.sampled_from([0.0, 1.0, 10.0, 50.0]),
         "im_tolerance": st.sampled_from([0.0, 0.01, 0.05, 0.2]),
-        "im_tolerance_type": st.sampled_from(["relative", "absolute"]),
+        "im_tolerance_unit": st.sampled_from(["relative", "absolute"]),
     }
 )
 

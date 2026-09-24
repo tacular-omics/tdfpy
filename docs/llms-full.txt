@@ -1065,6 +1065,8 @@ with PRM("experiment.d") as prm:
 
 **`Polarity(*args, **kwargs)`**
 
+**`ToleranceUnit(*args, **kwargs)`**
+
 ==============================================================================
 # docs/api/lookup.md
 ==============================================================================
@@ -1100,7 +1102,7 @@ support:
   DDA precursors, indexed by precursor ID, with m/z and RT queries.
   - `.get(key: int, default: object = None) -> object`: Return the entry for ``key``, or ``default`` (``None``) if it is not present.
   - `.ids() -> tuple[int, ...]`: Every ID this lookup is indexed by, in insertion order.
-  - `.query(*, precursor_mz: float | None = None, rt: float | None = None, mz_tolerance: float = 20.0, mz_tolerance_type: Literal['ppm', 'da'] = 'ppm', rt_tolerance: float = 30.0) -> Iterator[Precursor]`: Precursors within a tolerance of ``precursor_mz`` and/or ``rt``.
+  - `.query(*, precursor_mz: float | None = None, rt: float | None = None, mz_tolerance: float = 20.0, mz_tolerance_unit: Literal['da', 'ppm'] = 'ppm', rt_tolerance: float = 30.0) -> Iterator[Precursor]`: Precursors within a tolerance of ``precursor_mz`` and/or ``rt``.
   - `.query_range(*, precursor_mz_range: tuple[float, float] | None = None, rt_range: tuple[float, float] | None = None) -> Iterator[Precursor]`: Precursors inside precursor m/z and/or RT ranges (inclusive).
 
 ---
@@ -1184,7 +1186,7 @@ with PRM("experiment.d") as prm:
   PRM targets, indexed by target ID, with m/z, RT and 1/K0 queries.
   - `.get(key: int, default: object = None) -> object`: Return the entry for ``key``, or ``default`` (``None``) if it is not present.
   - `.ids() -> tuple[int, ...]`: Every ID this lookup is indexed by, in insertion order.
-  - `.query(*, precursor_mz: float | None = None, rt: float | None = None, ook0: float | None = None, mz_tolerance: float = 20.0, mz_tolerance_type: Literal['ppm', 'da'] = 'ppm', rt_tolerance: float = 30.0, ook0_tolerance: float = 0.05) -> Iterator[PrmTarget]`: Targets within a tolerance of ``precursor_mz``, ``rt`` and/or ``ook0``.
+  - `.query(*, precursor_mz: float | None = None, rt: float | None = None, ook0: float | None = None, mz_tolerance: float = 20.0, mz_tolerance_unit: Literal['da', 'ppm'] = 'ppm', rt_tolerance: float = 30.0, ook0_tolerance: float = 0.05) -> Iterator[PrmTarget]`: Targets within a tolerance of ``precursor_mz``, ``rt`` and/or ``ook0``.
   - `.query_range(*, precursor_mz_range: tuple[float, float] | None = None, rt_range: tuple[float, float] | None = None, ook0_range: tuple[float, float] | None = None) -> Iterator[PrmTarget]`: Targets inside precursor m/z, RT and/or 1/K0 ranges (inclusive).
 
 ### PRM Transition Lookup
@@ -1336,7 +1338,7 @@ returns the raw peaks without centroiding.
 
 ## `get_mobility_collapsed_spectrum`
 
-**`get_mobility_collapsed_spectrum(td: TimsData, scan_ranges: Sequence[tuple[int, int, int]], *, mz_tolerance: float = 30.0, mz_tolerance_type: Literal['ppm', 'da'] = 'ppm', use_numba: bool = True) -> np.ndarray`**
+**`get_mobility_collapsed_spectrum(td: TimsData, scan_ranges: Sequence[tuple[int, int, int]], *, mz_tolerance: float = 30.0, mz_tolerance_unit: Literal['da', 'ppm'] = 'ppm', use_numba: bool = True) -> np.ndarray`**
   Centroid a set of scan ranges with the mobility dimension summed away.
 
 ---
@@ -1351,9 +1353,9 @@ are marked as used and skipped in subsequent iterations.
 | Parameter | Default | Notes |
 |---|---|---|
 | `mz_tolerance` | `8.0` | Width of the m/z matching window |
-| `mz_tolerance_type` | `"ppm"` | `"ppm"` or `"da"` |
+| `mz_tolerance_unit` | `"ppm"` | `"ppm"` or `"da"` |
 | `im_tolerance` | `0.1` | Width of the ion mobility window |
-| `im_tolerance_type` | `"relative"` | `"relative"` (fraction of 1/K0) or `"absolute"` |
+| `im_tolerance_unit` | `"relative"` | `"relative"` (fraction of 1/K0) or `"absolute"` |
 | `min_peaks` | `3` | Raw peaks required to form a centroid; set to `0` or `1` to keep all |
 | `max_peaks` | `None` | Cap on output peaks by raw seed intensity, not final summed intensity |
 | `peak_noise_filter` | `False` | Suppress weak satellite points around each centroid so they cannot seed their own centroids |
@@ -1409,7 +1411,7 @@ Use intensity-based `noise=` filters only if you have a calibrated
 threshold or a method validated for your acquisition; always verify
 against `noise=None` first.
 
-**`merge_peaks(mz_array: np.ndarray, intensity_array: np.ndarray, ion_mobility_array: np.ndarray, mz_tolerance: float = 8.0, mz_tolerance_type: Literal['ppm', 'da'] = 'ppm', im_tolerance: float = 0.1, im_tolerance_type: Literal['relative', 'absolute'] = 'relative', min_peaks: int = 3, max_peaks: int | None = None, peak_noise_filter: bool = False, peak_noise_window: float = 0.1, peak_noise_end_fraction: float = 0.1, use_numba: bool = True) -> np.ndarray`**
+**`merge_peaks(mz_array: np.ndarray, intensity_array: np.ndarray, ion_mobility_array: np.ndarray, mz_tolerance: float = 8.0, mz_tolerance_unit: Literal['da', 'ppm'] = 'ppm', im_tolerance: float = 0.1, im_tolerance_unit: Literal['relative', 'absolute'] = 'relative', min_peaks: int = 3, max_peaks: int | None = None, peak_noise_filter: bool = False, peak_noise_window: float = 0.1, peak_noise_end_fraction: float = 0.1, use_numba: bool = True) -> np.ndarray`**
   Centroid profile-like peaks using m/z and ion mobility tolerances.
 
 Raw-spectrum CCS conversion assumes charge +1. Use a known precursor charge
@@ -1559,7 +1561,7 @@ via intensity-ordered region growing.
 
 **dataclass `MergePeaksCentroider`** (subclass of Centroider)
   Greedy m/z-tolerance centroider — wraps :func:`tdfpy.merge_peaks`.
-  - fields: `mz_tolerance: float` = 8.0, `mz_tolerance_type: Literal['ppm', 'da']` = 'ppm', `im_tolerance: float` = 0.1, `im_tolerance_type: Literal['relative', 'absolute']` = 'relative', `min_peaks: int` = 3, `max_peaks: int | None` = None, `peak_noise_filter: bool` = False, `peak_noise_window: float` = 0.1, `peak_noise_end_fraction: float` = 0.1, `use_numba: bool` = True
+  - fields: `mz_tolerance: float` = 8.0, `mz_tolerance_unit: ToleranceUnit` = 'ppm', `im_tolerance: float` = 0.1, `im_tolerance_unit: Literal['relative', 'absolute']` = 'relative', `min_peaks: int` = 3, `max_peaks: int | None` = None, `peak_noise_filter: bool` = False, `peak_noise_window: float` = 0.1, `peak_noise_end_fraction: float` = 0.1, `use_numba: bool` = True
   - `.__call__(spectrum: 'RawSpectrum', td: 'TimsData', frame_id: 'int', *, ion_mobility_type: "Literal['ook0', 'ccs', 'voltage']" = 'ook0') -> 'np.ndarray'`: Call self as a function.
   - inherits all fields and methods of Centroider
 

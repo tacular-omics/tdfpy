@@ -6,7 +6,8 @@ from enum import StrEnum
 
 __all__ = ["PROTON_MASS", "TableNames"]
 
-PROTON_MASS = 1.007276466
+PROTON_MASS = 1.007276466621
+"""Proton mass in Da (CODATA 2018), the same value as ``tacular.constants.PROTON_MASS``."""
 
 
 class TableNames(StrEnum):

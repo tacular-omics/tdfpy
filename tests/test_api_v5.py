@@ -577,10 +577,10 @@ def _precursor_mz(p):
     rt=st.one_of(st.none(), st.floats(0.0, 4000.0)),
     mz_tol=st.floats(0.0, 1e5),
     rt_tol=st.floats(0.0, 500.0),
-    tol_type=st.sampled_from(["ppm", "da"]),
+    tol_type=st.sampled_from(["da", "ppm"]),
 )
 def test_precursor_query_matches_brute_force(dda_precursors, mz, rt, mz_tol, rt_tol, tol_type):
-    got = list(dda_precursors.query(precursor_mz=mz, rt=rt, mz_tolerance=mz_tol, mz_tolerance_type=tol_type, rt_tolerance=rt_tol))
+    got = list(dda_precursors.query(precursor_mz=mz, rt=rt, mz_tolerance=mz_tol, mz_tolerance_unit=tol_type, rt_tolerance=rt_tol))
     width = None if mz is None else (mz * mz_tol / 1e6 if tol_type == "ppm" else mz_tol)
     expected = [
         p for p in dda_precursors if (mz is None or mz - width <= _precursor_mz(p) <= mz + width) and (rt is None or rt - rt_tol <= p.rt <= rt + rt_tol)

@@ -62,7 +62,7 @@ def test_prm_target_lookup_by_id():
 def test_prm_target_query_by_mz():
     """Test querying PRM targets by m/z."""
     with PRM(D_PATH) as prm:
-        results = list(prm.targets.query(precursor_mz=487.26, mz_tolerance=0.01, mz_tolerance_type="da"))
+        results = list(prm.targets.query(precursor_mz=487.26, mz_tolerance=0.01, mz_tolerance_unit="da"))
         assert len(results) >= 1
         assert any(t.target_id == 1 for t in results)
 

@@ -13,11 +13,12 @@ Argument names follow one rule: a ``(low, high)`` tuple is ``*_range``
 """
 
 from collections.abc import Callable, Iterable, Iterator, Mapping
-from typing import Literal, overload
+from typing import overload
 
 from ._validation import choice, nonnegative
 from .elems import DiaWindow, DiaWindowGroup, Frame, Precursor, PrmTarget, PrmTransition
 from .errors import TdfpyKeyError
+from .types import ToleranceUnit
 
 __all__ = [
     "DiaWindowLookup",
@@ -48,12 +49,12 @@ def _tolerance_range(value: float | None, tolerance: float) -> tuple[float, floa
     return None if value is None else (value - tolerance, value + tolerance)
 
 
-def _mz_range(mz: float | None, tolerance: float, tolerance_type: Literal["ppm", "da"]) -> tuple[float, float] | None:
-    choice("mz_tolerance_type", tolerance_type, ("ppm", "da"))
+def _mz_range(mz: float | None, tolerance: float, tolerance_unit: ToleranceUnit) -> tuple[float, float] | None:
+    choice("mz_tolerance_unit", tolerance_unit, ("da", "ppm"))
     nonnegative("mz_tolerance", tolerance)
     if mz is None:
         return None
-    width = mz * tolerance / 1e6 if tolerance_type == "ppm" else tolerance
+    width = mz * tolerance / 1e6 if tolerance_unit == "ppm" else tolerance
     return (mz - width, mz + width)
 
 
@@ -243,7 +244,7 @@ class PrecursorLookup(_IdLookup[Precursor, Precursor]):
         precursor_mz: float | None = None,
         rt: float | None = None,
         mz_tolerance: float = 20.0,
-        mz_tolerance_type: Literal["ppm", "da"] = "ppm",
+        mz_tolerance_unit: ToleranceUnit = "ppm",
         rt_tolerance: float = 30.0,
     ) -> Iterator[Precursor]:
         """Precursors within a tolerance of ``precursor_mz`` and/or ``rt``.
@@ -252,16 +253,16 @@ class PrecursorLookup(_IdLookup[Precursor, Precursor]):
             precursor_mz: Target precursor m/z. ``None`` skips m/z filtering.
             rt: Target retention time in seconds. ``None`` skips RT filtering.
             mz_tolerance: m/z tolerance (default 20).
-            mz_tolerance_type: ``"ppm"`` (default) or ``"da"``.
+            mz_tolerance_unit: ``"ppm"`` (default) or ``"da"``.
             rt_tolerance: RT tolerance in seconds (default 30).
 
         Yields:
             Matching `Precursor` objects, matched on :attr:`Precursor.precursor_mz`.
 
         Raises:
-            TdfpyError: If a tolerance is negative or ``mz_tolerance_type`` is unknown.
+            TdfpyError: If a tolerance is negative or ``mz_tolerance_unit`` is unknown.
         """
-        precursor_mz_range = _mz_range(precursor_mz, mz_tolerance, mz_tolerance_type)
+        precursor_mz_range = _mz_range(precursor_mz, mz_tolerance, mz_tolerance_unit)
         nonnegative("rt_tolerance", rt_tolerance)
         return self.query_range(precursor_mz_range=precursor_mz_range, rt_range=_tolerance_range(rt, rt_tolerance))
 
@@ -302,7 +303,7 @@ class PrmTargetLookup(_IdLookup[PrmTarget, PrmTarget]):
         rt: float | None = None,
         ook0: float | None = None,
         mz_tolerance: float = 20.0,
-        mz_tolerance_type: Literal["ppm", "da"] = "ppm",
+        mz_tolerance_unit: ToleranceUnit = "ppm",
         rt_tolerance: float = 30.0,
         ook0_tolerance: float = 0.05,
     ) -> Iterator[PrmTarget]:
@@ -313,7 +314,7 @@ class PrmTargetLookup(_IdLookup[PrmTarget, PrmTarget]):
             rt: Target retention time in seconds. ``None`` skips RT filtering.
             ook0: Target 1/K0. ``None`` skips 1/K0 filtering.
             mz_tolerance: m/z tolerance (default 20).
-            mz_tolerance_type: ``"ppm"`` (default) or ``"da"``.
+            mz_tolerance_unit: ``"ppm"`` (default) or ``"da"``.
             rt_tolerance: RT tolerance in seconds (default 30).
             ook0_tolerance: Absolute 1/K0 tolerance (default 0.05).
 
@@ -321,9 +322,9 @@ class PrmTargetLookup(_IdLookup[PrmTarget, PrmTarget]):
             Matching `PrmTarget` objects.
 
         Raises:
-            TdfpyError: If a tolerance is negative or ``mz_tolerance_type`` is unknown.
+            TdfpyError: If a tolerance is negative or ``mz_tolerance_unit`` is unknown.
         """
-        precursor_mz_range = _mz_range(precursor_mz, mz_tolerance, mz_tolerance_type)
+        precursor_mz_range = _mz_range(precursor_mz, mz_tolerance, mz_tolerance_unit)
         nonnegative("rt_tolerance", rt_tolerance)
         nonnegative("ook0_tolerance", ook0_tolerance)
         return self.query_range(

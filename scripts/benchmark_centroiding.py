@@ -30,9 +30,9 @@ N_FRAMES = 10
 N_REPS = 5
 PARAMS = {
     "mz_tolerance": 8.0,
-    "mz_tolerance_type": "ppm",
+    "mz_tolerance_unit": "ppm",
     "im_tolerance": 0.1,
-    "im_tolerance_type": "relative",
+    "im_tolerance_unit": "relative",
     "min_peaks": 3,
     "max_peaks": None,
 }

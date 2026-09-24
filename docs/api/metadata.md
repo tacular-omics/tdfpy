@@ -4,4 +4,6 @@
 
 ::: tdfpy.Calibration
 
-::: tdfpy.elems.Polarity
+::: tdfpy.types.Polarity
+
+::: tdfpy.types.ToleranceUnit

@@ -90,7 +90,7 @@ def test_dda_lookup_features():
         # Test Precursor Query by m/z
         # Precursor 1 has monoisotopic_mz 1292.637062
         mz_target = 1292.637062
-        results = list(dda.precursors.query(precursor_mz=mz_target, mz_tolerance=0.01, mz_tolerance_type="da"))
+        results = list(dda.precursors.query(precursor_mz=mz_target, mz_tolerance=0.01, mz_tolerance_unit="da"))
         found_ids = [p.precursor_id for p in results]
         assert 1 in found_ids
 

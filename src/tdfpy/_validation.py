@@ -53,16 +53,16 @@ def bounds(name: str, value: tuple[float, float] | None) -> None:
 
 def merge_config(
     mz_tolerance: float,
-    mz_tolerance_type: str,
+    mz_tolerance_unit: str,
     im_tolerance: float,
-    im_tolerance_type: str,
+    im_tolerance_unit: str,
     min_peaks: int,
     max_peaks: int | None,
     peak_noise_window: float,
     peak_noise_end_fraction: float,
 ) -> None:
-    choice("mz_tolerance_type", mz_tolerance_type, ("ppm", "da"))
-    choice("im_tolerance_type", im_tolerance_type, ("relative", "absolute"))
+    choice("mz_tolerance_unit", mz_tolerance_unit, ("da", "ppm"))
+    choice("im_tolerance_unit", im_tolerance_unit, ("relative", "absolute"))
     for name, value in (
         ("mz_tolerance", mz_tolerance),
         ("im_tolerance", im_tolerance),
@@ -70,7 +70,7 @@ def merge_config(
         ("peak_noise_end_fraction", peak_noise_end_fraction),
     ):
         nonnegative(name, value)
-    if mz_tolerance_type == "ppm" and mz_tolerance > 1e6:
+    if mz_tolerance_unit == "ppm" and mz_tolerance > 1e6:
         raise TdfpyError("mz_tolerance in ppm must not exceed 1,000,000.")
     if peak_noise_end_fraction > 1:
         raise TdfpyError("peak_noise_end_fraction must not exceed 1.")

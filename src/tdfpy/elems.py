@@ -41,6 +41,7 @@ from .noise import NoiseSpec
 from .pipeline import Centroider, Smooth
 from .regions import ChargeStateRegion
 from .timsdata import TimsData
+from .types import Polarity
 
 __all__ = [
     "Calibration",
@@ -73,9 +74,6 @@ class MsMsType(IntEnum):
     DIA_MS2 = 9
     PRM_MS2 = 10
 
-
-Polarity = Literal["positive", "negative"]
-"""Ion polarity of a frame. Fields typed ``Polarity | None`` are ``None`` when unknown or mixed."""
 
 _POLARITY_STRINGS: dict[str, Polarity] = {"+": "positive", "positive": "positive", "-": "negative", "negative": "negative"}
 

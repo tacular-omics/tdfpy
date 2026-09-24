@@ -71,9 +71,9 @@ def main() -> None:
             kept[:, 1],
             kept[:, 2],
             mz_tolerance=8.0,
-            mz_tolerance_type="ppm",
+            mz_tolerance_unit="ppm",
             im_tolerance=0.01,
-            im_tolerance_type="relative",
+            im_tolerance_unit="relative",
             min_peaks=3,
         )
 

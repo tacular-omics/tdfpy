@@ -447,7 +447,7 @@ def test_merge_peaks_equal_intensities_are_order_independent(mz_pool, n, levels,
     intensity = rng.integers(1, levels + 1, n).astype(np.float64) * 100.0
     im = rng.choice([0.9, 1.0, 1.02], n)
     canonical = np.lexsort((intensity, -im, mz_arr))
-    kwargs = {"mz_tolerance": 0.01, "mz_tolerance_type": "da", "min_peaks": 1}
+    kwargs = {"mz_tolerance": 0.01, "mz_tolerance_unit": "da", "min_peaks": 1}
     for use_numba in (True, False):
         results = [
             merge_peaks(mz_arr[idx], intensity[idx], im[idx], use_numba=use_numba, **kwargs) for idx in (rng.permutation(n), rng.permutation(n), canonical)
@@ -481,7 +481,7 @@ def test_merge_peaks_tie_seeds_lowest_mz_first(use_numba):
     mz = np.array([500.016, 500.000, 500.008])
     intensity = np.full(3, 100.0)
     im = np.ones(3)
-    got = merge_peaks(mz, intensity, im, mz_tolerance=0.01, mz_tolerance_type="da", min_peaks=1, use_numba=use_numba)
+    got = merge_peaks(mz, intensity, im, mz_tolerance=0.01, mz_tolerance_unit="da", min_peaks=1, use_numba=use_numba)
     got = got[np.argsort(got[:, 0])]
     np.testing.assert_allclose(got[:, 0], [500.004, 500.016])
     np.testing.assert_allclose(got[:, 1], [200.0, 100.0])

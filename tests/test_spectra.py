@@ -86,9 +86,9 @@ class TestSpectra(unittest.TestCase):
             intensity_array,
             ion_mobility_array,
             mz_tolerance=10,
-            mz_tolerance_type="ppm",
+            mz_tolerance_unit="ppm",
             im_tolerance=0.05,
-            im_tolerance_type="relative",
+            im_tolerance_unit="relative",
             min_peaks=1,
         )
 
@@ -107,7 +107,7 @@ class TestSpectra(unittest.TestCase):
                 "im": np.array([0.8, 0.8, 0.8, 0.9, 0.9]),
                 "params": {
                     "mz_tolerance": 10,
-                    "mz_tolerance_type": "ppm",
+                    "mz_tolerance_unit": "ppm",
                     "min_peaks": 1,
                 },
             },
@@ -117,7 +117,7 @@ class TestSpectra(unittest.TestCase):
                 "im": np.array([]),
                 "params": {
                     "mz_tolerance": 8,
-                    "mz_tolerance_type": "ppm",
+                    "mz_tolerance_unit": "ppm",
                     "min_peaks": 3,
                 },
             },
@@ -127,7 +127,7 @@ class TestSpectra(unittest.TestCase):
                 "im": np.array([0.8]),
                 "params": {
                     "mz_tolerance": 8,
-                    "mz_tolerance_type": "ppm",
+                    "mz_tolerance_unit": "ppm",
                     "min_peaks": 1,
                 },
             },
@@ -137,7 +137,7 @@ class TestSpectra(unittest.TestCase):
                 "im": np.array([0.8, 0.8, 0.8, 0.9]),
                 "params": {
                     "mz_tolerance": 0.01,
-                    "mz_tolerance_type": "da",
+                    "mz_tolerance_unit": "da",
                     "min_peaks": 1,
                 },
             },
@@ -147,9 +147,9 @@ class TestSpectra(unittest.TestCase):
                 "im": np.array([0.8, 0.82, 0.9, 0.95]),
                 "params": {
                     "mz_tolerance": 10,
-                    "mz_tolerance_type": "ppm",
+                    "mz_tolerance_unit": "ppm",
                     "im_tolerance": 0.03,
-                    "im_tolerance_type": "absolute",
+                    "im_tolerance_unit": "absolute",
                     "min_peaks": 1,
                 },
             },
@@ -159,7 +159,7 @@ class TestSpectra(unittest.TestCase):
                 "im": np.array([0.8, 0.8, 0.8, 0.8, 0.8]),
                 "params": {
                     "mz_tolerance": 10,
-                    "mz_tolerance_type": "ppm",
+                    "mz_tolerance_unit": "ppm",
                     "min_peaks": 1,
                     "max_peaks": 3,
                 },
@@ -173,7 +173,7 @@ class TestSpectra(unittest.TestCase):
                 "im": np.array([0.8, 0.8, 0.8, 0.8, 0.8]),
                 "params": {
                     "mz_tolerance": 10,
-                    "mz_tolerance_type": "ppm",
+                    "mz_tolerance_unit": "ppm",
                     "min_peaks": 1,
                     "max_peaks": 0,
                 },
@@ -208,9 +208,9 @@ class TestSpectra(unittest.TestCase):
             intensity,
             im,
             mz_tolerance=20,
-            mz_tolerance_type="ppm",
+            mz_tolerance_unit="ppm",
             im_tolerance=0.02,
-            im_tolerance_type="absolute",
+            im_tolerance_unit="absolute",
             min_peaks=1,
         )
         with_flag_off = merge_peaks(
@@ -218,9 +218,9 @@ class TestSpectra(unittest.TestCase):
             intensity,
             im,
             mz_tolerance=20,
-            mz_tolerance_type="ppm",
+            mz_tolerance_unit="ppm",
             im_tolerance=0.02,
-            im_tolerance_type="absolute",
+            im_tolerance_unit="absolute",
             min_peaks=1,
             peak_noise_filter=False,
         )
@@ -252,9 +252,9 @@ class TestSpectra(unittest.TestCase):
             intensity,
             im,
             mz_tolerance=5,
-            mz_tolerance_type="ppm",
+            mz_tolerance_unit="ppm",
             im_tolerance=0.001,
-            im_tolerance_type="absolute",
+            im_tolerance_unit="absolute",
             min_peaks=1,
         )
         with_filter = merge_peaks(
@@ -262,9 +262,9 @@ class TestSpectra(unittest.TestCase):
             intensity,
             im,
             mz_tolerance=5,
-            mz_tolerance_type="ppm",
+            mz_tolerance_unit="ppm",
             im_tolerance=0.001,
-            im_tolerance_type="absolute",
+            im_tolerance_unit="absolute",
             min_peaks=1,
             peak_noise_filter=True,
             peak_noise_window=0.1,
@@ -292,9 +292,9 @@ class TestSpectra(unittest.TestCase):
             intensity,
             im,
             mz_tolerance=5,
-            mz_tolerance_type="ppm",
+            mz_tolerance_unit="ppm",
             im_tolerance=0.001,
-            im_tolerance_type="absolute",
+            im_tolerance_unit="absolute",
             min_peaks=1,
             peak_noise_filter=True,
             peak_noise_window=0.1,
@@ -321,9 +321,9 @@ class TestSpectra(unittest.TestCase):
             intensity,
             im,
             mz_tolerance=5,
-            mz_tolerance_type="ppm",
+            mz_tolerance_unit="ppm",
             im_tolerance=0.001,
-            im_tolerance_type="absolute",
+            im_tolerance_unit="absolute",
             min_peaks=1,
             peak_noise_filter=True,
             peak_noise_window=0.1,
@@ -345,7 +345,7 @@ class TestSpectra(unittest.TestCase):
             intensity,
             im,
             mz_tolerance=10,
-            mz_tolerance_type="ppm",
+            mz_tolerance_unit="ppm",
             min_peaks=1,
         )
         self.assertGreaterEqual(peaks.shape[0], 1)
@@ -357,7 +357,7 @@ class TestSpectra(unittest.TestCase):
         mz = np.array([100.0, 100.0002, 100.0004])
         intensity = np.zeros(3)
         im = np.full(3, 0.8)
-        params = dict(mz_tolerance=10, mz_tolerance_type="ppm", min_peaks=1)
+        params = dict(mz_tolerance=10, mz_tolerance_unit="ppm", min_peaks=1)
         py = _merge_peaks_python(mz, intensity, im, **params)
         nb = _merge_peaks_numba(mz, intensity, im, **params)
         self.assertEqual(len(py), len(nb))
@@ -375,7 +375,7 @@ class TestSpectra(unittest.TestCase):
             intensity,
             im,
             mz_tolerance=10,
-            mz_tolerance_type="ppm",
+            mz_tolerance_unit="ppm",
             min_peaks=1,
             max_peaks=0,
         )
@@ -391,7 +391,7 @@ class TestSpectra(unittest.TestCase):
             intensity,
             im,
             mz_tolerance=10,
-            mz_tolerance_type="ppm",
+            mz_tolerance_unit="ppm",
             min_peaks=1,
             max_peaks=2,
         )
@@ -422,9 +422,9 @@ class TestSpectra(unittest.TestCase):
 
         params = dict(
             mz_tolerance=10,
-            mz_tolerance_type="ppm",
+            mz_tolerance_unit="ppm",
             im_tolerance=0.001,
-            im_tolerance_type="absolute",
+            im_tolerance_unit="absolute",
             min_peaks=1,
             peak_noise_filter=True,
             peak_noise_window=0.1,
