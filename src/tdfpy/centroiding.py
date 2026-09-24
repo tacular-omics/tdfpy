@@ -1,20 +1,20 @@
-"""
-Higher-level Pythonic API for working with MS1 spectrum data from Bruker timsTOF files.
+"""Peak extraction and centroiding for timsTOF frames.
 
-This module provides a cleaner interface using NamedTuples and convenience functions
-for reading centroided MS1 spectra with peak clustering/centroiding algorithms.
+``get_raw_peaks`` and ``get_centroided_spectrum`` return ``(N, 3)`` arrays of
+``[m/z, intensity, ion_mobility]``; ``get_mobility_collapsed_spectrum`` returns
+``(N, 2)`` ``[m/z, intensity]``; ``merge_peaks`` is the greedy centroiding
+kernel behind :class:`~tdfpy.MergePeaksCentroider`.
 """
 
 import logging
 import warnings
 from collections.abc import Sequence
-from pathlib import Path
-from typing import Any, Literal, NamedTuple
+from typing import Literal
 
 import numpy as np
-import pandas as pd
 
 from ._validation import arrays, merge_config
+from .errors import TdfpyError
 from .noise import NoiseSpec
 from .pipeline import (
     Centroider,
@@ -25,7 +25,6 @@ from .pipeline import (
     read_spectrum,
 )
 from .regions import ChargeStateRegion
-from .tdf import PandasTdf
 from .timsdata import TimsData
 
 # Try to import Numba for JIT-accelerated implementation
@@ -37,28 +36,14 @@ try:
 except ImportError:
     _HAS_NUMBA = False
 
+__all__ = [
+    "get_centroided_spectrum",
+    "get_mobility_collapsed_spectrum",
+    "get_raw_peaks",
+    "merge_peaks",
+]
+
 logger = logging.getLogger(__name__)
-
-
-def batch_iterator(input_list: list[Any], batch_size: int):
-    for i in range(0, len(input_list), batch_size):
-        yield input_list[i : i + batch_size]
-
-
-class Peak(NamedTuple):
-    """Represents a single mass spec peak.
-
-    Attributes:
-        mz: Mass-to-charge ratio
-        intensity: Peak intensity (area)
-        ion_mobility: Ion mobility value - either 1/K0 (reciprocal reduced mobility)
-                     or CCS (collision cross section in Ų) depending on the
-                     ion_mobility_type parameter used during extraction
-    """
-
-    mz: float
-    intensity: float
-    ion_mobility: float
 
 
 if _HAS_NUMBA:
@@ -341,7 +326,7 @@ def merge_peaks(
     )
     arrays(mz_array, intensity_array, ion_mobility_array)
     if np.any(mz_array < 0) or np.any(intensity_array < 0):
-        raise ValueError("m/z and intensities must be nonnegative.")
+        raise TdfpyError("m/z and intensities must be nonnegative.")
     if _HAS_NUMBA and use_numba:
         try:
             return _merge_peaks_numba(
@@ -794,7 +779,7 @@ def get_mobility_collapsed_spectrum(
     intensity_chunks = []
     for frame_id, tofs, intensities in groups.values():
         bins, sums = _sum_by_tof_index(np.concatenate(tofs), np.concatenate(intensities))
-        mz_chunks.append(td.indexToMz(frame_id, bins))
+        mz_chunks.append(td.index_to_mz(frame_id, bins))
         intensity_chunks.append(sums)
     mz_array = np.concatenate(mz_chunks)
     intensity_array = np.concatenate(intensity_chunks)
@@ -817,49 +802,3 @@ def get_mobility_collapsed_spectrum(
         use_numba=use_numba,
     )
     return np.ascontiguousarray(peaks[:, :2])
-
-
-def calculate_nmass(mz: float, charge: int) -> float:
-    """Calculate neutral mass from m/z and charge state."""
-    return mz * abs(charge) - charge * 1.007276466812  # Subtract charge * proton mass
-
-
-def get_tdf_df(td: TimsData) -> pd.DataFrame:
-    pd_tdf = PandasTdf(Path(td.analysis_directory) / "analysis.tdf")
-
-    merged_df = pd.merge(
-        pd_tdf.precursors,
-        pd_tdf.frames,
-        left_on="Parent",
-        right_on="Id",
-        suffixes=("_Precursor", "_Frame"),
-    )
-
-    pasef_frame_msms_info_df = pd_tdf.pasef_frame_msms_info.drop(["Frame"], axis=1)
-
-    # count the number of items in each group
-    pasef_frame_msms_info_df["count"] = pasef_frame_msms_info_df.groupby("Precursor")["Precursor"].transform("count")
-
-    # keep only the row for each group
-    pasef_frame_msms_info_df = pasef_frame_msms_info_df.drop_duplicates(subset="Precursor", keep="first")
-    if len(pasef_frame_msms_info_df) != len(merged_df):
-        raise ValueError(
-            f"PASEF frame MS/MS info row count ({len(pasef_frame_msms_info_df)}) "
-            f"does not match precursor/frame merge count ({len(merged_df)}). "
-            f"This indicates a data integrity issue in the .tdf file."
-        )
-
-    merged_df = pd.merge(
-        merged_df,
-        pasef_frame_msms_info_df,
-        left_on="Id_Precursor",
-        right_on="Precursor",
-        suffixes=("_Precursor", "_PasefFrameMsmsInfo"),
-    ).drop("Precursor", axis=1)
-
-    merged_df["NeutralMass"] = merged_df.apply(
-        lambda row: calculate_nmass(row["MonoisotopicMz"], row["Charge"]),
-        axis=1,
-    )
-
-    return merged_df

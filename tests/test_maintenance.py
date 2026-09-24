@@ -12,7 +12,6 @@ import numpy as np
 import pytest
 
 from tdfpy import DDA, DiaMs1WindowGate, TimsData, UnsupportedTdfError, slice_d_folder
-from tdfpy.centroiding import get_tdf_df
 from tdfpy.noise.gates import _build_dia_ms1_gate, read_dia_ms1_boxes
 from tdfpy.timsdata import _zstd_decompress
 
@@ -51,7 +50,7 @@ def test_collapsed_spectrum_uses_each_frames_calibration(tmp_path):
         for fid, begin, end in ranges:
             _, tof, intensity = td.read_frame_arrays(fid, begin, end)
             bins, sums = _sum_by_tof_index(tof, intensity)
-            chunks.append(np.column_stack([td.indexToMz(fid, bins), sums]))
+            chunks.append(np.column_stack([td.index_to_mz(fid, bins), sums]))
         raw = np.concatenate(chunks)
         # Roll up equal physical coordinates before choosing greedy seeds.
         mz, inverse = np.unique(raw[:, 0], return_inverse=True)
@@ -90,7 +89,7 @@ def test_precursor_coordinates_preserve_sqlite_precision():
         for pid, scan in reader.timsdata.conn.execute("SELECT Id, ScanNumber FROM Precursors"):
             precursor = reader.precursors[pid]
             assert precursor.scan_number == scan
-            expected = reader.timsdata.scanNumToOneOverK0(precursor.parent_frame, [scan])[0]
+            expected = reader.timsdata.scan_num_to_ook0(precursor.parent_frame_id, [scan])[0]
             assert precursor.ook0 == pytest.approx(expected, abs=1e-12)
 
 
@@ -138,18 +137,11 @@ def test_zero_padding_dia_gate_obeys_half_open_scans():
         boxes = read_dia_ms1_boxes(td)
         gate = _build_dia_ms1_gate(td, fid, ns, DiaMs1WindowGate(mz_pad=0, im_pad=0))
         for begin, end, lo, hi in boxes:
-            tof = int(round(td.mzToIndex(fid, [(lo + hi) / 2])[0]))
-            mz = td.indexToMz(fid, [tof])[0]
+            tof = int(round(td.mz_to_index(fid, [(lo + hi) / 2])[0]))
+            mz = td.index_to_mz(fid, [tof])[0]
             for scan in (begin, end - 1, end):
                 expected = any(b <= scan < e and low <= mz <= high for b, e, low, high in boxes)
                 assert gate.contains(scan, tof) == expected
-
-
-def test_metadata_helper_opens_the_database_file():
-    with TimsData("tests/data/example_dda.d") as td:
-        result = get_tdf_df(td)
-        assert len(result) == 2519
-        assert "NeutralMass" in result
 
 
 def test_gate_cache_respects_later_frame_calibration(tmp_path):
