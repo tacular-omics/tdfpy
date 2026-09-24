@@ -30,6 +30,9 @@ Breaking API cleanup for 5.0. [docs/migration.md](docs/migration.md) has the ful
 - Lookups: `ids()`, `id in lookup`, and `get(id, default)` on every lookup.
 - `__all__` in every public module; `Raises:` sections in docstrings.
 - `docs/migration.md` ("Migrating to 5.0").
+- MCP: library errors (`TdfpyError`, missing paths, bad indices, unsupported formats) reach the client as tool errors with their message, e.g. "precursor queries require DDA, but this acquisition is DIA". The SDK used to replace them with a bare "Error executing tool <name>".
+- MCP: unknown tool arguments are rejected ("Extra inputs are not permitted"). They used to be dropped silently, so the 4.x `query_frames(rt=...)` returned unfiltered rows.
+- `tests/test_mcp_vocabulary.py`: drift guard for MCP schema names, shared enums, unknown-argument rejection, record keys and error text.
 
 ### Changed
 
@@ -47,9 +50,14 @@ Breaking API cleanup for 5.0. [docs/migration.md](docs/migration.md) has the ful
 - Elements are frozen, slotted, keyword-only dataclasses. `PrmTarget` equality and hashing ignore `transitions`.
 - `DiaWindowLookup[id]` and `PrmTransitionLookup[id]` return tuples (were lists); `DIA.window_groups` returns a tuple (was a generator). `query()` / `query_range()` arguments are keyword-only, and `DiaWindowLookup`'s `window_group_index=` is now `window_group=`.
 - `MetaData` and `Calibration` are read-only `Mapping`s; the `df` field is replaced by `table`.
-- `plot_centroiding`: every argument after `frame_id` is keyword-only, including `ion_mobility_type`.
+- `plot_centroiding`: every argument after `frame_id` is keyword-only, including `mobility_type`.
 - MCP `query_dia_windows`: parameter `window_group` -> `window_group_id`.
 - MCP `query_frames` and the entity tools (`query_precursors`, `query_dia_windows`, `query_prm_targets`, `query_prm_transitions`): range parameter `rt` -> `rt_range`; `mz` -> `precursor_mz_range` on the precursor and PRM-target tools and `isolation_mz_range` on the DIA-window and PRM-transition tools.
+- `ion_mobility_type` -> `mobility_type`, no alias, on every function and method that takes it (`get_raw_peaks`, `get_centroided_spectrum`, `convert`, `raw_peaks()` / `centroid()` on every element, `iter_window_spectra`, the `Centroider` call, `plot_centroiding`), matching mzmlpy's MCP `mobility_type`. Values are unchanged (`"ook0"`, `"ccs"`, `"voltage"`).
+- MCP `Processing.ion_mobility_type` -> `mobility_type` (values `"ook0"`, `"voltage"`) in `preview_spectrum`, `export_spectrum` and `export_window_batch`.
+- MCP `query_frames` rows use `Frame` attribute names instead of raw `Frames` SQL columns: `Id` -> `frame_id`, `Time` -> `rt`, `Polarity` `"+"`/`"-"` -> `polarity` `"positive"`/`"negative"`, `ScanMode` -> `scan_mode`, `MsMsType` -> `msms_type`, `TimsId` -> `tims_id`, `MaxIntensity` -> `base_peak_intensity`, `SummedIntensities` -> `total_ion_current`, `NumScans` -> `num_scans`, `NumPeaks` -> `num_peaks`, `MzCalibration` -> `mz_calibration_id`, `T1`/`T2` -> `t1`/`t2`, `TimsCalibration` -> `tims_calibration_id`, `PropertyGroup` -> `property_group_id`, `AccumulationTime` -> `accumulation_time`, `RampTime` -> `ramp_time`; each row adds `ms_level` and a frame `selection`. The page is `{items, total, offset, next_offset}` like the other query tools (was `{table, columns, offset, rows, next_offset}`). `read_metadata_table` still returns raw columns.
+- MCP frame metadata in `convert_coordinates` (`frame`) and in spectrum/export metadata (`frames`) reports `polarity` as `"positive"`/`"negative"` (was `"+"`/`"-"`).
+- MCP `server_info` units key `retention_time` -> `rt`.
 - Reader vocabulary shared with mzmlpy, renamed with no alias: `mz_range` -> `isolation_mz_range` on `PasefFrameMsmsInfo`, `DiaWindow`, `PrmTransition` and `Precursor`; `mz_begin` / `mz_end` removed (use `isolation_mz_range`); `PrmTarget.monoisotopic_mz` -> `precursor_mz`; `Frame.summed_intensities` -> `total_ion_current`; `Frame.max_intensity` -> `base_peak_intensity`.
 - `Polarity` is `Literal["positive", "negative"]`, not a `StrEnum`, and every `polarity` field is `Polarity | None`. A frame whose `Polarity` column is not `+` / `-` gives `None` and one `UserWarning` per file; a precursor whose PASEF frames disagree gives `None` with a warning. `FrameMetadata.polarity` stays the raw `"+"` / `"-"` string.
 - Lookup keywords (same as mzmlpy 0.10): a `(low, high)` tuple is `*_range`, a point is `rt=` / `precursor_mz=` / `ook0=` plus a tolerance. `PrecursorLookup.query_range(mz_range=)` and `PrmTargetLookup.query_range(mz_range=)` -> `precursor_mz_range=`; `PrecursorLookup.query(mz=)` and `PrmTargetLookup.query(mz=)` -> `precursor_mz=`.

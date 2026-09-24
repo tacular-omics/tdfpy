@@ -200,7 +200,7 @@ if show_raw_view and raw_pipeline is not None:
         im_range = (float(r_im.min()), float(r_im.max()))
         fig_raw = scatter_mz_im(
             r_mz, r_int, r_im,
-            ion_mobility_type=raw_ion_mobility, log_intensity=raw_log_intensity,
+            mobility_type=raw_ion_mobility, log_intensity=raw_log_intensity,
             mz_range=mz_range, im_range=im_range, exclude=exclude)
         st.plotly_chart(fig_raw, use_container_width=True)
 
@@ -231,6 +231,6 @@ if show_raw_view and raw_pipeline is not None:
                           f"{100.0 * c_int.sum() / max(r_int.sum(), 1):.1f}%")
                 fig_c = stick_spectrum_im(
                     c_mz, c_int, c_im,
-                    ion_mobility_type=raw_ion_mobility, im_range=im_range,
+                    mobility_type=raw_ion_mobility, im_range=im_range,
                     mz_range=mz_range, log_y=centroid_log_y)
                 st.plotly_chart(fig_c, use_container_width=True)

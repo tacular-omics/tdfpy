@@ -37,6 +37,11 @@ the sections after it cover changes of type or behaviour.
 | MCP tools `query_frames`, `query_precursors`, `query_dia_windows`, `query_prm_targets`, `query_prm_transitions`: `rt=` | `rt_range=` |
 | MCP `query_precursors` / `query_prm_targets`: `mz=` | `precursor_mz_range=` |
 | MCP `query_dia_windows` / `query_prm_transitions`: `mz=` | `isolation_mz_range=` (matched on the isolation center) |
+| `ion_mobility_type=` (`get_raw_peaks`, `get_centroided_spectrum`, `convert`, element `raw_peaks()` / `centroid()`, `iter_window_spectra`, `plot_centroiding`) | `mobility_type=` (same values) |
+| MCP `processing.ion_mobility_type` | `processing.mobility_type` (`"ook0"` / `"voltage"`) |
+| MCP `query_frames` rows: `Id`, `Time`, `Polarity` `"+"`, `SummedIntensities`, `MaxIntensity`, `MzCalibration`, `TimsCalibration`, `PropertyGroup`, ... under `rows` | `frame_id`, `rt`, `polarity` `"positive"`, `total_ion_current`, `base_peak_intensity`, `mz_calibration_id`, `tims_calibration_id`, `property_group_id`, ... (the `Frame` names) under `items` |
+| MCP `convert_coordinates` `frame.polarity`, export metadata `frames[].polarity`: `"+"` / `"-"` | `"positive"` / `"negative"` |
+| MCP `server_info` `units.retention_time` | `units.rt` |
 | `PasefFrameMsmsInfo.mz_range`, `DiaWindow.mz_range`, `PrmTransition.mz_range`, `Precursor.mz_range` | `.isolation_mz_range` |
 | `.mz_begin`, `.mz_end` (isolation windows) | removed: `lo, hi = w.isolation_mz_range` |
 | `PrmTarget.monoisotopic_mz` | `PrmTarget.precursor_mz` |
@@ -122,7 +127,7 @@ Every spectral accessor is now a method, so each call visibly decodes the frame:
   `df` pandas Series field is replaced by `table`, a plain mapping. Use
   `dict(metadata)` or `pd.Series(metadata)` if you need a copy.
 - **`plot_centroiding`** takes every argument after `frame_id` by keyword, including
-  `ion_mobility_type`.
+  `mobility_type`.
 - **Mobility ranges are `(low, high)`.** `ook0_range`, `ccs_range` and
   `voltage_range` (and their `*_begin` / `*_end`) on `PasefFrameMsmsInfo`,
   `Precursor`, `DiaWindow` and `PrmTransition` used to follow scan order, which is

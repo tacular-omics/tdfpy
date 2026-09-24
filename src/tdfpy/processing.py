@@ -36,7 +36,7 @@ def iter_window_spectra(
     smooth: Smooth | None = None,
     noise: NoiseSpec = None,
     centroid: Centroider | None = None,
-    ion_mobility_type: Literal["ook0", "ccs", "voltage"] = "ook0",
+    mobility_type: Literal["ook0", "ccs", "voltage"] = "ook0",
 ) -> Iterator[tuple[DiaWindow | PrmTransition, np.ndarray]]:
     """Yield (window, peaks) pairs, decoding adjacent windows' frame once.
 
@@ -59,9 +59,9 @@ def iter_window_spectra(
                 exclude=exclude,
                 smoothing=smooth,
                 noise=noise,
-                ion_mobility_type=ion_mobility_type,
+                mobility_type=mobility_type,
             )
-            peaks = cfg(prepared, td, frame_id, ion_mobility_type=ion_mobility_type) if not prepared.empty else np.empty((0, 3), dtype=np.float64)
+            peaks = cfg(prepared, td, frame_id, mobility_type=mobility_type) if not prepared.empty else np.empty((0, 3), dtype=np.float64)
             yield window, peaks
 
 

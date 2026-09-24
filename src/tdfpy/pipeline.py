@@ -243,7 +243,7 @@ def convert(
     td: TimsData,
     frame_id: int,
     *,
-    ion_mobility_type: Literal["ook0", "ccs", "voltage"] = "ook0",
+    mobility_type: Literal["ook0", "ccs", "voltage"] = "ook0",
 ) -> np.ndarray:
     """Convert integer indices to (m/z, intensity, ion_mobility).
 
@@ -252,7 +252,7 @@ def convert(
     Raw peaks do not identify a charge state. Use a known precursor charge
     with the explicit CCS conversion function for charge-specific values.
     """
-    choice("ion_mobility_type", ion_mobility_type, ("ook0", "ccs", "voltage"))
+    choice("mobility_type", mobility_type, ("ook0", "ccs", "voltage"))
     if spectrum.empty:
         return np.empty((0, 3), dtype=np.float64)
 
@@ -262,12 +262,12 @@ def convert(
     ion_mobility_array = ook0_per_scan[spectrum.scan_indices]
     mz_array = td.index_to_mz(frame_id, spectrum.mz_indices)
 
-    if ion_mobility_type == "ccs":
+    if mobility_type == "ccs":
         ion_mobility_array = np.array(
             [ook0_to_ccs(float(ook0), 1, float(mz)) for ook0, mz in zip(ion_mobility_array, mz_array, strict=True)],
             dtype=np.float64,
         )
-    elif ion_mobility_type == "voltage":
+    elif mobility_type == "voltage":
         ion_mobility_array = td.scan_num_to_voltage(frame_id, spectrum.scan_indices)
 
     return np.column_stack((mz_array, spectrum.intensities, ion_mobility_array))
@@ -295,7 +295,7 @@ class Centroider(ABC):
         td: TimsData,
         frame_id: int,
         *,
-        ion_mobility_type: Literal["ook0", "ccs", "voltage"] = "ook0",
+        mobility_type: Literal["ook0", "ccs", "voltage"] = "ook0",
     ) -> np.ndarray: ...
 
 
@@ -337,7 +337,7 @@ class MergePeaksCentroider(Centroider):
         td: TimsData,
         frame_id: int,
         *,
-        ion_mobility_type: Literal["ook0", "ccs", "voltage"] = "ook0",
+        mobility_type: Literal["ook0", "ccs", "voltage"] = "ook0",
     ) -> np.ndarray:
         from .centroiding import _tof_order, merge_peaks
 
@@ -350,7 +350,7 @@ class MergePeaksCentroider(Centroider):
             intensities=spectrum.intensities[order],
             num_scans=spectrum.num_scans,
         )
-        peaks = convert(spectrum, td, frame_id, ion_mobility_type=ion_mobility_type)
+        peaks = convert(spectrum, td, frame_id, mobility_type=mobility_type)
         if peaks.size == 0:
             return np.empty((0, 3), dtype=np.float64)
         return merge_peaks(
@@ -960,14 +960,14 @@ class WatershedCentroider(Centroider):
         td: TimsData,
         frame_id: int,
         *,
-        ion_mobility_type: Literal["ook0", "ccs", "voltage"] = "ook0",
+        mobility_type: Literal["ook0", "ccs", "voltage"] = "ook0",
     ) -> np.ndarray:
         if spectrum.empty:
             return np.empty((0, 3), dtype=np.float64)
 
         # Convert once for the final centroid coordinates only; the
         # algorithm itself runs on integer indices for stability.
-        converted = convert(spectrum, td, frame_id, ion_mobility_type=ion_mobility_type)
+        converted = convert(spectrum, td, frame_id, mobility_type=mobility_type)
         mz_values = converted[:, 0]
         im_values = converted[:, 2]
 
@@ -1040,11 +1040,11 @@ def _prepare_spectrum(
     exclude: ChargeStateRegion | None = None,
     smoothing: Smooth | None = None,
     noise: NoiseSpec = None,
-    ion_mobility_type: str = "ook0",
+    mobility_type: str = "ook0",
     observe: Callable[[str, RawSpectrum], None] | None = None,
 ) -> RawSpectrum:
     """Shared ordered processing for arrays, diagnostics, and window batches."""
-    choice("ion_mobility_type", ion_mobility_type, ("ook0", "ccs", "voltage"))
+    choice("mobility_type", mobility_type, ("ook0", "ccs", "voltage"))
     filters = coerce_filters(noise)
 
     def record(name: str) -> None:

@@ -25,7 +25,7 @@ def plot_centroiding(
     td: TimsData,
     frame_id: int,
     *,
-    ion_mobility_type: Literal["ook0", "ccs", "voltage"] = "ook0",
+    mobility_type: Literal["ook0", "ccs", "voltage"] = "ook0",
     noise: NoiseSpec = None,
     mz_range: tuple[float, float] | None = None,
     im_range: tuple[float, float] | None = None,
@@ -53,7 +53,7 @@ def plot_centroiding(
     Args:
         td: Open TimsData instance.
         frame_id: Frame to inspect.
-        ion_mobility_type: Ion mobility axis — ``"ook0"``, ``"ccs"``, or
+        mobility_type: Ion mobility axis — ``"ook0"``, ``"ccs"``, or
             ``"voltage"``.
         noise: Pre-centroiding noise filter pipeline — see
             :func:`tdfpy.noise.coerce_filters` for accepted forms.
@@ -104,7 +104,7 @@ def plot_centroiding(
         ax.text(0.5, 0.5, f"Frame {frame_id}: no peaks found", ha="center", va="center")
         return fig
 
-    raw_all = convert(spectrum, td, frame_id, ion_mobility_type=ion_mobility_type)
+    raw_all = convert(spectrum, td, frame_id, mobility_type=mobility_type)
 
     filters = coerce_filters(noise)
     if filters:
@@ -112,7 +112,7 @@ def plot_centroiding(
     else:
         kept_spectrum = spectrum
 
-    raw = convert(kept_spectrum, td, frame_id, ion_mobility_type=ion_mobility_type)
+    raw = convert(kept_spectrum, td, frame_id, mobility_type=mobility_type)
 
     # The "rejected" raw peaks are the set-difference between raw_all and raw.
     # Since both come from the same RawSpectrum in the same order, the kept
@@ -141,7 +141,7 @@ def plot_centroiding(
     if kept_spectrum.empty:
         centroided = np.empty((0, 3), dtype=np.float64)
     else:
-        centroided = centroider(kept_spectrum, td, frame_id, ion_mobility_type=ion_mobility_type)
+        centroided = centroider(kept_spectrum, td, frame_id, mobility_type=mobility_type)
 
     mz_c = centroided[:, 0]
     int_c = centroided[:, 1]
@@ -190,7 +190,7 @@ def plot_centroiding(
     )
 
     # --- layout ---------------------------------------------------------------
-    im_label = {"ook0": "1/K₀ (V·s/cm²)", "ccs": "CCS (Å²)", "voltage": "Voltage (V)"}[ion_mobility_type]
+    im_label = {"ook0": "1/K₀ (V·s/cm²)", "ccs": "CCS (Å²)", "voltage": "Voltage (V)"}[mobility_type]
 
     fig = plt.figure(figsize=(15, 11))
     gs = GridSpec(2, 2, figure=fig, hspace=0.38, wspace=0.3)

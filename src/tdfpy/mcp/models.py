@@ -51,7 +51,7 @@ class Processing(Input):
     noise: list[Operation] = Field(default_factory=list, max_length=8)
     smoothing: Operation | None = None
     exclusion: Operation | None = None
-    ion_mobility_type: Literal["ook0", "voltage"] = "ook0"
+    mobility_type: Literal["ook0", "voltage"] = "ook0"
 
     @model_validator(mode="after")
     def raw_has_no_centroider(self) -> "Processing":
