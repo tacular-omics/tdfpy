@@ -52,8 +52,10 @@ also `python -m tdfpy.mcp`).
 Distribution check (see `docs/maintenance.md`): `uv build --out-dir dist` then
 `uv run python scripts/verify_distribution.py dist`.
 
-No pre-commit hooks. CI (`.github/workflows/ci.yml`) runs ruff on `src tests scripts`,
-the same paths as `just lint` / `just format-check`.
+Pre-commit hooks (`.pre-commit-config.yaml`, install with `uvx pre-commit install`)
+run ruff check + ruff format --check on `src tests scripts` at commit time. CI
+(`.github/workflows/ci.yml`) runs ruff on the same paths as `just lint` /
+`just format-check`.
 
 ## Architecture
 
