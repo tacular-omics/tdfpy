@@ -186,13 +186,7 @@ documentation for the composable-pipeline and raw-op APIs.
 
 # AI Usage Disclosure
 
-<!-- TODO(author): confirm the AI tools and models used. This list differs from
-the peptacular paper (Opus 5 and Fable 5.1 via Claude Code; Sol and Astra via
-OpenAI Codex), and work since 3.0 was also AI-assisted. -->
-Generative AI models (Claude, Cursor, and GitHub Copilot) were used to assist
-in code development, test authoring, and manuscript drafting. All
-AI-generated content was reviewed and verified against the source code by
-the authors.
+During the preparation of this work the authors used Anthropic Claude large language models via the Claude Code interface for software-development assistance, including code, tests, and documentation, and for manuscript drafting and editing. The authors reviewed and edited all content and take full responsibility for the software and the publication.
 
 # Availability
 
@@ -204,8 +198,8 @@ MIT license.
 
 # Acknowledgements
 
-<!-- TODO(author): add funding if any. The peptacular paper lists NIH grants and
-states that the funders provided financial support only. -->
+We thank Claire Delahunty, Ph.D., for a careful reading of the manuscript. This work was supported by the U.S. National Institutes of Health (grants R01 HL165168, R01 AG077046, R01 MH100175, and R01 AG075862 to J.R.Y.) and by the Skaggs Graduate School of Chemical and Biological Sciences at The Scripps Research Institute (P.T.G.).
+
 The authors thank Bruker Daltonics for making the `libtimsdata` shared
 library available for use in open-source software development; it served as
 the reference implementation against which tdfpy's decoder and calibration
