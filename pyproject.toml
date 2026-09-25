@@ -97,6 +97,9 @@ dev = [
     "hypothesis>=6.100",
 ]
 
+[tool.pytest.ini_options]
+markers = ["slow: slower than ~2 s; skipped unless --run-slow or RUN_SLOW=1 (CI runs them)"]
+
 [tool.ruff]
 target-version = "py312"
 line-length = 160

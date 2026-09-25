@@ -18,9 +18,13 @@ install-prod:
 sync:
   uv sync
 
-# Run tests
+# Run tests (fast default: skips @pytest.mark.slow, small Hypothesis profile)
 test:
   uv run pytest tests/ -v
+
+# Run every test, slow ones included, with the CI Hypothesis profile
+test-all:
+  RUN_SLOW=1 HYPOTHESIS_PROFILE=thorough uv run pytest tests/ -v
 
 # Lint src, tests and scripts (CI runs the same)
 lint:
@@ -105,12 +109,12 @@ upgrade:
 
 # Run tests with coverage
 test-cov:
-    uv run pytest tests --cov=src/tdfpy --cov-branch --cov-report=term-missing --cov-report=html --cov-report=xml --junitxml=junit.xml
+    RUN_SLOW=1 uv run pytest tests --cov=src/tdfpy --cov-branch --cov-report=term-missing --cov-report=html --cov-report=xml --junitxml=junit.xml
 
 # Tests with coverage and a legacy-format junit.xml, for Codecov
 codecov-tests:
-    uv run pytest tests --cov --junitxml=junit.xml -o junit_family=legacy
+    RUN_SLOW=1 uv run pytest tests --cov --junitxml=junit.xml -o junit_family=legacy
 
 # Test the optional MCP interface, including its stdio protocol
 test-mcp:
-    uv run --extra mcp pytest tests/test_mcp.py -v
+    RUN_SLOW=1 uv run --extra mcp pytest tests/test_mcp.py -v

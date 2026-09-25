@@ -30,7 +30,8 @@ stdlib `compression.zstd`). Extras: `viz` (matplotlib, for `plot_centroiding`),
 
 ```bash
 just install        # uv sync (alias: install-dev, sync); install-prod = --no-dev
-just test           # uv run pytest tests/ -v   (~40 s, 500+ tests)
+just test           # uv run pytest tests/ -v   (fast default: skips slow tests, small Hypothesis profile)
+just test-all       # RUN_SLOW=1 HYPOTHESIS_PROFILE=thorough: everything, as CI runs it
 just test-cov       # pytest + branch coverage (term, html, xml, junit.xml)
 just test-mcp       # MCP interface tests, with --extra mcp
 just lint           # ruff check src/ tests/ scripts/
@@ -168,6 +169,12 @@ expensive one (greedy m/z merge). Every `*_range` (m/z, 1/K0, CCS, voltage, RT) 
   test covering both the Numba and pure-Python paths. `tests/test_docs.py` runs
   every code block in `docs/getting-started.md` and `docs/analysis.md`
   (pytest-examples), so keep those examples runnable.
+- Test speed: the default run stays under ~20 s. Use the smallest real input that
+  proves the point (an MS2 frame or an m/z band, not a whole MS1 frame). Anything
+  still over ~2 s (subprocess launches, whole-file sweeps) gets `@pytest.mark.slow`,
+  skipped unless `--run-slow`/`RUN_SLOW=1`. Hypothesis tests take their example count
+  from the profile in `tests/conftest.py` (`HYPOTHESIS_PROFILE=thorough` in CI); do not
+  set `max_examples` per test.
 
 ## Gotchas and design rules
 

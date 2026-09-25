@@ -61,7 +61,8 @@ class TestSpectra(unittest.TestCase):
 
         with timsdata.timsdata_connect(TDF_PATH) as td:
             cursor = td.conn.cursor()
-            cursor.execute("SELECT Id FROM Frames WHERE MsMsType = 0 ORDER BY Id LIMIT 1")
+            # A PASEF MS2 frame: a few thousand points instead of an MS1 frame's ~340,000.
+            cursor.execute("SELECT Id FROM Frames WHERE MsMsType = 8 ORDER BY Id LIMIT 1")
             frame_id = cursor.fetchone()[0]
 
             base = get_raw_peaks(td, frame_id)
@@ -454,6 +455,20 @@ class TestWatershedCentroiderCall(unittest.TestCase):
         cursor.execute("SELECT Id FROM Frames WHERE MsMsType = 0 ORDER BY Id LIMIT 1")
         return int(cursor.fetchone()[0])
 
+    @staticmethod
+    def _read_band(td, frame_id):
+        """The frame's lowest-TOF eighth of points: a real m/z band across all scans.
+
+        The whole ~340,000-point frame took 2-5 s per test for the same checks.
+        """
+        from tdfpy.pipeline import RawSpectrum, read_spectrum
+
+        spectrum = read_spectrum(td, frame_id)
+        if spectrum.empty:
+            return spectrum
+        keep = spectrum.mz_indices <= np.quantile(spectrum.mz_indices, 0.125)
+        return RawSpectrum(spectrum.scan_indices[keep], spectrum.mz_indices[keep], spectrum.intensities[keep], spectrum.num_scans)
+
     def test_output_intensity_is_the_raw_sum_when_smoothing(self):
         """Smoothing reorders the growth; it must not rewrite the intensities.
 
@@ -462,11 +477,11 @@ class TestWatershedCentroiderCall(unittest.TestCase):
         rescaling everyone's intensities whenever the (default) smoothing
         half-widths were nonzero.
         """
-        from tdfpy.pipeline import WatershedCentroider, read_spectrum
+        from tdfpy.pipeline import WatershedCentroider
 
         with timsdata.timsdata_connect(TDF_PATH) as td:
             frame_id = self._ms1_frame(td)
-            spectrum = read_spectrum(td, frame_id)
+            spectrum = self._read_band(td, frame_id)
             if spectrum.empty:
                 self.skipTest("First MS1 frame has no peaks")
 
@@ -485,11 +500,11 @@ class TestWatershedCentroiderCall(unittest.TestCase):
 
     def test_smoothing_changes_grouping_but_not_the_total(self):
         """Smoothed and unsmoothed runs differ in grouping, agree on the sum."""
-        from tdfpy.pipeline import WatershedCentroider, read_spectrum
+        from tdfpy.pipeline import WatershedCentroider
 
         with timsdata.timsdata_connect(TDF_PATH) as td:
             frame_id = self._ms1_frame(td)
-            spectrum = read_spectrum(td, frame_id)
+            spectrum = self._read_band(td, frame_id)
             if spectrum.empty:
                 self.skipTest("First MS1 frame has no peaks")
             smoothed = WatershedCentroider()(spectrum, td, frame_id)
@@ -507,11 +522,11 @@ class TestWatershedCentroiderCall(unittest.TestCase):
         entirely — contradicting the documented "set both to 0 to skip" and
         making one-axis smoothing silently unreachable.
         """
-        from tdfpy.pipeline import WatershedCentroider, read_spectrum
+        from tdfpy.pipeline import WatershedCentroider
 
         with timsdata.timsdata_connect(TDF_PATH) as td:
             frame_id = self._ms1_frame(td)
-            spectrum = read_spectrum(td, frame_id)
+            spectrum = self._read_band(td, frame_id)
             if spectrum.empty:
                 self.skipTest("First MS1 frame has no peaks")
             mz_only = WatershedCentroider(smooth_scan_half_width=0, smooth_mz_idx_half_width=3)(spectrum, td, frame_id)

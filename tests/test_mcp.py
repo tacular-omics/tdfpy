@@ -39,6 +39,7 @@ def config():
     return Processing(centroider=Operation(name="MergePeaksCentroider", parameters={"max_peaks": 10}))
 
 
+@pytest.mark.slow  # fresh interpreter subprocess
 def test_core_import_keeps_optional_features_private():
     code = """import sys
 import tdfpy
@@ -377,6 +378,7 @@ def test_entity_tools_take_named_ranges(tmp_path, tool, acquisition, mz_name, mz
     asyncio.run(run())
 
 
+@pytest.mark.slow  # subprocess launch of the stdio server: ~3-9 s
 def test_stdio_server_launch_and_real_extraction(tmp_path):
     async def run():
         params = StdioServerParameters(

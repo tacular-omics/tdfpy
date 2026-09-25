@@ -10,6 +10,12 @@ on:
 permissions:
   contents: read
 
+# The local default test run skips @pytest.mark.slow tests and uses a small
+# Hypothesis profile (tests/conftest.py); CI runs everything, with more examples.
+env:
+  RUN_SLOW: "1"
+  HYPOTHESIS_PROFILE: thorough
+
 jobs:
   build:
     runs-on: ubuntu-latest
