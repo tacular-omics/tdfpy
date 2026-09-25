@@ -84,7 +84,8 @@ check.
 - Aim to maintain at least the current branch coverage.
 
 ```bash
-just test       # run tests
+just test       # run tests (fast: skips @pytest.mark.slow tests)
+just test-all   # every test, as CI runs it (RUN_SLOW=1 HYPOTHESIS_PROFILE=thorough)
 just test-cov   # run tests with coverage report
 ```
 

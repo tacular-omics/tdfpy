@@ -20,11 +20,16 @@ def _example_id(example: CodeExample) -> str:
     return f"{example.path.relative_to(REPO_ROOT).as_posix()}:{example.start_line}-{example.end_line}"
 
 
-@pytest.mark.parametrize(
-    "example",
-    [example for page in DOC_PAGES for example in find_examples(page)],
-    ids=_example_id,
-)
+# Examples that sweep every precursor in the DDA file (~2 s each) run with --run-slow.
+_SLOW_EXAMPLE_MARKERS = ("iter_precursor_spectra(reader.precursors)",)
+
+
+def _example_param(example: CodeExample):
+    marks = [pytest.mark.slow] if any(m in example.source for m in _SLOW_EXAMPLE_MARKERS) else []
+    return pytest.param(example, id=_example_id(example), marks=marks)
+
+
+@pytest.mark.parametrize("example", [_example_param(example) for page in DOC_PAGES for example in find_examples(page)])
 def test_getting_started(example: CodeExample, eval_example: EvalExample) -> None:
     if "from tdfpy import PRM" in example.source:
         d_path = PRM_D_PATH
@@ -35,6 +40,7 @@ def test_getting_started(example: CodeExample, eval_example: EvalExample) -> Non
     eval_example.run(example, module_globals={"D_PATH": d_path})
 
 
+@pytest.mark.slow  # pytest subprocess
 def test_docs_collect_outside_repo_root(tmp_path: Path) -> None:
     """Collecting this module must not depend on the working directory."""
     result = subprocess.run(

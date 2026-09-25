@@ -89,6 +89,7 @@ def single_frame(tmp_path):
     return slice_d_folder("tests/data/example_dda.d", tmp_path / "one.d", 1, 1)
 
 
+@pytest.mark.slow  # CLI subprocess
 def test_validation_cli_returns_json_and_failure_status(tmp_path):
     result = subprocess.run(
         [sys.executable, "-m", "tdfpy", "validate", str(tmp_path / "missing.d")],

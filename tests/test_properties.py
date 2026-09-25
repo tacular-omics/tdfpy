@@ -1,23 +1,17 @@
 """Property-based tests for the centroiding kernels and the CCS conversion.
 
-Profiles: ``default`` (fast, used in CI) and ``thorough``. Pick one with
-``HYPOTHESIS_PROFILE=thorough uv run pytest tests/test_properties.py``.
+Profiles (``default`` fast, ``thorough`` for CI, ``deep`` for soak runs) live in ``tests/conftest.py``; pick
+one with ``HYPOTHESIS_PROFILE=thorough uv run pytest tests/test_properties.py``.
 """
-
-import os
 
 import numpy as np
 import pytest
-from hypothesis import HealthCheck, given, settings
+from hypothesis import given
 from hypothesis import strategies as st
 from hypothesis.extra.numpy import arrays
 
 from tdfpy.calibration import ccs_to_ook0, ook0_to_ccs
 from tdfpy.centroiding import _HAS_NUMBA, _sum_by_tof_index, merge_peaks
-
-settings.register_profile("default", max_examples=60, deadline=None, suppress_health_check=[HealthCheck.too_slow])
-settings.register_profile("thorough", max_examples=2000, deadline=None, suppress_health_check=[HealthCheck.too_slow])
-settings.load_profile(os.environ.get("HYPOTHESIS_PROFILE", "default"))
 
 KERNELS = [pytest.param(False, id="python"), pytest.param(True, id="numba", marks=pytest.mark.skipif(not _HAS_NUMBA, reason="numba not installed"))]
 

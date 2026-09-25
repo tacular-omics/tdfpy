@@ -6,6 +6,7 @@ sqlite-tuple reader init, scan-sliced frame decoding, the integer TOF sort ahead
 of ``merge_peaks`` and :func:`tdfpy.iter_precursor_spectra`.
 """
 
+import os
 import random
 import shutil
 import sqlite3
@@ -36,10 +37,23 @@ def _need(path: Path) -> None:
         pytest.skip("Test data not found")
 
 
+def _link_or_copy(src: str, dst: str) -> None:
+    # The 60 MB frame binary is never written here, so a hard link saves copying it;
+    # analysis.tdf is what the tests edit, so it is always a real copy.
+    if src.endswith(".tdf_bin"):
+        try:
+            os.link(src, dst)
+            return
+        except OSError:
+            pass
+    shutil.copy2(src, dst)
+
+
 def _copy(src: Path, tmp_path: Path) -> Path:
+    """A copy of ``src`` whose ``analysis.tdf`` may be edited (the binary is shared, read-only)."""
     _need(src)
     dest = tmp_path / src.name
-    shutil.copytree(src, dest)
+    shutil.copytree(src, dest, copy_function=_link_or_copy)
     return dest
 
 
@@ -174,7 +188,7 @@ def test_ms1_query_is_keyword_only(ms1_frames):
         lookup.query(1.0)  # type: ignore[misc]
 
 
-@settings(max_examples=60, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])
+@settings(deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])
 @given(a=st.floats(-10, 200, allow_nan=False), b=st.floats(-10, 200, allow_nan=False), tol=st.floats(0, 50, allow_nan=False))
 def test_ms1_rt_queries_match_brute_force(ms1_frames, a, b, tol):
     lookup, frames = ms1_frames
@@ -205,7 +219,7 @@ def dda_td():
         yield td
 
 
-@settings(max_examples=80, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])
+@settings(deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])
 @given(data=st.data())
 def test_sliced_decode_matches_full_decode(dda_td, data):
     frame_id = data.draw(st.sampled_from(sorted(dda_td._peak_counts)))
@@ -235,7 +249,7 @@ def test_sliced_decode_matches_full_decode(dda_td, data):
 # -- integer TOF sort -----------------------------------------------------------
 
 
-@settings(max_examples=100, deadline=None)
+@settings(deadline=None)
 @given(
     keys=st.lists(st.integers(0, 2_000), max_size=300) | st.lists(st.integers(0, 2**32 - 1), max_size=50)  # sparse span: comparison-sort fallback
 )
@@ -244,7 +258,7 @@ def test_tof_order_is_a_stable_argsort(keys):
     np.testing.assert_array_equal(_tof_order(arr), np.argsort(arr, kind="stable"))
 
 
-@settings(max_examples=60, deadline=None)
+@settings(deadline=None)
 @given(
     mz=st.lists(st.floats(100, 2000, allow_nan=False), min_size=1, max_size=80, unique=True),
     seed=st.integers(0, 2**16),
@@ -283,17 +297,26 @@ def test_iter_precursor_spectra_is_exported():
     assert tdfpy.iter_precursor_spectra is iter_precursor_spectra
 
 
-def test_iter_precursor_spectra_matches_merged_peaks():
+# The first 60 precursors span 20 frames and include 39 multi-frame precursors,
+# enough for the grouping and caching paths; the full file (2519 precursors,
+# 645 frames) is the slow variant.
+_SUBSET = 60
+_ALL_OR_SUBSET = [pytest.param(_SUBSET, id="subset"), pytest.param(None, id="all", marks=pytest.mark.slow)]
+
+
+@pytest.mark.parametrize("limit", _ALL_OR_SUBSET)
+def test_iter_precursor_spectra_matches_merged_peaks(limit):
     _need(DDA_PATH)
     with DDA(DDA_PATH) as dda:
-        precursors = list(dda.precursors)
+        precursors = list(dda.precursors)[:limit]
         pairs = list(iter_precursor_spectra(precursors))
         assert [p for p, _ in pairs] == precursors
         for precursor, peaks in pairs:
             np.testing.assert_array_equal(peaks, precursor.merged_peaks())
 
 
-def test_iter_precursor_spectra_decodes_each_frame_once(monkeypatch):
+@pytest.mark.parametrize("limit", _ALL_OR_SUBSET)
+def test_iter_precursor_spectra_decodes_each_frame_once(monkeypatch, limit):
     _need(DDA_PATH)
     with DDA(DDA_PATH) as dda:
         calls: list[int] = []
@@ -304,15 +327,17 @@ def test_iter_precursor_spectra_decodes_each_frame_once(monkeypatch):
             return original(self, frame_id, *args)
 
         monkeypatch.setattr(type(dda.timsdata), "_decode", counting)
-        list(iter_precursor_spectra(dda.precursors))
+        list(iter_precursor_spectra(list(dda.precursors)[:limit]))
+        assert calls
         assert len(calls) == len(set(calls))
 
 
-def test_iter_precursor_spectra_scattered_order_with_tiny_cache(monkeypatch):
+@pytest.mark.parametrize("limit", _ALL_OR_SUBSET)
+def test_iter_precursor_spectra_scattered_order_with_tiny_cache(monkeypatch, limit):
     _need(DDA_PATH)
     monkeypatch.setattr(processing_mod, "_PRECURSOR_FRAME_CACHE", 1)
     with DDA(DDA_PATH) as dda:
-        precursors = list(dda.precursors)
+        precursors = list(dda.precursors)[:limit]
         random.Random(0).shuffle(precursors)
         for precursor, peaks in iter_precursor_spectra(precursors):
             np.testing.assert_array_equal(peaks, precursor.merged_peaks())
@@ -426,7 +451,7 @@ def test_empty_lookup_miss_message():
 # -- centroid tie-break ----------------------------------------------------------
 
 
-@settings(max_examples=100, deadline=None)
+@settings(deadline=None)
 @given(
     mz_pool=st.lists(st.floats(500, 500.2, allow_nan=False), min_size=1, max_size=20, unique=True),
     n=st.integers(1, 60),
@@ -461,13 +486,19 @@ def test_merge_peaks_equal_intensities_are_order_independent(mz_pool, n, levels,
 
 @pytest.mark.parametrize("use_numba", [True, False])
 def test_merge_peaks_shuffled_frame_matches_tof_scan_order(dda_td, use_numba):
-    """A real MS1 frame (many points per TOF index) gives the same centroids shuffled."""
+    """A real MS1 frame (many points per TOF index) gives the same centroids shuffled.
+
+    The pure-Python kernel gets the lowest-m/z 40,000 points of the frame (a
+    contiguous m/z band, all scans) instead of all ~350,000, which took ~10 s.
+    """
     from tdfpy.pipeline import convert, read_spectrum
 
     frame_id = max(dda_td._peak_counts, key=dda_td._peak_counts.get)
     spectrum = read_spectrum(dda_td, frame_id)
     order = _tof_order(spectrum.mz_indices)
     peaks = convert(spectrum, dda_td, frame_id)[order]
+    if not use_numba:
+        peaks = peaks[:40_000]
     assert np.unique(peaks[:, 0]).size < len(peaks)  # repeated m/z values present
     expected = merge_peaks(peaks[:, 0], peaks[:, 1], peaks[:, 2], use_numba=use_numba)
     shuffled = peaks[np.random.default_rng(0).permutation(len(peaks))]

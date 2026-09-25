@@ -27,6 +27,14 @@ def frame_id() -> int:
         return next(iter(dda.ms1)).frame_id
 
 
+@pytest.fixture(scope="module")
+def small_frame_id() -> int:
+    """A PASEF MS2 frame of a few thousand points: watershed on an MS1 frame took ~7-18 s."""
+    with DDA(DDA_PATH) as dda:
+        info = next(iter(dda.precursors)).pasef_frame_msms_infos[0]
+        return info.frame_id
+
+
 @pytest.fixture
 def td() -> Iterator[tdfpy.TimsData]:
     with tdfpy.timsdata_connect(DDA_PATH) as handle:
@@ -42,12 +50,14 @@ def _centroid_count(fig) -> int:
     raise AssertionError("no centroid panel found")
 
 
-def test_default_matches_default_centroider(td, frame_id):
+def test_default_matches_default_centroider(td, small_frame_id):
     """With no arguments the plot shows what frame.centroid() returns."""
     with warnings.catch_warnings():
         warnings.simplefilter("error", DeprecationWarning)
-        fig = plot_centroiding(td, frame_id)
-    assert _centroid_count(fig) == len(get_centroided_spectrum(td, frame_id))
+        fig = plot_centroiding(td, small_frame_id)
+    n = len(get_centroided_spectrum(td, small_frame_id))
+    assert n > 0
+    assert _centroid_count(fig) == n
 
 
 @pytest.mark.parametrize(
@@ -55,11 +65,13 @@ def test_default_matches_default_centroider(td, frame_id):
     [MergePeaksCentroider(mz_tolerance=20.0, im_tolerance=0.05), WatershedCentroider()],
     ids=["merge", "watershed"],
 )
-def test_centroid_kwarg(td, frame_id, centroider):
+def test_centroid_kwarg(td, small_frame_id, centroider):
     with warnings.catch_warnings():
         warnings.simplefilter("error", DeprecationWarning)
-        fig = plot_centroiding(td, frame_id, centroid=centroider)
-    assert _centroid_count(fig) == len(get_centroided_spectrum(td, frame_id, centroid=centroider))
+        fig = plot_centroiding(td, small_frame_id, centroid=centroider)
+    n = len(get_centroided_spectrum(td, small_frame_id, centroid=centroider))
+    assert n > 0
+    assert _centroid_count(fig) == n
 
 
 @pytest.mark.parametrize("kwarg", ["mz_tolerance", "mz_tolerance_unit", "im_tolerance", "im_tolerance_unit", "min_peaks", "max_peaks"])

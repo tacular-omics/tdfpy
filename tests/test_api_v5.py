@@ -468,7 +468,7 @@ def dda_info():
         yield info, num_scans
 
 
-@settings(max_examples=40, deadline=None, suppress_health_check=[HealthCheck.too_slow])
+@settings(deadline=None, suppress_health_check=[HealthCheck.too_slow])
 @given(data=st.data())
 def test_mobility_ranges_low_le_high_property(dda_info, data):
     info, num_scans = dda_info
@@ -571,7 +571,7 @@ def _precursor_mz(p):
     return p.precursor_mz
 
 
-@settings(max_examples=40, deadline=None, suppress_health_check=[HealthCheck.too_slow])
+@settings(deadline=None, suppress_health_check=[HealthCheck.too_slow])
 @given(
     mz=st.one_of(st.none(), st.floats(100.0, 2000.0)),
     rt=st.one_of(st.none(), st.floats(0.0, 4000.0)),
@@ -591,7 +591,7 @@ def test_precursor_query_matches_brute_force(dda_precursors, mz, rt, mz_tol, rt_
     assert list(dda_precursors.query_range(precursor_mz_range=precursor_mz_range, rt_range=rt_range)) == got
 
 
-@settings(max_examples=40, deadline=None, suppress_health_check=[HealthCheck.too_slow])
+@settings(deadline=None, suppress_health_check=[HealthCheck.too_slow])
 @given(lo=st.floats(0.0, 5000.0), span=st.floats(0.0, 5000.0))
 def test_precursor_query_range_is_inclusive_rt_filter(dda_precursors, lo, span):
     got = list(dda_precursors.query_range(rt_range=(lo, lo + span)))
