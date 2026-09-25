@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- The source distribution now contains only the source, README, changelog, citation and license. The tests need the ~80 MB example data, so they run from the repository.
+
 ## [5.0.0] (2026-09-24)
 
 Breaking API cleanup for 5.0. [docs/migration.md](docs/migration.md) has the full old-to-new table.
