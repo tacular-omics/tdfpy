@@ -20,7 +20,7 @@ authors:
 affiliations:
   - name: The Scripps Research Institute, United States
     index: 1
-date: 30 May 2026
+date: 24 September 2026
 bibliography: paper.bib
 ---
 
@@ -70,7 +70,10 @@ proteomics pipeline on top: a pip-installable package (`pip install tdfpy`)
 with no Rust or C toolchain requirement and no vendor binary to obtain,
 acquisition-mode-aware readers that expose frames, precursors, and isolation
 windows as typed dataclasses, and a peak-processing pipeline that clusters in
-joint (m/z, ion mobility) space.
+joint (m/z, ion mobility) space. The readers use the same field and query names
+as the mzmlpy mzML reader [@mzmlpy] (`rt`, `ook0`, `precursor_mz`,
+`isolation_mz_range`, `total_ion_current`, and `*_range` or
+point-plus-tolerance queries such as `dda.ms1.query(rt=...)`).
 
 # State of the Field
 
@@ -91,9 +94,9 @@ treatment of ion mobility as a clustering dimension.
 
 tdfpy is organised in three layers: a decoding layer that reads
 `analysis.tdf_bin` in pure Python and NumPy (frame decompression and
-de-interleaving, plus the TOF↔m/z, scan↔1/K0, and 1/K0↔CCS conversions); a
-SQLite metadata layer that wraps `analysis.tdf` as pandas DataFrames
-[@McKinney2010Pandas]; and a reader layer that materialises the metadata as
+de-interleaving, plus the TOF-to-m/z, scan-to-1/K0, and 1/K0-to-CCS conversions); a
+metadata layer that reads `analysis.tdf` with plain SQLite queries (a pandas
+[@McKinney2010Pandas] view of each table remains available); and a reader layer that materialises the metadata as
 typed dataclasses (`DDAMs1Frame`, `Precursor`, `DiaWindow`, `PrmTransition`).
 Metadata is loaded eagerly while spectral binary data is read lazily — only
 when `.merged_peaks()`, `.raw_peaks()`, or `.centroid()` is called — and context
@@ -108,12 +111,16 @@ example acquisitions, and the calibration reproduces the vendor conversions to
 ~1e-10 relative in m/z and ~1e-15 in mobility. Variants that were never
 validated this way — legacy per-scan compression, unknown calibration model
 types, recalibrated state — raise rather than return plausible-looking numbers,
-since a silently wrong calibration is undetectable downstream.
+since a silently wrong calibration is undetectable downstream. Every such error
+is a `TdfpyError` (a `ValueError` subclass): opening a diaPASEF run with the
+`DDA` reader raises `AcquisitionTypeError` instead of returning empty elements,
+and spectral access after the reader closes raises `ReaderClosedError`.
 
 MS2 peak lists for DDA precursors and DIA windows are likewise produced
 in-house, replacing the proprietary peak picker: intensities are summed per TOF
 index over the relevant scan ranges (collapsing ion mobility) and merged at
-30 ppm. Measured against the vendor output over 10 precursors and 12 DIA
+30 ppm; `iter_precursor_spectra` and `iter_window_spectra` decode each frame once
+for all the precursors or adjacent windows it carries. Measured against the vendor output over 10 precursors and 12 DIA
 windows, strong peaks agree to 0.0–1.9 ppm, total ion current to within 4%, and
 peak counts run 0.95–1.09× — a divergence consistent with smoothing inside the
 closed picker, and enforced as bounds by the test suite.
@@ -150,7 +157,10 @@ that produced platform-specific wheels, and dropping the native library lifted
 the last platform restriction, so the package now installs on macOS and ARM as
 well as Linux and Windows x86-64. Continuous integration fails the build if a
 wheel contains a native binary. A PEP 561 `py.typed` marker ships the
-package's type annotations. tdfpy has been on PyPI since 2022 and is
+package's type annotations. A `tdfpy validate` command checks an acquisition
+without modifying it, and an optional Model Context Protocol server
+(`tdfpy[mcp]`, `tdfpy-mcp`) exposes acquisition inspection and spectrum
+extraction as tools for AI agents. tdfpy has been on PyPI since 2022 and is
 used at The Scripps Research Institute for in-house timsTOF DDA/DIA/PRM feature
 detection and retention-time calibration [@tdfpy_zenodo].
 
@@ -176,6 +186,9 @@ documentation for the composable-pipeline and raw-op APIs.
 
 # AI Usage Disclosure
 
+<!-- TODO(author): confirm the AI tools and models used. This list differs from
+the peptacular paper (Opus 5 and Fable 5.1 via Claude Code; Sol and Astra via
+OpenAI Codex), and work since 3.0 was also AI-assisted. -->
 Generative AI models (Claude, Cursor, and GitHub Copilot) were used to assist
 in code development, test authoring, and manuscript drafting. All
 AI-generated content was reviewed and verified against the source code by
@@ -191,6 +204,8 @@ MIT license.
 
 # Acknowledgements
 
+<!-- TODO(author): add funding if any. The peptacular paper lists NIH grants and
+states that the funders provided financial support only. -->
 The authors thank Bruker Daltonics for making the `libtimsdata` shared
 library available for use in open-source software development; it served as
 the reference implementation against which tdfpy's decoder and calibration
