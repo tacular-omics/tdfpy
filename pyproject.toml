@@ -63,21 +63,20 @@ tdfpy-mcp = "tdfpy.mcp:main"
 [tool.hatch.version]
 path = "src/tdfpy/__init__.py"
 
+[tool.hatch.build.targets.sdist]
+# Source and paperwork only. The tests need ~80 MB of example timsTOF .d folders,
+# so they run from the repo, not the sdist.
+only-include = [
+    "src/tdfpy",
+    "README.md",
+    "CHANGELOG.md",
+    "CITATION.cff",
+    "LICENSE",
+    "pyproject.toml",
+]
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/tdfpy"]
-
-[tool.hatch.build.targets.sdist]
-# The sdist carries the source, the tests, and the paperwork — not the ~80 MB
-# of example .d folders, rendered plots, dev dashboards, or CI leftovers.
-exclude = [
-    "tests/data/*.d",
-    "plots/",
-    "apps/",
-    "papers/",
-    "docs/llms-full.txt",
-    "junit.xml",
-    "logo.png",
-]
 
 [dependency-groups]
 docs = [
