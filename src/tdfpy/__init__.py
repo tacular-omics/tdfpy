@@ -87,7 +87,7 @@ from .types import Polarity, ToleranceUnit
 from .validation import ValidationIssue, ValidationReport, validate_acquisition
 from .viz import plot_centroiding
 
-__version__ = "4.1.1"
+__version__ = "5.0.0"
 
 __all__ = [
     "FrameMetadata",
