@@ -1,0 +1,1623 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Read Bruker timsTOF .d data in Python, with centroiding and noise filtering.">
+      
+      
+      
+        <link rel="canonical" href="https://tacular-omics.github.io/tdfpy/migration/">
+      
+      
+        <link rel="prev" href="../maintenance/">
+      
+      
+        <link rel="next" href="../api/readers/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Migrating to 5.0 - tdfpy</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#migrating-to-50" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="tdfpy" class="md-header__button md-logo" aria-label="tdfpy" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            tdfpy
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Migrating to 5.0
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/tacular-omics/tdfpy" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    tacular-omics/tdfpy
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="tdfpy" class="md-nav__button md-logo" aria-label="tdfpy" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    tdfpy
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/tacular-omics/tdfpy" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    tacular-omics/tdfpy
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../utilities/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Slicing .d folders
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../analysis/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Spectrum batches and file checks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../mcp/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MCP interface
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../maintenance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Maintenance
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Migrating to 5.0
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Migrating to 5.0
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#renamed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Renamed
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#added" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Added
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#removed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Removed
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#changed-types-and-behaviour" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Changed types and behaviour
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#downstream-code" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Downstream code
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/readers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Readers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/frames/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Frames
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/precursor/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Precursor
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/windows/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DIA windows
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/prm/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PRM data elements
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/metadata/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Metadata
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/lookup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Lookups
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/centroiding/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Centroiding
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/pipeline/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Pipeline
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/noise/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Noise filters
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/regions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Region exclusion
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/viz/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Visualization
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/low-level/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Low-level access
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="https://github.com/tacular-omics/tdfpy/blob/main/CHANGELOG.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../citation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Citation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#renamed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Renamed
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#added" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Added
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#removed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Removed
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#changed-types-and-behaviour" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Changed types and behaviour
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#downstream-code" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Downstream code
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="migrating-to-50">Migrating to 5.0<a class="headerlink" href="#migrating-to-50" title="Permanent link">&para;</a></h1>
+<p>tdfpy 5.0 cleans up the public API in one release. None of the renamed names keep an
+alias, and everything deprecated in 4.x is gone. The table below lists every rename;
+the sections after it cover changes of type or behaviour.</p>
+<h2 id="renamed">Renamed<a class="headerlink" href="#renamed" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>4.x</th>
+<th>5.0</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Frame.time</code>, <code>PrmTarget.time</code></td>
+<td><code>.rt</code></td>
+</tr>
+<tr>
+<td><code>PrmTarget.one_over_k0</code></td>
+<td><code>PrmTarget.ook0</code></td>
+</tr>
+<tr>
+<td><code>Frame.mz_calibration</code></td>
+<td><code>Frame.mz_calibration_id</code></td>
+</tr>
+<tr>
+<td><code>Frame.tims_calibration</code></td>
+<td><code>Frame.tims_calibration_id</code></td>
+</tr>
+<tr>
+<td><code>Frame.property_group</code></td>
+<td><code>Frame.property_group_id</code></td>
+</tr>
+<tr>
+<td><code>Precursor.parent_frame</code></td>
+<td><code>Precursor.parent_frame_id</code></td>
+</tr>
+<tr>
+<td><code>PasefFrameMsmsInfo.precursor</code></td>
+<td><code>PasefFrameMsmsInfo.precursor_id</code></td>
+</tr>
+<tr>
+<td><code>DiaWindowGroup.window_group</code>, <code>DiaWindow.window_group</code></td>
+<td><code>.window_group_id</code></td>
+</tr>
+<tr>
+<td><code>Frame.peaks</code>, <code>DiaWindow.peaks</code>, <code>PrmTransition.peaks</code> (property)</td>
+<td><code>.scan_peaks()</code> (method)</td>
+</tr>
+<tr>
+<td><code>Precursor.peaks</code>, <code>PasefFrameMsmsInfo.peaks</code> (property)</td>
+<td><code>.merged_peaks()</code> (method)</td>
+</tr>
+<tr>
+<td><code>Precursor.pasef_peaks</code> (property)</td>
+<td><code>Precursor.pasef_merged_peaks()</code> (method)</td>
+</tr>
+<tr>
+<td><code>FrameMetadata.time</code></td>
+<td><code>FrameMetadata.rt</code></td>
+</tr>
+<tr>
+<td><code>FrameMetadata.mz_calibration</code>, <code>tims_calibration</code>, <code>property_group</code></td>
+<td><code>*_id</code></td>
+</tr>
+<tr>
+<td><code>DiaWindowLookup.query(window_group_index=...)</code>, <code>.query_range(window_group_index=...)</code></td>
+<td><code>window_group=</code> (an id or a <code>DiaWindowGroup</code>)</td>
+</tr>
+<tr>
+<td><code>MetaData.one_over_k0_acq_range</code>, <code>_lower</code>, <code>_upper</code></td>
+<td><code>MetaData.ook0_acq_range</code>, <code>_lower</code>, <code>_upper</code></td>
+</tr>
+<tr>
+<td><code>TimsData.indexToMz</code>, <code>mzToIndex</code></td>
+<td><code>index_to_mz</code>, <code>mz_to_index</code></td>
+</tr>
+<tr>
+<td><code>TimsData.scanNumToOneOverK0</code>, <code>oneOverK0ToScanNum</code></td>
+<td><code>scan_num_to_ook0</code>, <code>ook0_to_scan_num</code></td>
+</tr>
+<tr>
+<td><code>TimsData.scanNumToVoltage</code>, <code>voltageToScanNum</code></td>
+<td><code>scan_num_to_voltage</code>, <code>voltage_to_scan_num</code></td>
+</tr>
+<tr>
+<td><code>TimsData.readScans</code></td>
+<td><code>TimsData.read_scans</code></td>
+</tr>
+<tr>
+<td><code>tdfpy.timsdata.oneOverK0ToCCSforMz</code></td>
+<td><code>tdfpy.ook0_to_ccs</code></td>
+</tr>
+<tr>
+<td><code>mz_tolerance_type=</code> (<code>merge_peaks</code>, <code>get_mobility_collapsed_spectrum</code>, <code>MergePeaksCentroider</code>, <code>PrecursorLookup.query</code>, <code>PrmTargetLookup.query</code>)</td>
+<td><code>mz_tolerance_unit=</code> (same values, <code>"da"</code> / <code>"ppm"</code>)</td>
+</tr>
+<tr>
+<td><code>im_tolerance_type=</code> (<code>merge_peaks</code>, <code>MergePeaksCentroider</code>)</td>
+<td><code>im_tolerance_unit=</code> (same values, <code>"relative"</code> / <code>"absolute"</code>)</td>
+</tr>
+<tr>
+<td><code>tdfpy.timsdata.ccsToOneOverK0forMz</code>, <code>ccsToOneOverK0ToCCSforMz</code></td>
+<td><code>tdfpy.ccs_to_ook0</code></td>
+</tr>
+<tr>
+<td><code>tdfpy.calibration.one_over_k0_to_ccs</code>, <code>ccs_to_one_over_k0</code></td>
+<td><code>ook0_to_ccs</code>, <code>ccs_to_ook0</code></td>
+</tr>
+<tr>
+<td><code>TimsCalibration.scan_to_one_over_k0</code>, <code>one_over_k0_to_scan</code></td>
+<td><code>scan_to_ook0</code>, <code>ook0_to_scan</code></td>
+</tr>
+<tr>
+<td>MCP tool <code>query_dia_windows(window_group=...)</code></td>
+<td><code>window_group_id=</code></td>
+</tr>
+<tr>
+<td>MCP tools <code>query_frames</code>, <code>query_precursors</code>, <code>query_dia_windows</code>, <code>query_prm_targets</code>, <code>query_prm_transitions</code>: <code>rt=</code></td>
+<td><code>rt_range=</code></td>
+</tr>
+<tr>
+<td>MCP <code>query_precursors</code> / <code>query_prm_targets</code>: <code>mz=</code></td>
+<td><code>precursor_mz_range=</code></td>
+</tr>
+<tr>
+<td>MCP <code>query_dia_windows</code> / <code>query_prm_transitions</code>: <code>mz=</code></td>
+<td><code>isolation_mz_range=</code> (matched on the isolation center)</td>
+</tr>
+<tr>
+<td><code>ion_mobility_type=</code> (<code>get_raw_peaks</code>, <code>get_centroided_spectrum</code>, <code>convert</code>, element <code>raw_peaks()</code> / <code>centroid()</code>, <code>iter_window_spectra</code>, <code>plot_centroiding</code>)</td>
+<td><code>mobility_type=</code> (same values)</td>
+</tr>
+<tr>
+<td>MCP <code>processing.ion_mobility_type</code></td>
+<td><code>processing.mobility_type</code> (<code>"ook0"</code> / <code>"voltage"</code>)</td>
+</tr>
+<tr>
+<td>MCP <code>query_frames</code> rows: <code>Id</code>, <code>Time</code>, <code>Polarity</code> <code>"+"</code>, <code>SummedIntensities</code>, <code>MaxIntensity</code>, <code>MzCalibration</code>, <code>TimsCalibration</code>, <code>PropertyGroup</code>, ... under <code>rows</code></td>
+<td><code>frame_id</code>, <code>rt</code>, <code>polarity</code> <code>"positive"</code>, <code>total_ion_current</code>, <code>base_peak_intensity</code>, <code>mz_calibration_id</code>, <code>tims_calibration_id</code>, <code>property_group_id</code>, ... (the <code>Frame</code> names) under <code>items</code></td>
+</tr>
+<tr>
+<td>MCP <code>convert_coordinates</code> <code>frame.polarity</code>, export metadata <code>frames[].polarity</code>: <code>"+"</code> / <code>"-"</code></td>
+<td><code>"positive"</code> / <code>"negative"</code></td>
+</tr>
+<tr>
+<td>MCP <code>server_info</code> <code>units.retention_time</code></td>
+<td><code>units.rt</code></td>
+</tr>
+<tr>
+<td><code>PasefFrameMsmsInfo.mz_range</code>, <code>DiaWindow.mz_range</code>, <code>PrmTransition.mz_range</code>, <code>Precursor.mz_range</code></td>
+<td><code>.isolation_mz_range</code></td>
+</tr>
+<tr>
+<td><code>.mz_begin</code>, <code>.mz_end</code> (isolation windows)</td>
+<td>removed: <code>lo, hi = w.isolation_mz_range</code></td>
+</tr>
+<tr>
+<td><code>PrmTarget.monoisotopic_mz</code></td>
+<td><code>PrmTarget.precursor_mz</code></td>
+</tr>
+<tr>
+<td><code>Frame.summed_intensities</code></td>
+<td><code>Frame.total_ion_current</code></td>
+</tr>
+<tr>
+<td><code>Frame.max_intensity</code></td>
+<td><code>Frame.base_peak_intensity</code></td>
+</tr>
+<tr>
+<td><code>PrecursorLookup.query_range(mz_range=...)</code>, <code>PrmTargetLookup.query_range(mz_range=...)</code></td>
+<td><code>precursor_mz_range=</code></td>
+</tr>
+<tr>
+<td><code>PrecursorLookup.query(mz=...)</code>, <code>PrmTargetLookup.query(mz=...)</code></td>
+<td><code>precursor_mz=</code></td>
+</tr>
+<tr>
+<td><code>Polarity.POSITIVE</code>, <code>Polarity.NEGATIVE</code></td>
+<td><code>"positive"</code>, <code>"negative"</code></td>
+</tr>
+</tbody>
+</table>
+<p>These names match mzmlpy, so code can read both formats with one vocabulary.</p>
+<p>Every spectral accessor is now a method, so each call visibly decodes the frame:</p>
+<table>
+<thead>
+<tr>
+<th>method</th>
+<th>returns</th>
+<th>cost</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>scan_peaks()</code></td>
+<td>a list of <code>(N_i, 2)</code> <code>[m/z, intensity]</code> arrays, one per scan</td>
+<td>decode only</td>
+</tr>
+<tr>
+<td><code>raw_peaks()</code></td>
+<td>one <code>(N, 3)</code> <code>[m/z, intensity, 1/K0]</code> array</td>
+<td>decode only</td>
+</tr>
+<tr>
+<td><code>centroid()</code></td>
+<td>one <code>(N, 3)</code> array</td>
+<td>decode + 2D centroiding</td>
+</tr>
+<tr>
+<td><code>merged_peaks()</code> (<code>Precursor</code>, <code>PasefFrameMsmsInfo</code>)</td>
+<td>one <code>(N, 2)</code> array, mobility collapsed</td>
+<td>decode + greedy m/z merge; the slowest, call once</td>
+</tr>
+</tbody>
+</table>
+<p><code>PasefFrameMsmsInfo</code> now has <code>scan_peaks()</code>, <code>raw_peaks()</code> and <code>centroid()</code> too.</p>
+<h2 id="added">Added<a class="headerlink" href="#added" title="Permanent link">&para;</a></h2>
+<ul>
+<li><code>ms_level</code> on frames (1 or 2, from <code>msms_type</code>) and on <code>PasefFrameMsmsInfo</code>,
+  <code>DiaWindow</code> and <code>PrmTransition</code> (always 2). Those window classes carry <code>msms_type</code>
+  as a class constant.</li>
+<li><code>Precursor.precursor_mz</code>: <code>monoisotopic_mz</code> when known, otherwise
+  <code>largest_peak_mz</code>. <code>PrecursorLookup</code> matches on it.</li>
+<li><code>reader.ms1.query_range(rt_range=(lo, hi))</code> and <code>reader.ms1.query(rt=, rt_tolerance=)</code>.</li>
+<li><code>tdfpy.iter_precursor_spectra(dda.precursors)</code> yields <code>(precursor, peaks)</code> with
+  <code>peaks == precursor.merged_peaks()</code>, decoding each PASEF frame once. Use it instead
+  of looping over <code>merged_peaks()</code> when you need many precursors.</li>
+</ul>
+<h2 id="removed">Removed<a class="headerlink" href="#removed" title="Permanent link">&para;</a></h2>
+<ul>
+<li><code>plot_centroiding(mz_tolerance=, mz_tolerance_type=, im_tolerance=, im_tolerance_type=, min_peaks=, max_peaks=)</code>,
+  deprecated in 4.1. Pass <code>centroid=MergePeaksCentroider(...)</code>.</li>
+<li><code>tdfpy.centroiding.batch_iterator</code>, <code>calculate_nmass</code>, <code>get_tdf_df</code> and <code>Peak</code>.
+  They were unused helpers, not part of the documented API.</li>
+<li><code>DIAMs1Frame.dia_windows</code> and <code>PRMMs1Frame.prm_transitions</code>. They were always
+  empty. Use <code>DIA.windows</code> and <code>PRM.transitions</code>.</li>
+</ul>
+<h2 id="changed-types-and-behaviour">Changed types and behaviour<a class="headerlink" href="#changed-types-and-behaviour" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Errors.</strong> Every tdfpy error subclasses <code>TdfpyError</code>, which subclasses
+  <code>ValueError</code>. A missing id or key raises <code>TdfpyKeyError</code> (also a <code>KeyError</code>);
+  spectral access after the reader closes raises <code>ReaderClosedError</code> (also a
+  <code>RuntimeError</code>). <code>UnsupportedTdfError</code> and <code>UnsupportedCalibrationError</code> still
+  subclass <code>NotImplementedError</code>. SQLite errors from <code>PandasTdf</code>,
+  <code>convert_table_to_df</code> and <code>slice_d_folder</code> are raised as <code>TdfpyError</code> (was
+  <code>RuntimeError</code> or a raw <code>sqlite3.Error</code>). Handlers for the old built-in types keep
+  working, except <code>except RuntimeError</code> around <code>convert_table_to_df</code>.</li>
+<li><strong><code>get_acquisition_type</code></strong> returns <code>AcquisitionType</code>, a <code>StrEnum</code>, so
+  <code>get_acquisition_type(p) == "DDA"</code> still holds.</li>
+<li><strong><code>Frame.msms_type</code></strong> is a <code>MsMsType</code> (an <code>IntEnum</code>), not a plain <code>int</code>.
+  <code>MsMsType</code>, <code>Polarity</code> and <code>ToleranceUnit</code> are exported from <code>tdfpy</code>.</li>
+<li><strong><code>Polarity</code></strong> is <code>Literal["positive", "negative"]</code> (was a <code>StrEnum</code> with the same
+  values). Every <code>polarity</code> field is <code>Polarity | None</code>: a <code>Polarity</code> column value
+  other than <code>+</code> / <code>-</code> gives <code>None</code> and one warning per file, and
+  <code>Precursor.polarity</code> is <code>None</code> with a warning when its PASEF frames disagree.
+  Compare with strings: <code>frame.polarity == "positive"</code>. <code>FrameMetadata.polarity</code>
+  is still the raw <code>"+"</code> / <code>"-"</code>.</li>
+<li><strong>Lookup keywords.</strong> A <code>(low, high)</code> tuple is always <code>*_range</code> and goes to
+  <code>query_range</code>; a point is <code>rt=</code> / <code>precursor_mz=</code> / <code>ook0=</code> plus a <code>*_tolerance</code> and goes
+  to <code>query</code>, as in mzmlpy 0.10. <code>query(mz=...)</code> is now <code>query(precursor_mz=...)</code>
+  and the range is <code>precursor_mz_range=</code>; <code>mz_tolerance_type</code> is now <code>mz_tolerance_unit</code> (see the table).</li>
+<li><strong>MS1 centroids.</strong> <code>MergePeaksCentroider</code> now sorts on the integer TOF index
+  before converting to m/z, and <code>merge_peaks</code> orders its input by m/z, then
+  descending 1/K0 (TOF, then scan), then intensity, and seeds equal-intensity
+  peaks in that order with a stable sort, so the result does not depend on input
+  order even when many points share one m/z. About 1.2-1.4% of centroids
+  on dense MS1 frames differ from 4.x (1.43% diaPASEF, 1.16% DDA, 15-min runs);
+  summed intensity moves by under 0.02%. <code>merged_peaks()</code> is unchanged.</li>
+<li><strong>Elements are frozen, slotted and keyword-only.</strong> Assigning to a field raises
+  <code>FrozenInstanceError</code>; constructing one needs keyword arguments.
+  <code>PrmTarget</code> equality and hashing ignore <code>transitions</code>.</li>
+<li><strong>Lookups.</strong> <code>dia.windows[group_id]</code> and <code>prm.transitions[target_id]</code> return a
+  tuple (was a list). <code>DIA.window_groups</code> is a tuple (was a generator). Every lookup
+  has <code>ids()</code>, supports <code>id in lookup</code>, and <code>get(id, default)</code>. The arguments of
+  <code>query()</code> and <code>query_range()</code> are keyword-only.</li>
+<li><strong><code>MetaData</code> and <code>Calibration</code></strong> are read-only <code>Mapping</code>s of key to value. The
+  <code>df</code> pandas Series field is replaced by <code>table</code>, a plain mapping. Use
+  <code>dict(metadata)</code> or <code>pd.Series(metadata)</code> if you need a copy.</li>
+<li><strong><code>plot_centroiding</code></strong> takes every argument after <code>frame_id</code> by keyword, including
+  <code>mobility_type</code>.</li>
+<li><strong>Mobility ranges are <code>(low, high)</code>.</strong> <code>ook0_range</code>, <code>ccs_range</code> and
+  <code>voltage_range</code> (and their <code>*_begin</code> / <code>*_end</code>) on <code>PasefFrameMsmsInfo</code>,
+  <code>Precursor</code>, <code>DiaWindow</code> and <code>PrmTransition</code> used to follow scan order, which is
+  high-to-low 1/K0. They now match <code>isolation_mz_range</code>, <code>ook0_acq_range</code> and
+  <code>query_range(ook0_range=)</code>. Code that swapped them by hand must stop.</li>
+<li><strong>Wrong reader for the file.</strong> <code>DDA</code> on a DIA run (or any other mismatch) raises
+  <code>AcquisitionTypeError</code>. Check first with <code>tdfpy.get_acquisition_type(path)</code>.</li>
+<li><strong>Closed readers.</strong> After the <code>with</code> block, <code>reader.timsdata</code>, <code>metadata</code>,
+  <code>calibration</code> and <code>pandas_tdf</code> raise <code>ReaderClosedError</code>, like the spectral
+  accessors. Read what you need inside the block.</li>
+<li><strong><code>AcquisitionType.UNKNOWN</code></strong> is <code>"unknown"</code> (was <code>"Unknown"</code>).</li>
+<li><strong><code>TimsData</code></strong> takes its options by keyword: <code>TimsData(path, use_recalibrated_state=True)</code>.
+  <code>FrameMetadata</code> is exported from <code>tdfpy</code> and its fields follow <code>Frame</code> (<code>rt</code>, <code>*_id</code>).</li>
+<li><strong><code>TimsData.read_scans</code> and <code>read_frame_arrays</code></strong> raise <code>TdfpyError</code> for a
+  non-integer bound or a range outside <code>0 &lt;= scan_begin &lt;= scan_end &lt;= num_scans</code>.
+  <code>read_scans</code> padded with empty arrays and <code>read_frame_arrays</code> clamped; an empty
+  range (<code>begin == end</code>) is valid and reads nothing.</li>
+<li><strong>Window accessors</strong> (<code>scan_peaks</code>, <code>raw_peaks</code>, <code>centroid</code>, <code>merged_peaks</code>) raise
+  <code>TdfpyError</code> when a window's scan range does not fit its frame, instead of clamping.</li>
+</ul>
+<h2 id="downstream-code">Downstream code<a class="headerlink" href="#downstream-code" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1"># 4.x</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="n">frame</span><span class="o">.</span><span class="n">time</span><span class="p">,</span> <span class="n">target</span><span class="o">.</span><span class="n">one_over_k0</span><span class="p">,</span> <span class="n">metadata</span><span class="o">.</span><span class="n">one_over_k0_acq_range</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="n">td</span><span class="o">.</span><span class="n">scanNumToOneOverK0</span><span class="p">(</span><span class="n">frame_id</span><span class="p">,</span> <span class="n">scans</span><span class="p">)</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tdfpy.timsdata</span><span class="w"> </span><span class="kn">import</span> <span class="n">oneOverK0ToCCSforMz</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="n">ms2</span> <span class="o">=</span> <span class="n">precursor</span><span class="o">.</span><span class="n">peaks</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="n">lo</span><span class="p">,</span> <span class="n">hi</span> <span class="o">=</span> <span class="n">window</span><span class="o">.</span><span class="n">mz_begin</span><span class="p">,</span> <span class="n">window</span><span class="o">.</span><span class="n">mz_end</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="n">dda</span><span class="o">.</span><span class="n">precursors</span><span class="o">.</span><span class="n">query_range</span><span class="p">(</span><span class="n">mz_range</span><span class="o">=</span><span class="p">(</span><span class="mi">500</span><span class="p">,</span> <span class="mi">600</span><span class="p">))</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="n">frame</span><span class="o">.</span><span class="n">summed_intensities</span><span class="p">,</span> <span class="n">target</span><span class="o">.</span><span class="n">monoisotopic_mz</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="n">frame</span><span class="o">.</span><span class="n">polarity</span> <span class="o">==</span> <span class="n">Polarity</span><span class="o">.</span><span class="n">POSITIVE</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="c1"># 5.0</span>
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="n">frame</span><span class="o">.</span><span class="n">rt</span><span class="p">,</span> <span class="n">target</span><span class="o">.</span><span class="n">ook0</span><span class="p">,</span> <span class="n">metadata</span><span class="o">.</span><span class="n">ook0_acq_range</span>
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="n">td</span><span class="o">.</span><span class="n">scan_num_to_ook0</span><span class="p">(</span><span class="n">frame_id</span><span class="p">,</span> <span class="n">scans</span><span class="p">)</span>
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="kn">from</span><span class="w"> </span><span class="nn">tdfpy</span><span class="w"> </span><span class="kn">import</span> <span class="n">ook0_to_ccs</span>
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="n">ms2</span> <span class="o">=</span> <span class="n">precursor</span><span class="o">.</span><span class="n">merged_peaks</span><span class="p">()</span>
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="n">lo</span><span class="p">,</span> <span class="n">hi</span> <span class="o">=</span> <span class="n">window</span><span class="o">.</span><span class="n">isolation_mz_range</span>
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a><span class="n">dda</span><span class="o">.</span><span class="n">precursors</span><span class="o">.</span><span class="n">query_range</span><span class="p">(</span><span class="n">precursor_mz_range</span><span class="o">=</span><span class="p">(</span><span class="mi">500</span><span class="p">,</span> <span class="mi">600</span><span class="p">))</span>
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a><span class="n">frame</span><span class="o">.</span><span class="n">total_ion_current</span><span class="p">,</span> <span class="n">target</span><span class="o">.</span><span class="n">precursor_mz</span>
+<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a><span class="n">frame</span><span class="o">.</span><span class="n">polarity</span> <span class="o">==</span> <span class="s2">&quot;positive&quot;</span>
+</code></pre></div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../maintenance/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Maintenance">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Maintenance
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../api/readers/" class="md-footer__link md-footer__link--next" aria-label="Next: Readers">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Readers
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Copyright &copy; the tdfpy authors. MIT licence.
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.sections", "navigation.top", "navigation.footer", "content.code.copy", "search.highlight", "search.suggest"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
