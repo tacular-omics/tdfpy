@@ -228,20 +228,34 @@ class TimsCalibration:
         return self.voltage_to_scan(self.c7 * y / (1.0 - self.c6 * y))
 
 
+def _abs_charge(charge: int) -> int:
+    """Return ``|charge|``, rejecting zero (CCS is undefined for a neutral)."""
+    z = abs(int(charge))
+    if z == 0:
+        raise ValueError("charge must be non-zero to convert between 1/K0 and CCS")
+    return z
+
+
 def ook0_to_ccs(ook0: float, charge: int, mz: float) -> float:
     """Convert 1/K0 to a collision cross section via the Mason-Schamp equation.
 
-    Follows Bruker's convention of treating ``mz * charge`` as the ion mass
+    Follows Bruker's convention of treating ``mz * |charge|`` as the ion mass
     without subtracting proton masses; changing that would diverge from the
-    native library by ~600 ppm.
+    native library by ~600 ppm. Negative-mode ions use ``|charge|``, so
+    ``charge=-2`` gives the same CCS as ``charge=2``.
+
+    Raises:
+        ValueError: if ``charge`` is 0.
     """
-    mass = mz * charge
+    z = _abs_charge(charge)
+    mass = mz * z
     reduced_mass = (mass * _CCS_MASS_GAS) / (mass + _CCS_MASS_GAS)
-    return float(_CCS_K * charge / np.sqrt(reduced_mass * _CCS_TEMPERATURE) * ook0)
+    return float(_CCS_K * z / np.sqrt(reduced_mass * _CCS_TEMPERATURE) * ook0)
 
 
 def ccs_to_ook0(ccs: float, charge: int, mz: float) -> float:
-    """Inverse of :func:`ook0_to_ccs`."""
-    mass = mz * charge
+    """Inverse of :func:`ook0_to_ccs` (uses ``|charge|``; raises ValueError for 0)."""
+    z = _abs_charge(charge)
+    mass = mz * z
     reduced_mass = (mass * _CCS_MASS_GAS) / (mass + _CCS_MASS_GAS)
-    return float(np.sqrt(reduced_mass * _CCS_TEMPERATURE) * ccs / (_CCS_K * charge))
+    return float(np.sqrt(reduced_mass * _CCS_TEMPERATURE) * ccs / (_CCS_K * z))

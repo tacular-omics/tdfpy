@@ -520,6 +520,34 @@ def test_ccs_roundtrip_from_the_ccs_side() -> None:
         assert calibration.ook0_to_ccs(ook0, 2, 700.0) == pytest.approx(ccs, rel=1e-12)
 
 
+@pytest.mark.parametrize("charge", [1, 2, 3])
+def test_ccs_negative_charge_matches_positive(charge: int) -> None:
+    """Negative-mode ions give the same positive CCS as the positive charge state."""
+    pos = calibration.ook0_to_ccs(1.0, charge, 500.0)
+    neg = calibration.ook0_to_ccs(1.0, -charge, 500.0)
+    assert neg == pytest.approx(pos, rel=1e-15)
+    assert neg > 0
+    assert calibration.ccs_to_ook0(pos, -charge, 500.0) == pytest.approx(calibration.ccs_to_ook0(pos, charge, 500.0))
+
+
+def test_ccs_negative_charge_value() -> None:
+    assert calibration.ook0_to_ccs(1.0, -2, 500.0) == pytest.approx(406.07, abs=0.01)
+
+
+@pytest.mark.parametrize("charge", [-1, -2, -4])
+def test_ccs_ook0_roundtrip_negative_charge(charge: int) -> None:
+    for ook0 in (0.6, 1.0, 1.6):
+        ccs = calibration.ook0_to_ccs(ook0, charge, 800.0)
+        assert calibration.ccs_to_ook0(ccs, charge, 800.0) == pytest.approx(ook0, rel=1e-12)
+
+
+def test_ccs_zero_charge_raises() -> None:
+    with pytest.raises(ValueError, match="charge"):
+        calibration.ook0_to_ccs(1.0, 0, 500.0)
+    with pytest.raises(ValueError, match="charge"):
+        calibration.ccs_to_ook0(400.0, 0, 500.0)
+
+
 def test_camelcase_names_are_gone() -> None:
     """5.0 removed the camelCase methods and module functions with no alias."""
     for name in ("oneOverK0ToCCSforMz", "ccsToOneOverK0forMz", "ccsToOneOverK0ToCCSforMz"):
