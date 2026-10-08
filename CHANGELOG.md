@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.0.1] (2026-10-08)
+
 ### Fixed
 
 - `ook0_to_ccs` and `ccs_to_ook0` now use the charge magnitude, so negative-mode ions (e.g. `charge=-2`) give the same positive CCS as `charge=2` instead of a negative value. `charge=0` now raises `ValueError` instead of returning NaN.
