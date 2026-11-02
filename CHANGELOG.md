@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- The `viz` extra now requires `matplotlib>=3.9`, the first release that supports numpy 2. `pip install tdfpy[viz]` could previously resolve matplotlib 3.7, which declares no numpy bound and fails against the `numpy>=2.0` this package requires: `plot_centroiding` then raised `ImportError: numpy.core.multiarray failed to import`.
+
 ## [5.0.2] (2026-10-26)
 
 ### Changed

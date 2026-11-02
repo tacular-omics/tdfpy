@@ -53,7 +53,7 @@ Changelog = "https://github.com/tacular-omics/tdfpy/blob/main/CHANGELOG.md"
 DOI = "https://doi.org/10.5281/zenodo.19100532"
 
 [project.optional-dependencies]
-viz = ["matplotlib>=3.7"]
+viz = ["matplotlib>=3.9"]
 mcp = ["mcp>=2.1,<3"]
 
 [project.scripts]
@@ -89,11 +89,16 @@ dev = [
     "ty>=0.0.83",
     "ruff>=0.16.8",
     "pyupgrade>=3.21.0",
-    "pandas>=2.3.3",
-    "numpy>=2.3.4",
     "pytest-cov>=6.0.0",
-    "matplotlib>=3.7",
+    "matplotlib>=3.9",
     "hypothesis>=6.100",
+    # Not a test requirement. The runtime floor `pandas>=2.0` cannot be used
+    # with the `numpy>=2.0` this package also requires: 2.0.x and 2.1.0 have no
+    # cp312 wheel and their sdists do not build, and 2.1.1-2.2.1 are built
+    # against the numpy 1.x ABI, so importing pandas raises "numpy.dtype size
+    # changed". 2.2.2 is the first numpy 2 compatible release. This holds the
+    # lowest-direct CI job there; remove it if the runtime floor is raised.
+    "pandas>=2.2.2",
 ]
 
 [tool.pytest.ini_options]

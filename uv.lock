@@ -2016,7 +2016,6 @@ viz = [
 dev = [
     { name = "hypothesis" },
     { name = "matplotlib" },
-    { name = "numpy" },
     { name = "pandas" },
     { name = "pytest" },
     { name = "pytest-cov" },
@@ -2032,7 +2031,7 @@ docs = [
 
 [package.metadata]
 requires-dist = [
-    { name = "matplotlib", marker = "extra == 'viz'", specifier = ">=3.7" },
+    { name = "matplotlib", marker = "extra == 'viz'", specifier = ">=3.9" },
     { name = "mcp", marker = "extra == 'mcp'", specifier = ">=2.1,<3" },
     { name = "numba", specifier = ">=0.59" },
     { name = "numpy", specifier = ">=2.0" },
@@ -2044,9 +2043,8 @@ provides-extras = ["mcp", "viz"]
 [package.metadata.requires-dev]
 dev = [
     { name = "hypothesis", specifier = ">=6.100" },
-    { name = "matplotlib", specifier = ">=3.7" },
-    { name = "numpy", specifier = ">=2.3.4" },
-    { name = "pandas", specifier = ">=2.3.3" },
+    { name = "matplotlib", specifier = ">=3.9" },
+    { name = "pandas", specifier = ">=2.2.2" },
     { name = "pytest", specifier = ">=9" },
     { name = "pytest-cov", specifier = ">=6.0.0" },
     { name = "pytest-examples", specifier = ">=0.0.14" },
