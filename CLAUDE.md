@@ -21,8 +21,8 @@ timsTOF spectra without Bruker's SDK.
   `spxtacular` (optional extra `tdfpy`) and `tdfextractor` (outside the workspace).
   A breaking API change here needs a note for both.
 
-Runtime deps: `numpy>=2.0`, `pandas>=2.0` (SQLite metadata via `PandasTdf`),
-`numba>=0.59` (JIT kernels), `zstandard>=0.22` only on Python < 3.14 (3.14+ uses
+Runtime deps: `numpy>=2.0`, `pandas>=2.2.2` (SQLite metadata via `PandasTdf`),
+`numba>=0.60` (JIT kernels), `zstandard>=0.22` only on Python < 3.14 (3.14+ uses
 stdlib `compression.zstd`). Extras: `viz` (matplotlib, for `plot_centroiding`),
 `mcp` (MCP SDK, for `tdfpy-mcp`).
 

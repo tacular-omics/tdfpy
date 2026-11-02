@@ -15,7 +15,10 @@ maintainers = [
 ]
 dependencies = [
     "numpy>=2.0",
-    "pandas>=2.0",
+    # 2.2.2 is the first release usable with numpy 2: below it pandas either
+    # declares numpy<2 (2.1.4-2.2.1), is built against the numpy 1.x ABI
+    # (2.1.1), or has no cp312 wheel and no buildable sdist (2.0.x).
+    "pandas>=2.2.2",
     # Frames in analysis.tdf_bin are zstd-compressed. Python 3.14 ships zstd in
     # the standard library (PEP 784), so the wheel only needs this on older
     # interpreters. A 3.14 build made without libzstd will raise an ImportError
@@ -24,7 +27,9 @@ dependencies = [
     # Required so the centroiding stack runs JIT-compiled, which its documented
     # performance assumes. The code does not need it to import: every kernel has
     # a pure-Python fallback, used if numba cannot be imported.
-    "numba>=0.59",
+    # 0.60.0 is the first release that resolves with numpy 2: 0.59.x caps numpy
+    # below 2, so no resolution of this package can contain it.
+    "numba>=0.60",
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
@@ -53,7 +58,7 @@ Changelog = "https://github.com/tacular-omics/tdfpy/blob/main/CHANGELOG.md"
 DOI = "https://doi.org/10.5281/zenodo.19100532"
 
 [project.optional-dependencies]
-viz = ["matplotlib>=3.7"]
+viz = ["matplotlib>=3.9"]
 mcp = ["mcp>=2.1,<3"]
 
 [project.scripts]
@@ -89,10 +94,8 @@ dev = [
     "ty>=0.0.83",
     "ruff>=0.16.8",
     "pyupgrade>=3.21.0",
-    "pandas>=2.3.3",
-    "numpy>=2.3.4",
     "pytest-cov>=6.0.0",
-    "matplotlib>=3.7",
+    "matplotlib>=3.9",
     "hypothesis>=6.100",
 ]
 
