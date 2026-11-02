@@ -27,7 +27,9 @@ dependencies = [
     # Required so the centroiding stack runs JIT-compiled, which its documented
     # performance assumes. The code does not need it to import: every kernel has
     # a pure-Python fallback, used if numba cannot be imported.
-    "numba>=0.59",
+    # 0.60.0 is the first release that resolves with numpy 2: 0.59.x caps numpy
+    # below 2, so no resolution of this package can contain it.
+    "numba>=0.60",
 ]
 classifiers = [
     "Programming Language :: Python :: 3",

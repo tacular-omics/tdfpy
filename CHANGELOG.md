@@ -9,8 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Two dependency floors claimed support for versions that cannot be installed alongside the `numpy>=2.0` this package also requires. `matplotlib>=3.7` in the `viz` extra is now `matplotlib>=3.9`, the first release with upstream numpy 2 support: 3.7.5 through 3.8.3 declare `numpy<2`, so pip and uv refuse them outright, while 3.7.0 declares no numpy bound at all and so installs and then fails at import with `ImportError: numpy.core.multiarray failed to import`.
+- Three dependency floors claimed support for versions that cannot be installed alongside the `numpy>=2.0` this package also requires. Raising them changes nothing about what a working install resolves to; it stops the package declaring versions no installer can provide.
+- `matplotlib>=3.7` in the `viz` extra is now `matplotlib>=3.9`, the first release with upstream numpy 2 support: 3.7.5 through 3.8.3 declare `numpy<2`, so pip and uv refuse them outright, while 3.7.0 declares no numpy bound at all and so installs and then fails at import with `ImportError: numpy.core.multiarray failed to import`.
 - `pandas>=2.0` is now `pandas>=2.2.2`, the first release usable with numpy 2. 2.0.x has no CPython 3.12 wheel and its source distribution does not build; 2.1.4 through 2.2.1 declare `numpy<2` and are refused; 2.1.1 installs but is built against the numpy 1.x ABI, so importing pandas raises `ValueError: numpy.dtype size changed`.
+- `numba>=0.59` is now `numba>=0.60`. 0.59.0 and 0.59.1 cap numpy below 2, so the resolver refuses them outright; 0.60.0 is the first release that resolves with numpy 2.
 
 ## [5.0.2] (2026-10-26)
 
