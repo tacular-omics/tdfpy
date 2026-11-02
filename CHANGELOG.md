@@ -9,7 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- The `viz` extra now requires `matplotlib>=3.9`, the first release that supports numpy 2. `pip install tdfpy[viz]` could previously resolve matplotlib 3.7, which declares no numpy bound and fails against the `numpy>=2.0` this package requires: `plot_centroiding` then raised `ImportError: numpy.core.multiarray failed to import`.
+- Two dependency floors claimed support for versions that cannot be installed alongside the `numpy>=2.0` this package also requires. `matplotlib>=3.7` in the `viz` extra is now `matplotlib>=3.9`, the first release with upstream numpy 2 support: 3.7.5 through 3.8.3 declare `numpy<2`, so pip and uv refuse them outright, while 3.7.0 declares no numpy bound at all and so installs and then fails at import with `ImportError: numpy.core.multiarray failed to import`.
+- `pandas>=2.0` is now `pandas>=2.2.2`, the first release usable with numpy 2. 2.0.x has no CPython 3.12 wheel and its source distribution does not build; 2.1.4 through 2.2.1 declare `numpy<2` and are refused; 2.1.1 installs but is built against the numpy 1.x ABI, so importing pandas raises `ValueError: numpy.dtype size changed`.
 
 ## [5.0.2] (2026-10-26)
 

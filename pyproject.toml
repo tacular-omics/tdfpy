@@ -15,7 +15,10 @@ maintainers = [
 ]
 dependencies = [
     "numpy>=2.0",
-    "pandas>=2.0",
+    # 2.2.2 is the first release usable with numpy 2: below it pandas either
+    # declares numpy<2 (2.1.4-2.2.1), is built against the numpy 1.x ABI
+    # (2.1.1), or has no cp312 wheel and no buildable sdist (2.0.x).
+    "pandas>=2.2.2",
     # Frames in analysis.tdf_bin are zstd-compressed. Python 3.14 ships zstd in
     # the standard library (PEP 784), so the wheel only needs this on older
     # interpreters. A 3.14 build made without libzstd will raise an ImportError
@@ -92,13 +95,6 @@ dev = [
     "pytest-cov>=6.0.0",
     "matplotlib>=3.9",
     "hypothesis>=6.100",
-    # Not a test requirement. The runtime floor `pandas>=2.0` cannot be used
-    # with the `numpy>=2.0` this package also requires: 2.0.x and 2.1.0 have no
-    # cp312 wheel and their sdists do not build, and 2.1.1-2.2.1 are built
-    # against the numpy 1.x ABI, so importing pandas raises "numpy.dtype size
-    # changed". 2.2.2 is the first numpy 2 compatible release. This holds the
-    # lowest-direct CI job there; remove it if the runtime floor is raised.
-    "pandas>=2.2.2",
 ]
 
 [tool.pytest.ini_options]

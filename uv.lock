@@ -2016,7 +2016,6 @@ viz = [
 dev = [
     { name = "hypothesis" },
     { name = "matplotlib" },
-    { name = "pandas" },
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "pytest-examples" },
@@ -2035,7 +2034,7 @@ requires-dist = [
     { name = "mcp", marker = "extra == 'mcp'", specifier = ">=2.1,<3" },
     { name = "numba", specifier = ">=0.59" },
     { name = "numpy", specifier = ">=2.0" },
-    { name = "pandas", specifier = ">=2.0" },
+    { name = "pandas", specifier = ">=2.2.2" },
     { name = "zstandard", marker = "python_full_version < '3.14'", specifier = ">=0.22" },
 ]
 provides-extras = ["mcp", "viz"]
@@ -2044,7 +2043,6 @@ provides-extras = ["mcp", "viz"]
 dev = [
     { name = "hypothesis", specifier = ">=6.100" },
     { name = "matplotlib", specifier = ">=3.9" },
-    { name = "pandas", specifier = ">=2.2.2" },
     { name = "pytest", specifier = ">=9" },
     { name = "pytest-cov", specifier = ">=6.0.0" },
     { name = "pytest-examples", specifier = ">=0.0.14" },
