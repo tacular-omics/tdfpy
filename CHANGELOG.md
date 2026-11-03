@@ -11,12 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `numpy>=2.0` is now `numpy>=1.26`, so tdfpy installs against the numpy 1 stack again. The full test suite passes unchanged on numpy 1.26.0, and no module uses a numpy 2 only API. This widens what can be installed on Python 3.12 only, because no numpy 1.x release ships a wheel for 3.13 or 3.14.
 - The development group's matplotlib pin now matches the `viz` extra's floor instead of sitting above it. A development pin above a runtime floor hides that floor from the `--resolution lowest-direct` CI job, which then tests a version nobody is promised.
+- The `mcp` extra now declares `pydantic>=2.12,<3`. The MCP server imports pydantic directly in three modules, so it was a real dependency that happened to be satisfied only because the MCP SDK pulls it in. 2.12 is the version mcp 2.1 requires, which makes it the lowest floor a resolver can reach.
 
 ### Fixed
 
 - `pandas>=2.0` is now `pandas>=2.1.2`. The old floor could not be installed at all on Python 3.12, where pandas 2.0.x has no wheel and its source distribution fails to build. The floor skips 2.1.1 deliberately: that one release declares `numpy>=1.26.0` with no upper bound while shipping the numpy 1.x ABI, so a resolver may pair it with numpy 2, and importing pandas then raises `ValueError: numpy.dtype size changed, may indicate binary incompatibility`. 2.1.2 is the first release that caps `numpy<2` itself.
-- `matplotlib>=3.7` in the `viz` extra is now `matplotlib>=3.7.3`, the oldest release with a CPython 3.12 wheel and also the oldest that caps `numpy<2` itself. Both properties matter. 3.7.0 through 3.7.2 declare no numpy bound, so a resolver could pair them with numpy 2, where matplotlib fails at import with `ImportError: numpy.core.multiarray failed to import`.
-- The `mcp` extra now declares `pydantic>=2.12,<3`. The MCP server imports pydantic directly in three modules, so it was a real dependency that happened to be satisfied only because the MCP SDK pulls it in. 2.12 is the version mcp 2.1 requires, which makes it the lowest floor a resolver can reach.
+- `matplotlib>=3.7` in the `viz` extra is now `matplotlib>=3.7.3`. This is the only floor in this release that moved up rather than down, by one patch version, and it is deliberate. The audit behind this release was lowering floors to the oldest versions that work, and for the `viz` extra the oldest version that works turned out to be higher than the one declared.
+- 3.7.3 is the oldest matplotlib with a CPython 3.12 wheel and, separately, the oldest that caps `numpy<2` itself. Both properties matter. 3.7.0 through 3.7.2 declare no numpy bound, so a resolver could pair them with numpy 2, where matplotlib fails at import with `ImportError: numpy.core.multiarray failed to import`.
 
 ## [5.0.2] (2026-10-26)
 
