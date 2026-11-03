@@ -14,22 +14,31 @@ maintainers = [
     {name = "Patrick T. Garrett", email = "pgarrett@scripps.edu"},
 ]
 dependencies = [
-    "numpy>=2.0",
-    # 2.2.2 is the first release usable with numpy 2: below it pandas either
-    # declares numpy<2 (2.1.4-2.2.1), is built against the numpy 1.x ABI
-    # (2.1.1), or has no cp312 wheel and no buildable sdist (2.0.x).
-    "pandas>=2.2.2",
+    # 1.26 is the oldest numpy with a CPython 3.12 wheel, and the full suite passes on
+    # it unchanged: nothing in src uses a numpy 2 only API. Python 3.13 and 3.14 have no
+    # numpy 1.x wheel at all, so this floor only ever applies on 3.12.
+    "numpy>=1.26",
+    # 2.1.2 rather than 2.1.1, which is not a typo. 2.1.1 declares numpy>=1.26.0 with no
+    # upper bound while shipping the numpy 1.x ABI, so a resolver may legally pair it with
+    # numpy 2 and importing pandas then raises
+    # `ValueError: numpy.dtype size changed, may indicate binary incompatibility`.
+    # 2.1.2 is the first release that caps numpy<2 itself. 2.0.x has no CPython 3.12
+    # wheel and its source distribution does not build on 3.12.
+    "pandas>=2.1.2",
     # Frames in analysis.tdf_bin are zstd-compressed. Python 3.14 ships zstd in
     # the standard library (PEP 784), so the wheel only needs this on older
     # interpreters. A 3.14 build made without libzstd will raise an ImportError
     # naming this package.
+    # 0.22.0 is the oldest release with a CPython 3.12 wheel. 0.20.0 and 0.21.0 do pass
+    # the suite, but only after compiling from source, which would make installing tdfpy
+    # depend on the user having a C toolchain.
     "zstandard>=0.22; python_version < '3.14'",
     # Required so the centroiding stack runs JIT-compiled, which its documented
     # performance assumes. The code does not need it to import: every kernel has
     # a pure-Python fallback, used if numba cannot be imported.
-    # 0.60.0 is the first release that resolves with numpy 2: 0.59.x caps numpy
-    # below 2, so no resolution of this package can contain it.
-    "numba>=0.60",
+    # 0.59.0 is the oldest release with a CPython 3.12 wheel. It caps numpy<1.27 itself,
+    # so no resolution can pair it with a numpy it cannot use.
+    "numba>=0.59",
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
@@ -58,8 +67,15 @@ Changelog = "https://github.com/tacular-omics/tdfpy/blob/main/CHANGELOG.md"
 DOI = "https://doi.org/10.5281/zenodo.19100532"
 
 [project.optional-dependencies]
-viz = ["matplotlib>=3.9"]
-mcp = ["mcp>=2.1,<3"]
+# 3.7.3 is the oldest matplotlib with a CPython 3.12 wheel and, separately, the oldest
+# that caps numpy<2 itself. Both matter: 3.7.0 through 3.7.2 declare no numpy bound at
+# all, so a resolver could pair them with numpy 2, where matplotlib fails at import with
+# `ImportError: numpy.core.multiarray failed to import`.
+viz = ["matplotlib>=3.7.3"]
+# pydantic is imported directly by tdfpy.mcp, so it is declared here rather than relied
+# on through the MCP SDK. mcp 2.1 requires pydantic 2.12, which makes 2.12 the lowest
+# floor any resolver can actually reach.
+mcp = ["mcp>=2.1,<3", "pydantic>=2.12,<3"]
 
 [project.scripts]
 tdfpy = "tdfpy.__main__:main"
@@ -95,7 +111,10 @@ dev = [
     "ruff>=0.16.8",
     "pyupgrade>=3.21.0",
     "pytest-cov>=6.0.0",
-    "matplotlib>=3.9",
+    # Kept at the viz extra's floor, not above it: --resolution lowest-direct takes the
+    # highest of two direct requirements, so a dev pin above the runtime floor would
+    # shadow it and the lowest CI job would never test the floor we declare.
+    "matplotlib>=3.7.3",
     "hypothesis>=6.100",
 ]
 
