@@ -50,7 +50,7 @@ Breaking API cleanup for 5.0. [docs/migration.md](docs/migration.md) has the ful
 - `tdfpy.errors`: `TdfpyError(ValueError)` base, `TdfpyKeyError` (+`KeyError`), `ReaderClosedError` (+`RuntimeError`), `AcquisitionTypeError`. All exported from `tdfpy`.
 - Opening a `DDA`, `DIA` or `PRM` reader on another acquisition type raises `AcquisitionTypeError` ("not a DDA acquisition (found DIA); use tdfpy.get_acquisition_type()"). It used to open and return empty or wrong elements.
 - `AcquisitionType` (`StrEnum`), `MsMsType`, `Polarity` (a `Literal`), `MetaValue`, `ook0_to_ccs` and `ccs_to_ook0` exported from `tdfpy`.
-- `tdfpy.types` with `ToleranceUnit = Literal["da", "ppm"]` and `Polarity = Literal["positive", "negative"]`, the same names, values and order as `tacular.types` (tdfpy does not depend on tacular). Both exported from `tdfpy`; the m/z tolerance parameters are typed `ToleranceUnit`.
+- `tdfpy.types` with `ToleranceUnit = Literal["da", "ppm"]` and `Polarity = Literal["positive", "negative"]`, the same names, values and order as `tacular.types` (tdfpy does not depend on tacular). Both are exported from `tdfpy`. The m/z tolerance parameters are typed `ToleranceUnit`.
 - `ms_level` on every frame (1 for MS1, 2 for MS/MS) and on `PasefFrameMsmsInfo`, `DiaWindow` and `PrmTransition` (always 2), next to `msms_type`. The window classes carry `msms_type` as a class constant (`DDA_MS2`, `DIA_MS2`, `PRM_MS2`).
 - `Precursor.precursor_mz`: `monoisotopic_mz` when known, else `largest_peak_mz`. The raw fields stay.
 - `Ms1FrameLookup.query_range(rt_range=)` and `query(rt=, rt_tolerance=30)`: MS1 frames by retention time.
@@ -67,34 +67,34 @@ Breaking API cleanup for 5.0. [docs/migration.md](docs/migration.md) has the ful
 
 - Renamed, no alias: `.time` -> `.rt` (`Frame`, `PrmTarget`); `PrmTarget.one_over_k0` -> `ook0`; `Frame.mz_calibration`, `tims_calibration`, `property_group` -> `*_id`; `Precursor.parent_frame` -> `parent_frame_id`; `PasefFrameMsmsInfo.precursor` -> `precursor_id`; `window_group` -> `window_group_id` on `DiaWindowGroup` / `DiaWindow`; `MetaData.one_over_k0_acq_range*` -> `ook0_acq_range*`; `TimsCalibration.scan_to_one_over_k0` / `one_over_k0_to_scan` -> `scan_to_ook0` / `ook0_to_scan`; `tdfpy.calibration.one_over_k0_to_ccs` / `ccs_to_one_over_k0` -> `ook0_to_ccs` / `ccs_to_ook0`; camelCase `TimsData` methods -> snake_case (`index_to_mz`, `mz_to_index`, `scan_num_to_ook0`, `ook0_to_scan_num`, `scan_num_to_voltage`, `voltage_to_scan_num`, `read_scans`).
 - Every spectral accessor is a method. The per-scan `.peaks` property of `Frame`, `DiaWindow` and `PrmTransition` is now `scan_peaks()`. `Precursor.peaks` and `PasefFrameMsmsInfo.peaks` (one mobility-collapsed `(N, 2)` spectrum, the most expensive accessor) are now `merged_peaks()`, and `Precursor.pasef_peaks` is `pasef_merged_peaks()`.
-- Mobility ranges are `(low, high)`, like `isolation_mz_range`, `ook0_acq_range` and `query_range(ook0_range=)`. `ook0_range`, `ccs_range` and `voltage_range` on `PasefFrameMsmsInfo`, `Precursor`, `DiaWindow` and `PrmTransition` used to come out high-to-low because scan number and 1/K0 run in opposite directions; `*_begin` is now the low value and `*_end` the high one.
+- Mobility ranges are `(low, high)`, like `isolation_mz_range`, `ook0_acq_range` and `query_range(ook0_range=)`. `ook0_range`, `ccs_range` and `voltage_range` on `PasefFrameMsmsInfo`, `Precursor`, `DiaWindow` and `PrmTransition` used to come out high-to-low because scan number and 1/K0 run in opposite directions. `*_begin` is now the low value and `*_end` the high one.
 - `FrameMetadata` (exported from `tdfpy`) renamed its fields to match `Frame`: `time` -> `rt`, `mz_calibration` -> `mz_calibration_id`, `tims_calibration` -> `tims_calibration_id`, `property_group` -> `property_group_id`.
 - `TimsData(path, *, use_recalibrated_state=..., pressure_compensation_strategy=...)`: the options are keyword-only.
 - After a reader closes, `reader.timsdata`, `metadata`, `calibration` and `pandas_tdf` raise `ReaderClosedError`, as do `Precursor.ook0` / `ccs` and the mobility ranges. `timsdata` used to hand back the closed handle and `metadata` kept reading the file.
 - `AcquisitionType.UNKNOWN` is `"unknown"` (was `"Unknown"`).
-- `TimsData.read_scans` and `read_frame_arrays` raise `TdfpyError` for a non-integer bound or a range outside `0 <= scan_begin <= scan_end <= num_scans`; an empty range (`begin == end`) is valid and reads nothing. `read_scans` used to pad out-of-range scans with empty arrays and `read_frame_arrays` clamped them.
+- `TimsData.read_scans` and `read_frame_arrays` raise `TdfpyError` for a non-integer bound or a range outside `0 <= scan_begin <= scan_end <= num_scans`. An empty range (`begin == end`) is valid and reads nothing. `read_scans` used to pad out-of-range scans with empty arrays and `read_frame_arrays` clamped them.
 - Window accessors (`scan_peaks`, `raw_peaks`, `centroid`, `merged_peaks`) raise `TdfpyError` when a PASEF/DIA window's scan range does not fit its frame (a corrupt file). `scan_peaks` used to clamp it silently.
-- Every error is a `TdfpyError`. Lookup misses and missing `MetaData` / `Calibration` keys raise `TdfpyKeyError`; spectral access after close raises `ReaderClosedError`; SQLite errors in `PandasTdf`, `convert_table_to_df` and `slice_d_folder` raise `TdfpyError` (`convert_table_to_df` raised `RuntimeError`). `PandasTdf.get_table_names` opens the database read-only.
-- `get_acquisition_type` returns `AcquisitionType`; `Frame.msms_type` is `MsMsType`. Both still compare equal to the old `str` / `int` values.
+- Every error is a `TdfpyError`. Lookup misses and missing `MetaData` / `Calibration` keys raise `TdfpyKeyError`. Spectral access after close raises `ReaderClosedError`. SQLite errors in `PandasTdf`, `convert_table_to_df` and `slice_d_folder` raise `TdfpyError` (`convert_table_to_df` raised `RuntimeError`). `PandasTdf.get_table_names` opens the database read-only.
+- `get_acquisition_type` returns `AcquisitionType`. `Frame.msms_type` is `MsMsType`. Both still compare equal to the old `str` / `int` values.
 - Elements are frozen, slotted, keyword-only dataclasses. `PrmTarget` equality and hashing ignore `transitions`.
-- `DiaWindowLookup[id]` and `PrmTransitionLookup[id]` return tuples (were lists); `DIA.window_groups` returns a tuple (was a generator). `query()` / `query_range()` arguments are keyword-only, and `DiaWindowLookup`'s `window_group_index=` is now `window_group=`.
-- `MetaData` and `Calibration` are read-only `Mapping`s; the `df` field is replaced by `table`.
+- `DiaWindowLookup[id]` and `PrmTransitionLookup[id]` return tuples (were lists). `DIA.window_groups` returns a tuple (was a generator). `query()` / `query_range()` arguments are keyword-only, and `DiaWindowLookup`'s `window_group_index=` is now `window_group=`.
+- `MetaData` and `Calibration` are read-only `Mapping`s. The `df` field is replaced by `table`.
 - `plot_centroiding`: every argument after `frame_id` is keyword-only, including `mobility_type`.
 - MCP `query_dia_windows`: parameter `window_group` -> `window_group_id`.
 - MCP `query_frames` and the entity tools (`query_precursors`, `query_dia_windows`, `query_prm_targets`, `query_prm_transitions`): range parameter `rt` -> `rt_range`; `mz` -> `precursor_mz_range` on the precursor and PRM-target tools and `isolation_mz_range` on the DIA-window and PRM-transition tools.
 - `ion_mobility_type` -> `mobility_type`, no alias, on every function and method that takes it (`get_raw_peaks`, `get_centroided_spectrum`, `convert`, `raw_peaks()` / `centroid()` on every element, `iter_window_spectra`, the `Centroider` call, `plot_centroiding`), matching mzmlpy's MCP `mobility_type`. Values are unchanged (`"ook0"`, `"ccs"`, `"voltage"`).
 - MCP `Processing.ion_mobility_type` -> `mobility_type` (values `"ook0"`, `"voltage"`) in `preview_spectrum`, `export_spectrum` and `export_window_batch`.
-- MCP `query_frames` rows use `Frame` attribute names instead of raw `Frames` SQL columns: `Id` -> `frame_id`, `Time` -> `rt`, `Polarity` `"+"`/`"-"` -> `polarity` `"positive"`/`"negative"`, `ScanMode` -> `scan_mode`, `MsMsType` -> `msms_type`, `TimsId` -> `tims_id`, `MaxIntensity` -> `base_peak_intensity`, `SummedIntensities` -> `total_ion_current`, `NumScans` -> `num_scans`, `NumPeaks` -> `num_peaks`, `MzCalibration` -> `mz_calibration_id`, `T1`/`T2` -> `t1`/`t2`, `TimsCalibration` -> `tims_calibration_id`, `PropertyGroup` -> `property_group_id`, `AccumulationTime` -> `accumulation_time`, `RampTime` -> `ramp_time`; each row adds `ms_level` and a frame `selection`. The page is `{items, total, offset, next_offset}` like the other query tools (was `{table, columns, offset, rows, next_offset}`). `read_metadata_table` still returns raw columns.
+- MCP `query_frames` rows use `Frame` attribute names instead of raw `Frames` SQL columns: `Id` -> `frame_id`, `Time` -> `rt`, `Polarity` `"+"`/`"-"` -> `polarity` `"positive"`/`"negative"`, `ScanMode` -> `scan_mode`, `MsMsType` -> `msms_type`, `TimsId` -> `tims_id`, `MaxIntensity` -> `base_peak_intensity`, `SummedIntensities` -> `total_ion_current`, `NumScans` -> `num_scans`, `NumPeaks` -> `num_peaks`, `MzCalibration` -> `mz_calibration_id`, `T1`/`T2` -> `t1`/`t2`, `TimsCalibration` -> `tims_calibration_id`, `PropertyGroup` -> `property_group_id`, `AccumulationTime` -> `accumulation_time`, `RampTime` -> `ramp_time`. Each row adds `ms_level` and a frame `selection`. The page is `{items, total, offset, next_offset}` like the other query tools (was `{table, columns, offset, rows, next_offset}`). `read_metadata_table` still returns raw columns.
 - MCP frame metadata in `convert_coordinates` (`frame`) and in spectrum/export metadata (`frames`) reports `polarity` as `"positive"`/`"negative"` (was `"+"`/`"-"`).
 - MCP `server_info` units key `retention_time` -> `rt`.
 - Reader vocabulary shared with mzmlpy, renamed with no alias: `mz_range` -> `isolation_mz_range` on `PasefFrameMsmsInfo`, `DiaWindow`, `PrmTransition` and `Precursor`; `mz_begin` / `mz_end` removed (use `isolation_mz_range`); `PrmTarget.monoisotopic_mz` -> `precursor_mz`; `Frame.summed_intensities` -> `total_ion_current`; `Frame.max_intensity` -> `base_peak_intensity`.
-- `Polarity` is `Literal["positive", "negative"]`, not a `StrEnum`, and every `polarity` field is `Polarity | None`. A frame whose `Polarity` column is not `+` / `-` gives `None` and one `UserWarning` per file; a precursor whose PASEF frames disagree gives `None` with a warning. `FrameMetadata.polarity` stays the raw `"+"` / `"-"` string.
+- `Polarity` is `Literal["positive", "negative"]`, not a `StrEnum`, and every `polarity` field is `Polarity | None`. A frame whose `Polarity` column is not `+` / `-` gives `None` and one `UserWarning` per file. A precursor whose PASEF frames disagree gives `None` with a warning. `FrameMetadata.polarity` stays the raw `"+"` / `"-"` string.
 - Lookup keywords (same as mzmlpy 0.10): a `(low, high)` tuple is `*_range`, a point is `rt=` / `precursor_mz=` / `ook0=` plus a tolerance. `PrecursorLookup.query_range(mz_range=)` and `PrmTargetLookup.query_range(mz_range=)` -> `precursor_mz_range=`; `PrecursorLookup.query(mz=)` and `PrmTargetLookup.query(mz=)` -> `precursor_mz=`.
 - Tolerance switches follow the tacular-omics naming rule, renamed with no alias: `mz_tolerance_type` -> `mz_tolerance_unit` and `im_tolerance_type` -> `im_tolerance_unit` on `merge_peaks`, `get_mobility_collapsed_spectrum`, `MergePeaksCentroider`, `PrecursorLookup.query` and `PrmTargetLookup.query`. Values are unchanged (`"da"` / `"ppm"` for m/z; `"relative"` / `"absolute"` for 1/K0).
 - `tdfpy.constants.PROTON_MASS` is the full CODATA 2018 value `1.007276466621` (was truncated to `1.007276466`), the same as `tacular.constants.PROTON_MASS`.
-- The `DDA`, `DIA` and `PRM` readers load their tables with plain sqlite queries instead of pandas `iterrows`; SQLite errors there raise `TdfpyError` ("Failed to read TDF database ...").
-- Reading a scan range (`read_frame_arrays`, `read_scans`, every window accessor) decodes TOF indices for those scans only. Whole-frame layout checks still run; the TOF-bounds check now covers the scans read.
-- `MergePeaksCentroider` sorts peaks on the integer TOF index (a counting sort under numba) before converting to m/z, and `merge_peaks` (both kernels) puts its input in one canonical order: m/z, then descending 1/K0 (that is, TOF then scan for frame data), then intensity. Input already in that order, as the reader produces it, skips the sort after an O(n) check; anything else is lexsorted into it. The greedy seed order is a stable sort on descending intensity, so equal-intensity seeds are taken in that canonical order instead of an unstable quicksort order. Results no longer depend on the NumPy version or on input order, including when many points share one m/z; only points identical in m/z, 1/K0 and intensity keep their input order, and those are interchangeable. Measured against 4.x on 12 dense MS1 frames each: 1.43% of centroids differ on a 15-min diaPASEF run (11,919 of 834,389) and 1.16% on a 15-min DDA run (4,278 of 368,896); summed intensity per frame moves by under 0.02%. `merged_peaks()` output is unchanged.
+- The `DDA`, `DIA` and `PRM` readers load their tables with plain sqlite queries instead of pandas `iterrows`. SQLite errors there raise `TdfpyError` ("Failed to read TDF database ...").
+- Reading a scan range (`read_frame_arrays`, `read_scans`, every window accessor) decodes TOF indices for those scans only. Whole-frame layout checks still run. The TOF-bounds check now covers the scans read.
+- `MergePeaksCentroider` sorts peaks on the integer TOF index (a counting sort under numba) before converting to m/z, and `merge_peaks` (both kernels) puts its input in one canonical order: m/z, then descending 1/K0 (that is, TOF then scan for frame data), then intensity. Input already in that order, as the reader produces it, skips the sort after an O(n) check. Anything else is lexsorted into it. The greedy seed order is a stable sort on descending intensity, so equal-intensity seeds are taken in that canonical order instead of an unstable quicksort order. Results no longer depend on the NumPy version or on input order, including when many points share one m/z. Only points identical in m/z, 1/K0 and intensity keep their input order, and those are interchangeable. Measured against 4.x on 12 dense MS1 frames each: 1.43% of centroids differ on a 15-min diaPASEF run (11,919 of 834,389) and 1.16% on a 15-min DDA run (4,278 of 368,896). Summed intensity per frame moves by under 0.02%. `merged_peaks()` output is unchanged.
 
 ### Performance
 
@@ -117,7 +117,7 @@ Speedups only, **indicative, not exclusive timing**: single-core direct runs on 
 - `TimsData` closes its sqlite connection when `analysis.tdf_bin` exists but cannot be opened. Before, the connection stayed open until the half-built object was garbage collected, which keeps `analysis.tdf` locked on Windows.
 - `PasefFrameMsmsInfo` docstring: `frame_id` and `rt` are those of the MS/MS frame the window was acquired in, not of the parent MS1 frame.
 - `scripts/release_version.py sync --set X.Y.Z` also sets `date-released` in `CITATION.cff` to today's date.
-- `scripts/noise_comparison.py` ported from the removed `tdfpy.noise.estimate_noise_level` to `coerce_filters(...)[0].compute_threshold(...)`; it takes an optional output directory.
+- `scripts/noise_comparison.py` ported from the removed `tdfpy.noise.estimate_noise_level` to `coerce_filters(...)[0].compute_threshold(...)`. It takes an optional output directory.
 
 ### Added
 
@@ -127,7 +127,7 @@ Speedups only, **indicative, not exclusive timing**: single-core direct runs on 
 
 ### Changed
 
-- GitHub Actions are pinned to commit SHAs. Locked dev and docs dependencies updated (requests, pygments, urllib3, pymdown-extensions, pillow); runtime requirements are unchanged.
+- GitHub Actions are pinned to commit SHAs. Locked dev and docs dependencies updated (requests, pygments, urllib3, pymdown-extensions, pillow). Runtime requirements are unchanged.
 
 ## [4.1.0] (2026-09-23)
 
@@ -140,7 +140,7 @@ Speedups only, **indicative, not exclusive timing**: single-core direct runs on 
 
 ### Deprecated
 
-- `plot_centroiding` arguments `mz_tolerance`, `mz_tolerance_type`, `im_tolerance`, `im_tolerance_type`, `min_peaks` and `max_peaks`. They still work, with their old defaults, and emit a `DeprecationWarning`; pass `centroid=MergePeaksCentroider(...)` instead.
+- `plot_centroiding` arguments `mz_tolerance`, `mz_tolerance_type`, `im_tolerance`, `im_tolerance_type`, `min_peaks` and `max_peaks`. They still work, with their old defaults, and emit a `DeprecationWarning`. Pass `centroid=MergePeaksCentroider(...)` instead.
 
 ### Removed
 
@@ -155,7 +155,7 @@ Speedups only, **indicative, not exclusive timing**: single-core direct runs on 
 
 ### Changed
 
-- Releases publish to PyPI by trusted publishing; `.zenodo.json` no longer hard-codes the version.
+- Releases publish to PyPI by trusted publishing. `.zenodo.json` no longer hard-codes the version.
 
 ## [4.0.1] (2026-09-04)
 
@@ -242,7 +242,7 @@ question, and lifts the Linux/Windows-x86-64 restriction — macOS and ARM work.
   `extractChromatograms`, `readPasefProfileMsMs`,
   `readPasefProfileMsMsForFrame`, `readPasefMsMsForFrame`, and
   `readScansDllBuffer`. `readPasefMsMs` and
-  `extractCentroidedSpectrumForFrame` are also gone; see *Changed*.
+  `extractCentroidedSpectrumForFrame` are also gone. See *Changed*.
 - **`TimsData.dll` and `TimsData.initial_frame_buffer_size`** attributes.
 
 ### Changed
@@ -259,7 +259,7 @@ question, and lifts the Linux/Windows-x86-64 restriction — macOS and ARM work.
 - **`TimsData.handle`** is now the open `analysis.tdf_bin` file object rather
   than a native handle. It is still `None` after `close()`, which is all any
   caller checked.
-- Wheel gains a `zstandard` dependency on Python < 3.14; 3.14+ uses the
+- Wheel gains a `zstandard` dependency on Python < 3.14. 3.14+ uses the
   standard library's `compression.zstd`.
 
 ### Added
@@ -267,7 +267,7 @@ question, and lifts the Linux/Windows-x86-64 restriction — macOS and ARM work.
 - **`tdfpy.calibration`** — the TOF-index↔m/z and scan↔1/K0 models, as pure
   functions over the `MzCalibration` / `TimsCalibration` tables. Reproduces
   Bruker to ~1e-10 relative for m/z and ~1e-15 for mobility. Note that no other
-  open-source reader uses these tables; they approximate from `GlobalMetadata`
+  open-source reader uses these tables. They approximate from `GlobalMetadata`
   instead, which is off by 6.35 Th (5.4%) on the bundled DDA fixture.
 - **`get_mobility_collapsed_spectrum`** — the mobility-collapse + greedy-merge
   helper backing the two `.peaks` properties.
@@ -291,14 +291,14 @@ question, and lifts the Linux/Windows-x86-64 restriction — macOS and ARM work.
 ### Fixed
 
 - **`slice_d_folder` can no longer destroy data.** It used to delete any
-  existing destination with `rmtree`; passing the source (or a typo'd path) as
+  existing destination with `rmtree`. Passing the source (or a typo'd path) as
   the destination erased the raw acquisition. It now raises `FileExistsError`
   for an existing destination and `ValueError` when the destination is the
   source or inside it, pre-flights NULL `Frames.TimsId` values, and removes
   the partial destination on any mid-write failure.
 - **DDA files with NULL metadata open again.** A NULL `Frames.PropertyGroup`
   crashed `DDA(...)` (DIA/PRM already guarded), and a NULL
-  `PasefFrameMsMsInfo.Precursor` failed the whole file; both are now tolerated
+  `PasefFrameMsMsInfo.Precursor` failed the whole file. Both are now tolerated
   the way the dataclasses were designed to.
 - **Corrupt `analysis.tdf_bin` input now raises `UnsupportedTdfError`**
   instead of crashing arbitrarily or reading garbage: undersized frame
@@ -309,11 +309,11 @@ question, and lifts the Linux/Windows-x86-64 restriction — macOS and ARM work.
   and the payload's own count word (verified to hold on all 1710 fixture
   frames before enforcement).
 - **Concurrent frame reads are now actually safe.** The decoder claimed
-  thread safety but seeked a shared file handle; two threads produced 311
+  thread safety but seeked a shared file handle. Two threads produced 311
   corrupted reads out of 1200 under a tight switch interval. Reads now use
   `os.pread` (lock-guarded fallback where unavailable).
 - **`VerticalNoiseFilter` Numba and Python paths are bit-identical on
-  fractional intensities** (reachable via `Smooth(mode="mean")`); the
+  fractional intensities** (reachable via `Smooth(mode="mean")`). The
   incremental float profile accrued ±1e-13 residues that flipped occupancy
   tests on ~1 in 5 peaks in adversarial cases.
 - **`WatershedCentroider` no longer emits phantom `[0, 0, 0]` centroids** for
@@ -324,7 +324,7 @@ question, and lifts the Linux/Windows-x86-64 restriction — macOS and ARM work.
   entirely), and an invalid `Smooth`/`box_smooth` mode raises `ValueError`.
 - **`get_mobility_collapsed_spectrum` output no longer depends on peak
   density**: the `bincount` and `unique` rollup strategies disagreed on
-  zero-total TOF bins; both now drop them.
+  zero-total TOF bins. Both now drop them.
 - **`index_to_mz` rejects TOF indices below the calibration model's domain**
   instead of returning a plausible-looking wrong m/z.
 - **`PandasTdf` closes its SQLite connections deterministically** (`with
@@ -334,18 +334,18 @@ question, and lifts the Linux/Windows-x86-64 restriction — macOS and ARM work.
 ### Deprecated
 
 - **`ccsToOneOverK0ToCCSforMz` → `ccsToOneOverK0forMz`.** The old name is a
-  typo'd copy-paste artifact; it remains as an alias that emits
+  typo'd copy-paste artifact. It remains as an alias that emits
   `DeprecationWarning`.
 
 ### Build, docs, and CI
 
 - The sdist shrank from 82 MB to under 0.5 MB — test fixtures, plots, and
-  internal apps are excluded; `junit.xml` and `plots/` are no longer tracked.
+  internal apps are excluded. `junit.xml` and `plots/` are no longer tracked.
 - **`numba` is now a required dependency** (it was an undocumented optional
   extra, so default installs silently ran the slow pure-Python fallbacks).
 - The JOSS paper, `CITATION.cff`, README, and docs no longer describe the
   removed `libtimsdata`/ctypes architecture or credit "Bruker's algorithm"
-  for MS2 peaks; packaging metadata migrated to PEP 639 and `setup.py` was
+  for MS2 peaks. Packaging metadata migrated to PEP 639 and `setup.py` was
   removed.
 - CI now tests the interpreter each matrix leg asks for (the 3.14 leg was
   silently testing 3.12), adds Python 3.13, and the publish workflow verifies
@@ -382,9 +382,9 @@ Frame decoding remains bit-exact against Bruker over all 1710 fixture frames and
 
 ### Added
 
-- **Precursor-space MS1 gates (`tdfpy.noise.gates`).** Two acquisition-aware `NoiseFilter`s that drop MS1 signal the instrument never fragments — signal that cannot become an identification. Both convert their `(m/z, 1/K0)` region once to per-scan integer TOF-index intervals (via the run calibration) and test membership with a vectorised binary search; both no-op (keep everything) when the run carries no region. Ported from the `dnoise` Rust tool. Compose like any filter, e.g. `noise=[SelectionPolygonGate(), MadThreshold(k=3)]`.
-  - **`SelectionPolygonGate`** (ddaPASEF) — keeps only MS1 points inside the run's PASEF selection polygon (the "IMS PolygonFilter" read from `analysis.tdf`'s `GroupProperties`). A generalisation of `ChargeStateRegion` from a single line to the real acquisition polygon. Skipped on diaPASEF (where the same property stores window quads). Padded in physical units (`mz_pad` default 5 Da, `im_pad` default 0.05 1/K0) so an edge precursor keeps its isotopic envelope / mobility spread rather than being clipped at a hard polygon boundary; pass `mz_pad=0.0, im_pad=0.0` for a hard cutoff.
-  - **`DiaMs1WindowGate`** (diaPASEF) — keeps only MS1 points inside the union of the isolation windows (`DiaFrameMsMsWindows`); everything outside is a precursor the method never isolates. Windows are padded in physical units (`mz_pad` default 5 Da, `im_pad` default 0.05 1/K0). No-op on ddaPASEF.
+- **Precursor-space MS1 gates (`tdfpy.noise.gates`).** Two acquisition-aware `NoiseFilter`s that drop MS1 signal the instrument never fragments — signal that cannot become an identification. Both convert their `(m/z, 1/K0)` region once to per-scan integer TOF-index intervals (via the run calibration) and test membership with a vectorised binary search. Both no-op (keep everything) when the run carries no region. Ported from the `dnoise` Rust tool. Compose like any filter, e.g. `noise=[SelectionPolygonGate(), MadThreshold(k=3)]`.
+  - **`SelectionPolygonGate`** (ddaPASEF) — keeps only MS1 points inside the run's PASEF selection polygon (the "IMS PolygonFilter" read from `analysis.tdf`'s `GroupProperties`). A generalisation of `ChargeStateRegion` from a single line to the real acquisition polygon. Skipped on diaPASEF (where the same property stores window quads). Padded in physical units (`mz_pad` default 5 Da, `im_pad` default 0.05 1/K0) so an edge precursor keeps its isotopic envelope / mobility spread rather than being clipped at a hard polygon boundary. Pass `mz_pad=0.0, im_pad=0.0` for a hard cutoff.
+  - **`DiaMs1WindowGate`** (diaPASEF) — keeps only MS1 points inside the union of the isolation windows (`DiaFrameMsMsWindows`). Everything outside is a precursor the method never isolates. Windows are padded in physical units (`mz_pad` default 5 Da, `im_pad` default 0.05 1/K0). No-op on ddaPASEF.
   - Both gates now **no-op (keep everything) on non-MS1 frames** rather than testing fragment peaks against the MS1 precursor region (which would empty an MS2 spectrum), so they are safe to leave in a `noise=[...]` list applied across frame types.
   - `build_window_intervals` **clamps a negative `scan_lo` to 0 and skips boxes lying wholly outside the scan range** instead of letting a negative bound wrap around via Python indexing.
 
@@ -395,15 +395,15 @@ Frame decoding remains bit-exact against Bruker over all 1710 fixture frames and
 - **`convert(..., ion_mobility_type="voltage")` returned garbage.** The voltage branch fed per-peak 1/K0 values into `scanNumToVoltage`, which expects scan numbers, so every peak's voltage was looked up at ~scan 0. Now passes the peak scan indices.
 - **`Calibration.mode` and `Calibration.std_ppm` always raised `KeyError`.** They read non-existent table keys (`CalibrationMode` / `CalibrationStdPpm`) instead of the real `MzCalibrationMode` / `MzStandardDeviationPPM`.
 - **`DiaWindowLookup.query_range` filtered on the wrong field.** It matched against `window_index` (and, for a `DiaWindowGroup` argument, mixed id spaces) instead of `window_group`, which is how the lookup is keyed everywhere else.
-- **DIA reader truncated `t1`/`t2` to `int`.** The `Frame.t1`/`t2` fields are `float`, and the DDA/PRM readers already read them as such; the DIA reader now matches.
+- **DIA reader truncated `t1`/`t2` to `int`.** The `Frame.t1`/`t2` fields are `float`, and the DDA/PRM readers already read them as such. The DIA reader now matches.
 - **`merge_peaks(..., max_peaks=0)` diverged between the numba and pure-Python kernels** (numba capped after one peak, Python treated it as unlimited). Both now treat `None`/non-positive as "no limit".
-- **Pure-Python centroiding produced `NaN` m/z on an all-zero-intensity cluster** (divide-by-zero) where the numba kernel fell back to the seed peak; the Python path now guards the same way.
+- **Pure-Python centroiding produced `NaN` m/z on an all-zero-intensity cluster** (divide-by-zero) where the numba kernel fell back to the seed peak. The Python path now guards the same way.
 - **`plot_centroiding` "% of intensity" could exceed 100 %.** The lost-intensity fraction now divides by the pre-noise total (kept + rejected).
 
 ### Added
 
-- **Actionable exception messages throughout.** Lookup misses (frames, precursors, DIA windows, PRM targets/transitions) now report the requested id *and* the loaded range; "frame not found", scan-range, unknown-`MsMsType`, unknown-polarity, native-timsdata, and frame-size-cap errors now name the offending value and the valid set/constraint. Aimed at making failures self-explanatory to both humans and LLM/agent callers.
-- **Library-wide logging/observability.** Module loggers added to `reader`, `pipeline`, `elems`, `slicer`, and the `noise` filters. Opening a `.d` folder logs a one-line summary; `apply_noise`, `exclude_region`, `read_spectrum`, and the intensity-threshold filters emit debug traces and **warn when an operation removes all peaks or hits a degenerate/non-finite threshold** (so "why is my result empty?" is answerable from the logs). Slicing a folder logs progress and warns before overwriting an existing destination.
+- **Actionable exception messages throughout.** Lookup misses (frames, precursors, DIA windows, PRM targets/transitions) now report the requested id *and* the loaded range. The "frame not found", scan-range, unknown-`MsMsType`, unknown-polarity, native-timsdata, and frame-size-cap errors now name the offending value and the valid set/constraint. Aimed at making failures self-explanatory to both humans and LLM/agent callers.
+- **Library-wide logging/observability.** Module loggers added to `reader`, `pipeline`, `elems`, `slicer`, and the `noise` filters. Opening a `.d` folder logs a one-line summary. `apply_noise`, `exclude_region`, `read_spectrum`, and the intensity-threshold filters emit debug traces and **warn when an operation removes all peaks or hits a degenerate/non-finite threshold** (so "why is my result empty?" is answerable from the logs). Slicing a folder logs progress and warns before overwriting an existing destination.
 - **`ChargeStateRegion` now rejects a negative m/z-vs-1/K0 slope** in `__post_init__` instead of silently excluding the wrong half-plane.
 
 ### Changed
@@ -417,15 +417,15 @@ Frame decoding remains bit-exact against Bruker over all 1710 fixture frames and
 
 ### Added
 
-- **Pipeline module (`tdfpy.pipeline`).** Composable ops for raw peak extraction and centroiding — `RawSpectrum` data carrier plus `read_spectrum`, `subset_scans`, `exclude_region`, `smooth`, `box_smooth`, `apply_noise`, `convert`, `centroid_peaks`. The convenience `get_raw_peaks` and `get_centroided_spectrum` are now thin orchestrators over these ops; custom pipelines call the ops directly. See [docs/api/pipeline.md](docs/api/pipeline.md).
-- **`smooth` / `box_smooth` pipeline ops + `Smooth` config.** Position-preserving box sum or mean of intensities over a `(±scan_half_width, ±mz_idx_half_width)` window (default `±5` scans, `±2` TOF indices, `mode="sum"`). Summing amplifies genuine ion-mobility streaks ahead of noise filtering while leaving scattered single-hit noise unchanged; the `mode="mean"` variant backs `WatershedCentroider`'s seed-stabilising smoother. Vectorised prefix-sum implementation, promoted from the tuning dashboards. The frozen `Smooth` dataclass carries the knobs so the convenience entry points accept `smooth=Smooth(...)` — wired into `get_raw_peaks`, `get_centroided_spectrum`, and `Frame`/`DiaWindow`/`PrmTransition` `.raw_peaks()` / `.centroid()`.
-- **Noise filter subpackage (`tdfpy.noise`).** `NoiseFilter` ABC plus per-method `IntensityThreshold` subclasses (`AbsoluteThreshold`, `MadThreshold`, `PercentileThreshold`, `HistogramThreshold`, `BaselineThreshold`, `IterativeMedianThreshold`) and the structural filters `VerticalNoiseFilter` and `HorizontalHaloFilter`. Each filter exposes its tunable knobs as dataclass fields; frozen so they're hashable (Streamlit-cacheable). String/numeric shorthand (`noise="mad"`, `noise=500.0`) coerced via `coerce_filters`. Filters compose: `noise=[VerticalNoiseFilter(...), HorizontalHaloFilter(), MadThreshold(k=3)]`.
-- **`HorizontalHaloFilter`.** Structural filter that clears the weak m/z halo flanking bright peaks **to the left and right only — never above or below.** Operating in integer `(scan, TOF index)` space, it compares each peak to the maximum intensity in its surrounding box `(±scan_half_width, ±mz_idx_half_width)` *excluding the peak's own m/z column* and drops it if it falls below `peak_fraction` of that reference. Excluding the own column is what guarantees a bright peak directly above/below (the vertical ion-mobility streak of a real ion) can never trigger removal. Defaults `peak_fraction=0.15`, `mz_idx_half_width=100` (≈0.4 Da), `scan_half_width=2`; set `scan_half_width=0` for strictly per-row behaviour.
-- **`VerticalNoiseFilter` Numba kernel.** The single-pass vertical-streak scan is now JIT-compiled (`@njit(cache=True)`) with a forward two-pointer window and an incremental per-scan intensity profile; the pure-NumPy reference is retained as the fallback and for the diagnostics histogram. Behaviour is unchanged (covered by an equivalence test).
+- **Pipeline module (`tdfpy.pipeline`).** Composable ops for raw peak extraction and centroiding — `RawSpectrum` data carrier plus `read_spectrum`, `subset_scans`, `exclude_region`, `smooth`, `box_smooth`, `apply_noise`, `convert`, `centroid_peaks`. The convenience `get_raw_peaks` and `get_centroided_spectrum` are now thin orchestrators over these ops. Custom pipelines call the ops directly. See [docs/api/pipeline.md](docs/api/pipeline.md).
+- **`smooth` / `box_smooth` pipeline ops + `Smooth` config.** Position-preserving box sum or mean of intensities over a `(±scan_half_width, ±mz_idx_half_width)` window (default `±5` scans, `±2` TOF indices, `mode="sum"`). Summing amplifies genuine ion-mobility streaks ahead of noise filtering while leaving scattered single-hit noise unchanged. The `mode="mean"` variant backs `WatershedCentroider`'s seed-stabilising smoother. Vectorised prefix-sum implementation, promoted from the tuning dashboards. The frozen `Smooth` dataclass carries the knobs so the convenience entry points accept `smooth=Smooth(...)` — wired into `get_raw_peaks`, `get_centroided_spectrum`, and `Frame`/`DiaWindow`/`PrmTransition` `.raw_peaks()` / `.centroid()`.
+- **Noise filter subpackage (`tdfpy.noise`).** `NoiseFilter` ABC plus per-method `IntensityThreshold` subclasses (`AbsoluteThreshold`, `MadThreshold`, `PercentileThreshold`, `HistogramThreshold`, `BaselineThreshold`, `IterativeMedianThreshold`) and the structural filters `VerticalNoiseFilter` and `HorizontalHaloFilter`. Each filter exposes its tunable knobs as dataclass fields and is frozen, so it is hashable (Streamlit-cacheable). String/numeric shorthand (`noise="mad"`, `noise=500.0`) coerced via `coerce_filters`. Filters compose: `noise=[VerticalNoiseFilter(...), HorizontalHaloFilter(), MadThreshold(k=3)]`.
+- **`HorizontalHaloFilter`.** Structural filter that clears the weak m/z halo flanking bright peaks **to the left and right only — never above or below.** Operating in integer `(scan, TOF index)` space, it compares each peak to the maximum intensity in its surrounding box `(±scan_half_width, ±mz_idx_half_width)` *excluding the peak's own m/z column* and drops it if it falls below `peak_fraction` of that reference. Excluding the own column is what guarantees a bright peak directly above/below (the vertical ion-mobility streak of a real ion) can never trigger removal. Defaults `peak_fraction=0.15`, `mz_idx_half_width=100` (≈0.4 Da), `scan_half_width=2`. Set `scan_half_width=0` for strictly per-row behaviour.
+- **`VerticalNoiseFilter` Numba kernel.** The single-pass vertical-streak scan is now JIT-compiled (`@njit(cache=True)`) with a forward two-pointer window and an incremental per-scan intensity profile. The pure-NumPy reference is retained as the fallback and for the diagnostics histogram. Behaviour is unchanged (covered by an equivalence test).
 - **Region exclusion (`tdfpy.regions`).** New `ChargeStateRegion` dataclass for dropping the singly-charged contamination band in timsTOF MS1 — defined by a `(m/z, 1/K0)` line, capped at the upper endpoint. Applied in integer TOF-index space (one vectorized comparison, no per-peak unit conversion). Distinct from noise filters — answers "which part of the data plane?" rather than "what's real signal?". See [docs/api/regions.md](docs/api/regions.md).
 - **Centroider hierarchy.** New `Centroider` ABC with two implementations:
   - `MergePeaksCentroider` (default, replaces `CentroidConfig`) — wraps the existing greedy tolerance-based centroider.
-  - `WatershedCentroider` — intensity-ordered region growing in integer index space, ported from `apps/ALGORITHM.md` Stage 3. Avoids float-m/z binning; Numba-JIT'd kernel (~2.5× faster than pure Python on real frames).
+  - `WatershedCentroider` — intensity-ordered region growing in integer index space, ported from `apps/ALGORITHM.md` Stage 3. Avoids float-m/z binning. Numba-JIT'd kernel (~2.5× faster than pure Python on real frames).
 - **Scan-range subsetting.** New `scan_range=(begin, end)` parameter on `get_raw_peaks` / `get_centroided_spectrum`, exposed automatically by `DiaWindow.centroid()` and `PrmTransition.centroid()` — fixes a long-standing bug where those methods centroided the entire parent frame instead of just the isolation window.
 - **`VerticalNoiseDiagnostics`** returned by `VerticalNoiseFilter.run(..., diagnostics=True)`. Carries the keep-mask plus per-pass attrition trace, column counts, and feature-intensity histogram — used by the IM-feature-filter dashboard.
 - **PEP 561 `py.typed` marker.** Downstream type checkers now pick up tdfpy's annotations.
@@ -442,8 +442,8 @@ Frame decoding remains bit-exact against Bruker over all 1710 fixture frames and
   | `centroid=CentroidConfig(mz_tolerance=10)` | `centroid=MergePeaksCentroider(mz_tolerance=10)` |
   | post-centroid `noise_filter` on `get_centroided_spectrum` | **dropped** — chain filters via `noise=` (pre-centroid) instead |
   | `Frame.centroid(mz_tolerance=10, ...)` flat kwargs | `Frame.centroid(centroid=MergePeaksCentroider(mz_tolerance=10, ...))` |
-- **`DiaWindow.centroid()` / `PrmTransition.centroid()` now honor `scan_num_begin/end`** — previously they centroided the whole parent frame. Output will differ for these classes; MS1 (`Frame.centroid()`) is unaffected.
-- **`apps/_im_filter.py` removed.** The vertical-noise filter algorithm is now canonical in `tdfpy.noise.structural`; the timsTOF viewer uses `VerticalNoiseFilter.run(..., diagnostics=True)`.
+- **`DiaWindow.centroid()` / `PrmTransition.centroid()` now honor `scan_num_begin/end`** — previously they centroided the whole parent frame. Output will differ for these classes. MS1 (`Frame.centroid()`) is unaffected.
+- **`apps/_im_filter.py` removed.** The vertical-noise filter algorithm is now canonical in `tdfpy.noise.structural`. The timsTOF viewer uses `VerticalNoiseFilter.run(..., diagnostics=True)`.
 - **`VerticalNoiseFilter` / `WatershedCentroider` field names normalized.** Every Chebyshev half-extent on the scan or TOF-index axis now follows `<purpose>_<axis>_half_width` (`mz_idx_half_width`, `attach_scan_half_width`, `smooth_scan_half_width`, `attach_mz_idx_half_width`, `smooth_mz_idx_half_width`). Streak length / gap fields renamed to `min_streak_scans` / `max_gap_scans` / `min_streak_intensity`. `min_centroid_total` renamed to `min_centroid_intensity`. **Breaking** for any code that constructed these dataclasses by keyword.
 - **`VerticalNoiseFilter` defaults shifted.** `mz_idx_half_width` now `3` (was `2`), `min_streak_intensity` now `50.0` (was `0.0`), `num_iterations` now `2` (was `1`). Pass explicit values to keep the previous behaviour.
 - **`WatershedCentroider` defaults shifted.** Box smoothing is now on by default — `smooth_scan_half_width=5`, `smooth_mz_idx_half_width=3` (previously `0`, off). `max_mz_idx_from_seed` now defaults to `10` (previously `None`, unbounded). Pass `smooth_scan_half_width=0` and `max_mz_idx_from_seed=None` to disable.
@@ -454,7 +454,7 @@ Frame decoding remains bit-exact against Bruker over all 1710 fixture frames and
 - Post-centroid noise filtering on `get_centroided_spectrum` — noise filters now run pre-centroid via `noise=`, where they more usefully suppress satellites before the centroider sees them.
 - **Convolution-style smoothing.** The old expand-and-aggregate `smooth()` op and the `im_smoothing_window` / `mz_smoothing_window` kwargs on `get_raw_peaks` / `get_centroided_spectrum` / `Frame.raw_peaks()` / `Frame.centroid()` are gone — it created new positions whenever the window > 1, ballooning the point count. It is replaced by the position-preserving box-sum/mean `smooth` / `box_smooth` ops (see Added).
 - **`VerticalNoiseFilter.min_window_intensity`** field. Was a per-scan summed-intensity floor inside the column window — confusingly named and rarely tuned (defaulted to 0). The `min_streak_intensity` total-intensity floor is the kept knob.
-- **Standalone tuning dashboards** (`apps/im_feature_filter_dashboard.py`, `apps/merged_frames_dashboard.py`, `apps/raw_spectrum_dashboard.py`, `apps/raw_ms2_dashboard.py`). Their algorithms graduated into the package (`smooth` / `box_smooth`, `HorizontalHaloFilter`, `VerticalNoiseFilter`, `WatershedCentroider`); the multi-page `apps/timstof_viewer/` app is the single remaining dev tool and now calls those package APIs directly. `apps/ALGORITHM.md` is retained as the algorithm reference.
+- **Standalone tuning dashboards** (`apps/im_feature_filter_dashboard.py`, `apps/merged_frames_dashboard.py`, `apps/raw_spectrum_dashboard.py`, `apps/raw_ms2_dashboard.py`). Their algorithms graduated into the package (`smooth` / `box_smooth`, `HorizontalHaloFilter`, `VerticalNoiseFilter`, `WatershedCentroider`). The multi-page `apps/timstof_viewer/` app is the single remaining dev tool and now calls those package APIs directly. `apps/ALGORITHM.md` is retained as the algorithm reference.
 
 ### Fixed
 
@@ -497,7 +497,7 @@ Frame decoding remains bit-exact against Bruker over all 1710 fixture frames and
 ### Fixed
 - `libtimsdata.so` is now committed to git and negated in `.gitignore` so it is present during CI checkout and correctly included in the PyPI wheel.
 - Added wheel content check in CI to assert both `libtimsdata.so` and `timsdata.dll` are present in every built wheel.
-- `metadata` property was incorrectly loading `CalibrationInfo` instead of `GlobalMetadata`; `calibration` property was also missing the key-indexed Series transformation.
+- `metadata` property was incorrectly loading `CalibrationInfo` instead of `GlobalMetadata`. The `calibration` property was also missing the key-indexed Series transformation.
 - Suppressed `ty` `unresolved-import` diagnostic for optional `numba` dependency.
 
 ### Added
@@ -512,7 +512,7 @@ Frame decoding remains bit-exact against Bruker over all 1710 fixture frames and
 ## [1.0.1]
 
 ### Fixed
-- `libtimsdata.so` (Linux Bruker native library) was missing from the PyPI wheel due to a `*.so` entry in `.gitignore`; fixed by declaring it as a hatchling build artifact.
+- `libtimsdata.so` (Linux Bruker native library) was missing from the PyPI wheel due to a `*.so` entry in `.gitignore`. Fixed by declaring it as a hatchling build artifact.
 
 ## [1.0.0]
 
@@ -526,7 +526,7 @@ Frame decoding remains bit-exact against Bruker over all 1710 fixture frames and
 - **BREAKING**: `merge_peaks` now returns a `numpy.ndarray` of shape (N, 3) (mz, intensity, mobility) instead of a list of `Peak` objects.
 - **BREAKING**: Refactored spectrum extraction to return pure numpy arrays instead of `Ms1Spectrum` objects for improved performance.
 - `Ms1Spectrum` and `Peak` NamedTuples are replaced by raw numpy array access in the high-level API.
-- Replaced Rust extension (`_tdfpy_rust`) with Numba JIT-compiled centroiding backend; no Rust toolchain required.
+- Replaced Rust extension (`_tdfpy_rust`) with Numba JIT-compiled centroiding backend. No Rust toolchain required.
 - `merge_peaks()` and `get_centroided_spectrum()` parameter `use_rust` renamed to `use_numba`.
 
 ## [0.3.0]
