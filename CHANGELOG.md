@@ -9,8 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- `numpy>=2.0` is now `numpy>=1.26`, so tdfpy installs against the numpy 1 stack again. The full test suite passes unchanged on numpy 1.26.0, and no module uses a numpy 2 only API. This widens what can be installed on Python 3.12 only, because no numpy 1.x release ships a wheel for 3.13 or 3.14.
-- The development group no longer pins numpy, pandas or matplotlib above the runtime floors. Its numpy and pandas pins are gone and its matplotlib pin now matches the `viz` extra's floor. A development pin above a runtime floor hides that floor from the `--resolution lowest-direct` CI job, which then tests a version nobody is promised.
+- `numpy>=2.0` is now `numpy>=1.26`, so tdfpy installs against the numpy 1 stack again. The full test suite passes unchanged on numpy 1.26.0, and no module uses a numpy 2 only API. This widens what can be installed on Python 3.12 only, because no numpy 1.x release ships a wheel for 3.13 or 3.14. The `--resolution lowest-direct` CI job resolves numpy at this floor, so 1.26.0 is both the oldest numpy a user can install and the version the suite runs on.
 - The `mcp` extra now declares `pydantic>=2.12,<3`. The MCP server imports pydantic directly in three modules, so it was a real dependency that happened to be satisfied only because the MCP SDK pulls it in. 2.12 is the version mcp 2.1 requires, so the floor cannot bind below what the SDK already forces. The `<3` cap is this package's own, because mcp declares `pydantic>=2.12.0` with no upper bound.
 
 ### Fixed
