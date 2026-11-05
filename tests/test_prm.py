@@ -246,7 +246,8 @@ def test_prm_transition_mobility_range():
         # always (low, high) to match isolation_mz_range and query_range(ook0_range=).
         assert 0.0 < ook0_begin < ook0_end
         assert tr.ook0_range == (tr.ook0_begin, tr.ook0_end)
-        high_scan_ook0 = float(prm.timsdata.scan_num_to_ook0(tr.frame_id, [tr.scan_num_end])[0])
+        # The last scan in [scan_num_begin, scan_num_end) is scan_num_end - 1.
+        high_scan_ook0 = float(prm.timsdata.scan_num_to_ook0(tr.frame_id, [tr.scan_num_end - 1])[0])
         assert ook0_begin == pytest.approx(high_scan_ook0)
 
         ccs_begin, ccs_end = tr.ccs_range

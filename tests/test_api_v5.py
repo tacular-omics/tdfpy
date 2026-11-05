@@ -448,8 +448,47 @@ def test_mobility_begin_end_match_range():
         assert (w.ook0_begin, w.ook0_end) == w.ook0_range
         assert (w.ccs_begin, w.ccs_end) == w.ccs_range
         assert (w.voltage_begin, w.voltage_end) == w.voltage_range
-        # The low 1/K0 edge is the *high* scan number.
-        assert w.ook0_begin == pytest.approx(float(dia.timsdata.scan_num_to_ook0(w.frame_id, [w.scan_num_end])[0]))
+        # The low 1/K0 edge is the *high* scan number, the last one in the window.
+        assert w.ook0_begin == pytest.approx(float(dia.timsdata.scan_num_to_ook0(w.frame_id, [w.scan_num_end - 1])[0]))
+
+
+def test_mobility_edges_use_the_last_scan_in_the_window():
+    """The high-scan edge is ``scan_num_end - 1``, the last scan the window holds.
+
+    Converting at ``scan_num_end`` reads the first scan of the *next* window
+    instead, which widened every range by one scan and made adjacent windows
+    meet at a value only one of them contains.
+    """
+    with DIA(DIA_PATH) as dia:
+        first, second = [w for w in dia.windows if w.frame_id == 2]
+        assert (first.scan_num_begin, first.scan_num_end) == (393, 657)
+        assert (second.scan_num_begin, second.scan_num_end) == (657, 918)
+
+        # 1/K0 at scan 656 is 0.9019302647; at scan 657, outside this window,
+        # 0.9007869477, which is 0.1268% lower.
+        assert first.ook0_range == pytest.approx((0.9019302646538917, 1.200260652029199))
+        at_last = float(dia.timsdata.scan_num_to_ook0(2, [first.scan_num_end - 1])[0])
+        at_end = float(dia.timsdata.scan_num_to_ook0(2, [first.scan_num_end])[0])
+        assert first.ook0_begin == pytest.approx(at_last)
+        assert first.ook0_begin != pytest.approx(at_end)
+
+        # Scan 657 belongs to the second window alone, so the two share no edge.
+        assert second.ook0_end == pytest.approx(at_end)
+        assert first.ook0_begin > second.ook0_end
+
+        # ccs_range reads ook0_range, and voltage_range converts the same scans.
+        assert first.ccs_range == pytest.approx((183.69719335228075, 244.45849275670045))
+        assert first.voltage_range == pytest.approx((122.35054609853049, 164.10447179976399))
+        assert first.voltage_begin == pytest.approx(float(dia.timsdata.scan_num_to_voltage(2, [first.scan_num_end - 1])[0]))
+
+
+def test_mobility_edges_of_an_empty_window_are_its_begin_scan():
+    """``begin == end`` holds no scans, so both edges report ``scan_num_begin``."""
+    with DIA(DIA_PATH) as dia:
+        w = next(iter(dia.windows))
+        empty = dataclasses.replace(w, scan_num_end=w.scan_num_begin, _timsdata=w.timsdata)
+        at_begin = float(dia.timsdata.scan_num_to_ook0(w.frame_id, [w.scan_num_begin])[0])
+        assert empty.ook0_range == pytest.approx((at_begin, at_begin))
 
 
 def test_ook0_range_feeds_query_range():
