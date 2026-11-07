@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [5.1.0] (2026-11-06)
+
 ### Changed
 
 - `numpy>=2.0` is now `numpy>=1.26`, so tdfpy installs against the numpy 1 stack again. The full test suite passes unchanged on numpy 1.26.0, and no module uses a numpy 2 only API. This widens what can be installed on Python 3.12 only, because no numpy 1.x release ships a wheel for 3.13 or 3.14. The `--resolution lowest-direct` CI job resolves numpy at this floor, so 1.26.0 is both the oldest numpy a user can install and the version the suite runs on.
