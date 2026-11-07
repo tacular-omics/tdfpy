@@ -254,8 +254,17 @@ class _MobilityWindow(_IsolationWindow, _Spectrum):
         return (begin, end)
 
     def _edge_values(self, convert: Callable[[int, npt.ArrayLike], npt.NDArray[np.float64]]) -> tuple[float, float]:
-        """``(low, high)`` of ``convert`` at the two scan edges. Scan order runs high to low 1/K0."""
-        values = convert(self.frame_id, [self.scan_num_begin, self.scan_num_end])
+        """``(low, high)`` of ``convert`` over the window's scans. Scan order runs high to low 1/K0.
+
+        The scan range is ``[scan_num_begin, scan_num_end)``, so the last scan in
+        the window is ``scan_num_end - 1``. Converting at ``scan_num_end`` would
+        report a value from the first scan of the *next* window, widening every
+        range by one scan and giving adjacent windows a shared edge they do not
+        have. An empty range (``begin == end``) contains no scans, so both edges
+        fall back to ``scan_num_begin``.
+        """
+        last_scan = max(self.scan_num_begin, self.scan_num_end - 1)
+        values = convert(self.frame_id, [self.scan_num_begin, last_scan])
         a, b = float(values[0]), float(values[1])
         return (a, b) if a <= b else (b, a)
 
