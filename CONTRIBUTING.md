@@ -62,16 +62,19 @@ the session.
 Use `uv sync --all-extras` for the whole suite, or `just test-mcp`, which
 passes `--extra mcp`, for that part of it.
 
-If you compare the two installs by counting tests, read the collected total and
-the passed count together, and never the skipped count on its own. These skips
-are module-scope, so a bare sync drops both modules whole: the collected total
-falls, the passed count falls with it, and the skipped count does not move at
-all, because the two slow tests inside those modules are replaced one for one
-by a single `skipped` entry per dropped module. A function- or fixture-scope
-skip is blind the other way round — the test is collected and then skipped, so
-the total is identical and only passed moves — so neither number is the
-measurement by itself. Cheaper than either is to ask the environment what is
-installed:
+If you compare the two installs by counting tests, read the **passed** count.
+It is the only one that always moves in the direction you expect. Because these
+gates are module-scope, the collected total falls as well, by the whole of both
+guarded modules. Do not read the skipped count: a module skipped at import
+reports one `skipped` entry however many tests it hides, so at module scope
+that count can even fall as tests are lost, and on this suite it does not move
+at all, because the guarded modules carry skips of their own that disappear
+along with them. A function- or fixture-scope gate is blind the other way round
+— the test is collected and then skipped, so the collected total is identical
+and only the passed count moves. The passed count is the one to watch in both
+shapes.
+
+Cheaper than any count is to ask the environment what is installed:
 
 ```bash
 uv pip list | grep -E '^(matplotlib|mcp|pydantic) '
