@@ -69,10 +69,10 @@ guarded modules. Do not read the skipped count: a module skipped at import
 reports one `skipped` entry however many tests it hides, so at module scope
 that count can even fall as tests are lost, and on this suite it does not move
 at all, because the guarded modules carry skips of their own that disappear
-along with them. A function- or fixture-scope gate is blind the other way round
-— the test is collected and then skipped, so the collected total is identical
-and only the passed count moves. The passed count is the one to watch in both
-shapes.
+along with them. A function- or fixture-scope gate is blind the other way round.
+There the test is collected and then skipped, so the collected total is
+identical and only the passed count moves. The passed count is the one to
+watch in both shapes.
 
 Cheaper than any count is to ask the environment what is installed:
 
@@ -80,7 +80,7 @@ Cheaper than any count is to ask the environment what is installed:
 uv pip list | grep -E '^(matplotlib|mcp|pydantic) '
 ```
 
-All three should be there after `uv sync --all-extras`; a bare `uv sync` lists
+All three should be there after `uv sync --all-extras`. A bare `uv sync` lists
 matplotlib alone.
 
 Install the commit hooks once per clone with `uvx pre-commit install`. On every
