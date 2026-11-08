@@ -29,7 +29,7 @@ stdlib `compression.zstd`). Extras: `viz` (matplotlib, for `plot_centroiding`),
 ## Commands
 
 ```bash
-just install        # uv sync (alias: install-dev, sync); install-prod = --no-dev
+just install        # uv sync --all-extras (alias: install-dev, sync). install-prod = --no-dev
 just test           # uv run pytest tests/ -v   (fast default: skips slow tests, small Hypothesis profile)
 just test-all       # RUN_SLOW=1 HYPOTHESIS_PROFILE=thorough: everything, as CI runs it
 just test-cov       # pytest + branch coverage (term, html, xml, junit.xml)

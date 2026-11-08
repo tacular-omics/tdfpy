@@ -37,11 +37,9 @@ Prerequisites: **Python 3.12+**, [uv](https://docs.astral.sh/uv/), and
 git clone https://github.com/<your-username>/tdfpy.git
 cd tdfpy
 
-# Install the dev dependencies
+# Install the dev dependencies and both optional extras, which the full
+# test suite needs
 just install-dev
-
-# Or install the optional extras as well, which the test suite needs in full
-uv sync --all-extras
 
 # Verify everything works
 just check   # runs lint, tests, and type checking
@@ -50,19 +48,21 @@ just check   # runs lint, tests, and type checking
 Tests that exercise real Bruker data depend on small example `.d` directories
 under `tests/data/`. They are skipped automatically when the data is absent.
 
-`just install-dev` is `uv sync`: the dev dependency group, no extras. That is
-enough to work on the reader, the centroiders and the pipeline, but it does not
-get the whole test suite. tdfpy declares two extras, `viz` (matplotlib) and
-`mcp` (mcp, pydantic), and only the second changes what can run: matplotlib is
-already in the dev group, so `tests/test_viz.py` runs on a bare sync. Without
-the `mcp` extra, `tests/test_mcp.py` and `tests/test_mcp_vocabulary.py` open
-with a module-scope `pytest.importorskip("mcp")` and their tests never reach
-the session.
+`just install-dev` is `uv sync --all-extras`: the dev dependency group and
+both optional extras. It was a bare `uv sync` until 2026-11-07, which left part
+of the test suite unrunnable without saying so. tdfpy declares two extras, `viz`
+(matplotlib) and `mcp` (mcp, pydantic), and only the second changes what can
+run: matplotlib is already in the dev group, so `tests/test_viz.py` runs either
+way. Without the `mcp` extra, `tests/test_mcp.py` and
+`tests/test_mcp_vocabulary.py` open with a module-scope
+`pytest.importorskip("mcp")` and their tests never reach the session.
 
-Use `uv sync --all-extras` for the whole suite, or `just test-mcp`, which
-passes `--extra mcp`, for that part of it.
+`just install-prod` is still `uv sync --no-dev`, runtime dependencies only, and
+`just test-mcp` still passes `--extra mcp` to run that part of the suite on its
+own.
 
-If you compare the two installs by counting tests, read the **passed** count.
+If you compare a bare `uv sync` against the full install by counting tests, read
+the **passed** count.
 It is the only one that always moves in the direction you expect. Because these
 gates are module-scope, the collected total falls as well, by the whole of both
 guarded modules. Do not read the skipped count: a module skipped at import
@@ -80,13 +80,13 @@ Cheaper than any count is to ask the environment what is installed:
 uv pip list | grep -E '^(matplotlib|mcp|pydantic) '
 ```
 
-All three should be there after `uv sync --all-extras`. A bare `uv sync` lists
+All three should be there after `just install-dev`. A bare `uv sync` lists
 matplotlib alone.
 
 Install the commit hooks once per clone with `uvx pre-commit install`. On every
 commit they run `ruff check`, `ruff format --check` and a few file checks
 (`uvx pre-commit run --all-files` runs them on everything). Type checks and
-tests are not in the hooks; run `just check` for those.
+tests are not in the hooks. Run `just check` for those.
 
 ## Making Changes
 
@@ -105,7 +105,7 @@ just format   # auto-format code
 just lint     # check for lint errors
 ```
 
-**Docstrings** use Google or Sphinx style; match the surrounding module.
+**Docstrings** use Google or Sphinx style. Match the surrounding module.
 
 **Type annotations** are required on all public functions. Run `just ty` to
 check.
@@ -114,7 +114,7 @@ check.
 
 - All new code needs tests. Tests live in `tests/`.
 - Use `pytest.approx` for floating-point comparisons.
-- Use the `tmp_path` fixture for any file I/O; do not mock library internals.
+- Use the `tmp_path` fixture for any file I/O. Do not mock library internals.
 - When adding a new centroider, noise filter, or pipeline op, include a test
   that exercises both the Numba and pure-Python code paths where applicable.
 - Aim to maintain at least the current branch coverage.
