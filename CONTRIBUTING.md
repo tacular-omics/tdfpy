@@ -52,15 +52,30 @@ under `tests/data/`. They are skipped automatically when the data is absent.
 
 `just install-dev` is `uv sync`: the dev dependency group, no extras. That is
 enough to work on the reader, the centroiders and the pipeline, but it does not
-get the whole test suite. Measured on 2026-11-07, `uv sync` collects **742**
-tests and `uv sync --all-extras` collects **787**. The 45 missing ones are
-`tests/test_mcp.py` (31) and `tests/test_mcp_vocabulary.py` (14): both open with
-`pytest.importorskip("mcp")` at module scope, so without the `mcp` extra they
-are dropped before they are counted rather than reported as skips, and the
-collected total falls with nothing to say why. Run `just test-mcp`, which passes
-`--extra mcp`, or `uv sync --all-extras`, before touching `src/tdfpy/mcp/`. The
-`viz` extra needs no such step: `matplotlib` is in the dev group, so
-`tests/test_viz.py` runs either way.
+get the whole test suite. tdfpy declares two extras, `viz` (matplotlib) and
+`mcp` (mcp, pydantic), and only the second changes what can run: matplotlib is
+already in the dev group, so `tests/test_viz.py` runs on a bare sync. Without
+the `mcp` extra, `tests/test_mcp.py` and `tests/test_mcp_vocabulary.py` open
+with a module-scope `pytest.importorskip("mcp")` and their tests never reach
+the session.
+
+Use `uv sync --all-extras` for the whole suite, or `just test-mcp`, which
+passes `--extra mcp`, for that part of it.
+
+Do not read the collected total or the skipped count to tell the two installs
+apart, because both are blind here. Dropping the two modules takes their tests
+out of the collected total, and each dropped module is reported as a single
+`skipped` entry, which on this suite happens to replace the two slow tests
+inside those modules one for one, leaving the skipped count the same either
+way. The **passed** count is the one that moves. To check the environment
+rather than the counts, ask it what is installed:
+
+```bash
+uv pip list | grep -E '^(matplotlib|mcp|pydantic) '
+```
+
+All three should be there after `uv sync --all-extras`; a bare `uv sync` lists
+matplotlib alone.
 
 Install the commit hooks once per clone with `uvx pre-commit install`. On every
 commit they run `ruff check`, `ruff format --check` and a few file checks
