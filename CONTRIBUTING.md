@@ -37,8 +37,11 @@ Prerequisites: **Python 3.12+**, [uv](https://docs.astral.sh/uv/), and
 git clone https://github.com/<your-username>/tdfpy.git
 cd tdfpy
 
-# Install all dependencies (dev + extras)
+# Install the dev dependencies
 just install-dev
+
+# Or install the optional extras as well, which the test suite needs in full
+uv sync --all-extras
 
 # Verify everything works
 just check   # runs lint, tests, and type checking
@@ -46,6 +49,18 @@ just check   # runs lint, tests, and type checking
 
 Tests that exercise real Bruker data depend on small example `.d` directories
 under `tests/data/`. They are skipped automatically when the data is absent.
+
+`just install-dev` is `uv sync`: the dev dependency group, no extras. That is
+enough to work on the reader, the centroiders and the pipeline, but it does not
+get the whole test suite. Measured on 2026-11-07, `uv sync` collects **742**
+tests and `uv sync --all-extras` collects **787**. The 45 missing ones are
+`tests/test_mcp.py` (31) and `tests/test_mcp_vocabulary.py` (14): both open with
+`pytest.importorskip("mcp")` at module scope, so without the `mcp` extra they
+are dropped before they are counted rather than reported as skips, and the
+collected total falls with nothing to say why. Run `just test-mcp`, which passes
+`--extra mcp`, or `uv sync --all-extras`, before touching `src/tdfpy/mcp/`. The
+`viz` extra needs no such step: `matplotlib` is in the dev group, so
+`tests/test_viz.py` runs either way.
 
 Install the commit hooks once per clone with `uvx pre-commit install`. On every
 commit they run `ruff check`, `ruff format --check` and a few file checks
