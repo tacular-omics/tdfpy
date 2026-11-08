@@ -52,15 +52,36 @@ under `tests/data/`. They are skipped automatically when the data is absent.
 
 `just install-dev` is `uv sync`: the dev dependency group, no extras. That is
 enough to work on the reader, the centroiders and the pipeline, but it does not
-get the whole test suite. Measured on 2026-11-07, `uv sync` collects **742**
-tests and `uv sync --all-extras` collects **787**. The 45 missing ones are
-`tests/test_mcp.py` (31) and `tests/test_mcp_vocabulary.py` (14): both open with
-`pytest.importorskip("mcp")` at module scope, so without the `mcp` extra they
-are dropped before they are counted rather than reported as skips, and the
-collected total falls with nothing to say why. Run `just test-mcp`, which passes
-`--extra mcp`, or `uv sync --all-extras`, before touching `src/tdfpy/mcp/`. The
-`viz` extra needs no such step: `matplotlib` is in the dev group, so
-`tests/test_viz.py` runs either way.
+get the whole test suite. tdfpy declares two extras, `viz` (matplotlib) and
+`mcp` (mcp, pydantic), and only the second changes what can run: matplotlib is
+already in the dev group, so `tests/test_viz.py` runs on a bare sync. Without
+the `mcp` extra, `tests/test_mcp.py` and `tests/test_mcp_vocabulary.py` open
+with a module-scope `pytest.importorskip("mcp")` and their tests never reach
+the session.
+
+Use `uv sync --all-extras` for the whole suite, or `just test-mcp`, which
+passes `--extra mcp`, for that part of it.
+
+If you compare the two installs by counting tests, read the **passed** count.
+It is the only one that always moves in the direction you expect. Because these
+gates are module-scope, the collected total falls as well, by the whole of both
+guarded modules. Do not read the skipped count: a module skipped at import
+reports one `skipped` entry however many tests it hides, so at module scope
+that count can even fall as tests are lost, and on this suite it does not move
+at all, because the guarded modules carry skips of their own that disappear
+along with them. A function- or fixture-scope gate is blind the other way round.
+There the test is collected and then skipped, so the collected total is
+identical and only the passed count moves. The passed count is the one to
+watch in both shapes.
+
+Cheaper than any count is to ask the environment what is installed:
+
+```bash
+uv pip list | grep -E '^(matplotlib|mcp|pydantic) '
+```
+
+All three should be there after `uv sync --all-extras`. A bare `uv sync` lists
+matplotlib alone.
 
 Install the commit hooks once per clone with `uvx pre-commit install`. On every
 commit they run `ruff check`, `ruff format --check` and a few file checks
