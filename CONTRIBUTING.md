@@ -86,7 +86,7 @@ matplotlib alone.
 Install the commit hooks once per clone with `uvx pre-commit install`. On every
 commit they run `ruff check`, `ruff format --check` and a few file checks
 (`uvx pre-commit run --all-files` runs them on everything). Type checks and
-tests are not in the hooks; run `just check` for those.
+tests are not in the hooks. Run `just check` for those.
 
 ## Making Changes
 
@@ -105,7 +105,7 @@ just format   # auto-format code
 just lint     # check for lint errors
 ```
 
-**Docstrings** use Google or Sphinx style; match the surrounding module.
+**Docstrings** use Google or Sphinx style. Match the surrounding module.
 
 **Type annotations** are required on all public functions. Run `just ty` to
 check.
@@ -114,7 +114,7 @@ check.
 
 - All new code needs tests. Tests live in `tests/`.
 - Use `pytest.approx` for floating-point comparisons.
-- Use the `tmp_path` fixture for any file I/O; do not mock library internals.
+- Use the `tmp_path` fixture for any file I/O. Do not mock library internals.
 - When adding a new centroider, noise filter, or pipeline op, include a test
   that exercises both the Numba and pure-Python code paths where applicable.
 - Aim to maintain at least the current branch coverage.
