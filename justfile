@@ -2,13 +2,14 @@
 default:
   @just --list
 
-# Install dependencies (dev included)
+# Install dependencies: dev group and both optional extras, which the full
+# test suite needs
 install:
-  uv sync
+  uv sync --all-extras
 
-# Alias for install — the name CONTRIBUTING.md and docs/getting-started.md use
+# Alias for install, the name CONTRIBUTING.md and docs/getting-started.md use
 install-dev:
-  uv sync
+  uv sync --all-extras
 
 # Install runtime dependencies only, no dev group
 install-prod:
@@ -16,7 +17,7 @@ install-prod:
 
 # Alias for install
 sync:
-  uv sync
+  uv sync --all-extras
 
 # Run tests (fast default: skips @pytest.mark.slow, small Hypothesis profile)
 test:

@@ -161,7 +161,7 @@ with DDA(D_PATH) as dda:
 The project uses `uv` for dependency management and `just` as a task runner.
 
 ```bash
-just install-dev     # install with dev dependencies
+just install-dev     # dev dependencies and both optional extras
 just test            # run tests
 just lint            # ruff linter
 just check           # lint + test + type check
