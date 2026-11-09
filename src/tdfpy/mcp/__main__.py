@@ -8,5 +8,5 @@ exits the process.
 
 from . import main
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover - the entry point, exercised by `python -m tdfpy.mcp`
     main()
