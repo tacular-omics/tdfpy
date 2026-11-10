@@ -10,6 +10,11 @@ on:
       - '.github/workflows/draft-pdf.yml'
   workflow_dispatch:
 
+# The job only reads the repo and uploads an artifact (upload-artifact uses the
+# Actions runtime token, not GITHUB_TOKEN), so nothing here needs write access.
+permissions:
+  contents: read
+
 jobs:
   paper:
     runs-on: ubuntu-latest
