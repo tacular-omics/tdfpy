@@ -19,6 +19,7 @@ import importlib.util
 import shutil
 import sqlite3
 import sys
+from contextlib import closing
 from pathlib import Path
 
 import pandas as pd
@@ -117,6 +118,41 @@ def test_select_still_works(analysis_dir: Path) -> None:
     assert list(frame.columns) == ["Id", "Time"]
     assert len(frame) == 5
     assert frame["Id"].tolist() == [1, 2, 3, 4, 5]
+
+
+#: The query ``accumulated_precursor_spectrum`` runs, verbatim
+#: (``apps/timstof_viewer/_shared.py``), and a precursor that has segments in the
+#: DDA fixture.
+SEGMENT_QUERY = "SELECT Frame, ScanNumBegin, ScanNumEnd FROM PasefFrameMsMsInfo WHERE Precursor = ? ORDER BY Frame"
+SEGMENT_PRECURSOR_ID = 411
+
+
+@pytest.mark.parametrize("statement", ["DELETE FROM Frames", "UPDATE Frames SET Time = 0", "DROP TABLE Frames"])
+def test_connect_readonly_rejects_a_write(analysis_dir: Path, statement: str) -> None:
+    """Writes fail on the handle itself, with no statement inspection involved.
+
+    This is the guarantee the rest of the app leans on: every reader goes
+    through :func:`connect_readonly`, so a stray write anywhere raises instead
+    of editing the user's raw metadata.
+    """
+    before_digest, before_rows = _digest(analysis_dir), _frame_count(analysis_dir)
+    assert before_rows > 0
+
+    with closing(_sql.connect_readonly(analysis_dir)) as conn, pytest.raises(sqlite3.OperationalError, match="readonly database"):
+        conn.execute(statement)
+
+    assert _frame_count(analysis_dir) == before_rows
+    assert _digest(analysis_dir) == before_digest
+
+
+def test_connect_readonly_still_serves_the_precursor_segment_query(analysis_dir: Path) -> None:
+    """The read the fix touched must keep returning the same rows."""
+    with closing(_sql.connect_readonly(analysis_dir)) as conn:
+        rows = conn.execute(SEGMENT_QUERY, (SEGMENT_PRECURSOR_ID,)).fetchall()
+
+    assert len(rows) == 8, "precursor 411 has eight PASEF segments in the DDA fixture"
+    assert all(len(row) == 3 for row in rows)
+    assert rows == sorted(rows, key=lambda row: row[0]), "ORDER BY Frame"
 
 
 def test_with_select_still_works(analysis_dir: Path) -> None:

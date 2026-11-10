@@ -46,10 +46,31 @@ def check_select_only(query: str) -> str:
     return stripped
 
 
+def connect_readonly(analysis_dir: str | Path) -> sqlite3.Connection:
+    """Open ``analysis_dir/analysis.tdf`` with SQLite's ``mode=ro``.
+
+    Every read of a user's run goes through here, so no code path in the app
+    can write to the raw acquisition metadata: a write raises
+    :class:`sqlite3.OperationalError` ("attempt to write a readonly database")
+    and the file is untouched. The caller closes the handle — ``sqlite3``
+    connections used as a context manager end a *transaction*, not the
+    connection.
+
+    Args:
+        analysis_dir: Path to the ``.d`` folder.
+
+    Returns:
+        An open read-only connection.
+    """
+    tdf_path = Path(analysis_dir) / "analysis.tdf"
+    uri = f"{tdf_path.resolve().as_uri()}?mode=ro"
+    return sqlite3.connect(uri, uri=True)
+
+
 def read_sql_query(analysis_dir: str | Path, query: str) -> pd.DataFrame:
     """Run a read-only query against ``analysis_dir/analysis.tdf``.
 
-    The connection is opened with SQLite's ``mode=ro``, so any statement that
+    The connection comes from :func:`connect_readonly`, so any statement that
     tries to write — including one hidden behind a ``WITH`` clause that
     :func:`check_select_only` cannot reject — fails with
     ``sqlite3.OperationalError`` and leaves the file untouched.
@@ -69,7 +90,5 @@ def read_sql_query(analysis_dir: str | Path, query: str) -> pd.DataFrame:
             not an :class:`sqlite3.Error`).
     """
     statement = check_select_only(query)
-    tdf_path = Path(analysis_dir) / "analysis.tdf"
-    uri = f"{tdf_path.resolve().as_uri()}?mode=ro"
-    with closing(sqlite3.connect(uri, uri=True)) as conn:
+    with closing(connect_readonly(analysis_dir)) as conn:
         return pd.read_sql_query(statement, conn)

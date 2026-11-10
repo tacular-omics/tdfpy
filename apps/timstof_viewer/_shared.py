@@ -13,7 +13,7 @@ tooling under ``apps/`` only.
 
 from __future__ import annotations
 
-import sqlite3
+from contextlib import closing
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -24,7 +24,7 @@ import streamlit as st
 from plotly.colors import sample_colorscale
 
 import tdfpy
-from _sql import read_sql_query
+from _sql import connect_readonly, read_sql_query
 from tdfpy import (
     AbsoluteThreshold,
     BaselineThreshold,
@@ -866,7 +866,7 @@ def accumulated_precursor_spectrum(analysis_dir: str, precursor_id: int) -> np.n
     dimension, giving a 1-D ``(m/z, intensity)`` profile — distinct from the
     per-frame multi-subscan view on the PASEF page.
     """
-    with sqlite3.connect(str(Path(analysis_dir) / "analysis.tdf")) as conn:
+    with closing(connect_readonly(analysis_dir)) as conn:
         ranges = [
             (int(frame), int(begin), int(end))
             for frame, begin, end in conn.execute(
