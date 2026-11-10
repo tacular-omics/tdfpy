@@ -63,12 +63,11 @@ else:  # SQL query
     if not run:
         st.info("Enter a query in the sidebar and press **Run query**.")
         st.stop()
-    stripped = query.strip().rstrip(";").strip()
-    if not stripped.lower().startswith(("select", "with")):
-        st.error("Only read-only `SELECT` / `WITH` queries are allowed.")
-        st.stop()
     try:
-        result = run_sql(analysis_dir, stripped)
+        result = run_sql(analysis_dir, query)
+    except ValueError as exc:
+        st.error(str(exc))
+        st.stop()
     except Exception as exc:  # noqa: BLE001
         st.error(f"Query failed: {exc}")
         st.stop()

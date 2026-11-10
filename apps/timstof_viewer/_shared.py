@@ -24,6 +24,7 @@ import streamlit as st
 from plotly.colors import sample_colorscale
 
 import tdfpy
+from _sql import read_sql_query
 from tdfpy import (
     AbsoluteThreshold,
     BaselineThreshold,
@@ -929,10 +930,8 @@ def load_table(analysis_dir: str, name: str) -> pd.DataFrame:
 
 @st.cache_data(show_spinner=True)
 def run_sql(analysis_dir: str, query: str) -> pd.DataFrame:
-    import sqlite3
-
-    with sqlite3.connect(str(Path(analysis_dir) / "analysis.tdf")) as conn:
-        return pd.read_sql_query(query, conn)
+    """Run a read-only query against ``analysis.tdf``. See :mod:`_sql`."""
+    return read_sql_query(analysis_dir, query)
 
 
 # ===========================================================================
