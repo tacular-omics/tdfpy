@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Documentation
+
+- Render the slicer parameters, return value and exceptions using Google-style docstrings.
+
 ## [5.1.0] (2026-11-06)
 
 ### Changed

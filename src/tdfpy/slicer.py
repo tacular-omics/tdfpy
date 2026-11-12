@@ -45,40 +45,29 @@ def slice_d_folder(
     Creates a new .d folder at ``dest_dir`` with a filtered SQLite database
     and a rebuilt binary file containing only the kept frames' data.
 
-    Parameters
-    ----------
-    source_dir : str | Path
-        Path to the source .d folder.
-    dest_dir : str | Path
-        Path for the output .d folder (must not already exist).
-    frame_start : int
-        First frame ID to keep (inclusive, 1-based).
-    frame_end : int
-        Last frame ID to keep (inclusive, 1-based).
+    Args:
+        source_dir: Path to the source .d folder.
+        dest_dir: Path for the output .d folder (must not already exist).
+        frame_start: First frame ID to keep (inclusive, 1-based).
+        frame_end: Last frame ID to keep (inclusive, 1-based).
 
-    Returns
-    -------
-    Path
+    Returns:
         The path to the created .d folder.
 
-    Raises
-    ------
-    FileNotFoundError
-        If the source .d folder is missing ``analysis.tdf`` or
-        ``analysis.tdf_bin``.
-    FileExistsError
-        If ``dest_dir`` already exists. This function never overwrites or
-        deletes pre-existing data.
-    TdfpyError
-        If ``frame_start > frame_end``, if ``dest_dir`` resolves to the source
-        folder or to a location inside it, if no frames fall in the requested
-        range, if a kept frame has a NULL ``TimsId``, or if SQLite fails.
+    Raises:
+        FileNotFoundError: If the source .d folder is missing ``analysis.tdf``
+            or ``analysis.tdf_bin``.
+        FileExistsError: If ``dest_dir`` already exists. This function never
+            overwrites or deletes pre-existing data.
+        TdfpyError: If ``frame_start > frame_end``, if ``dest_dir`` resolves to
+            the source folder or to a location inside it, if no frames fall in
+            the requested range, if a kept frame has a NULL ``TimsId``, or if
+            SQLite fails.
 
-    Notes
-    -----
-    If writing fails part-way through, the partially written destination
-    folder is removed before the error propagates, so a failed slice never
-    leaves a corrupt .d folder behind.
+    Note:
+        If writing fails part-way through, the partially written destination
+        folder is removed before the error propagates, so a failed slice never
+        leaves a corrupt .d folder behind.
     """
     source_dir = Path(source_dir)
     dest_dir = Path(dest_dir)
