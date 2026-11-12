@@ -324,7 +324,7 @@ with DDA(D_PATH) as dda:
 The project uses `uv` for dependency management and `just` as a task runner.
 
 ```bash
-just install-dev     # install with dev dependencies
+just install-dev     # dev dependencies and both optional extras
 just test            # run tests
 just lint            # ruff linter
 just check           # lint + test + type check
@@ -524,6 +524,24 @@ All `mobility_type="ccs"` raw-spectrum conversions assume charge +1.
 Raw peaks do not identify charge states. `Precursor.ccs` uses a known precursor
 charge when present, falling back to +1 when it is absent. Precursor scan
 coordinates retain the original fractional metadata value.
+
+Use `ook0_to_ccs` and `ccs_to_ook0` when the m/z and charge are known. Mobility is
+in V·s/cm² and CCS is in Å². Both use `mz * abs(charge)` as the ion mass without
+subtracting protons, matching Bruker's convention. Negative charges use their
+magnitude; zero charge is rejected.
+
+```python
+from math import isclose
+from tdfpy import ccs_to_ook0, ook0_to_ccs
+
+mobility = 1.0
+mz = 500.0
+charge = 2
+ccs = ook0_to_ccs(mobility, charge, mz)
+assert ccs > 0
+assert isclose(ccs_to_ook0(ccs, charge, mz), mobility, rel_tol=1e-12)
+assert ook0_to_ccs(mobility, -charge, mz) == ccs
+```
 
 For AI agents, an [optional MCP server](mcp.md) exposes acquisition queries,
 spectrum extraction, conversions, and file checks without changing the core
@@ -1850,12 +1868,24 @@ SQLite metadata into pandas DataFrames, and `TimsData` decodes frames from
   - `.scan_num_to_voltage(frame_id: 'int', scan_nums: 'npt.ArrayLike') -> 'npt.NDArray[np.float64]'`: Convert scan numbers to TIMS ramp voltage.
   - `.voltage_to_scan_num(frame_id: 'int', voltages: 'npt.ArrayLike') -> 'npt.NDArray[np.float64]'`: Convert TIMS ramp voltage to (fractional) scan numbers.
 
-**`timsdata_connect(analysis_dir: 'str | os.PathLike[str]') -> 'Iterator[TimsData]'`**
+**`timsdata_connect(analysis_dir: 'str | os.PathLike[str]') -> 'Generator[TimsData, None, None]'`**
   Open a :class:`TimsData` and close it on exit.
 
 **dataclass `FrameMetadata`**
   Immutable per-frame metadata, loaded from the ``Frames`` table when the reader opens.
   - fields: `frame_id: int`, `rt: float`, `msms_type: int`, `polarity: str`, `num_scans: int`, `num_peaks: int`, `property_group_id: int | None`, `mz_calibration_id: int`, `tims_calibration_id: int`, `t1: float`, `t2: float`
+
+## Collision cross section conversions
+
+Convert inverse reduced mobility (1/K0, V·s/cm²) to collision cross section (Å²)
+and back with the Mason-Schamp equation. These helpers use Bruker's ion-mass
+convention, `mz * abs(charge)`, without subtracting proton masses.
+
+**`ook0_to_ccs(ook0: 'float', charge: 'int', mz: 'float') -> 'float'`**
+  Convert 1/K0 to a collision cross section via the Mason-Schamp equation.
+
+**`ccs_to_ook0(ccs: 'float', charge: 'int', mz: 'float') -> 'float'`**
+  Inverse of :func:`ook0_to_ccs` (uses ``|charge|``; raises ValueError for 0).
 
 ## Errors
 
@@ -1923,12 +1953,6 @@ The citation metadata lives in
 
 **class `MsMsType(*values)`** (subclass of IntEnum)
   The ``MsMsType`` column of the ``Frames`` table.
-
-**`ook0_to_ccs(ook0: 'float', charge: 'int', mz: 'float') -> 'float'`**
-  Convert 1/K0 to a collision cross section via the Mason-Schamp equation.
-
-**`ccs_to_ook0(ccs: 'float', charge: 'int', mz: 'float') -> 'float'`**
-  Inverse of :func:`ook0_to_ccs`.
 
 **`MetaValue`** = `str | int | float | None`
 

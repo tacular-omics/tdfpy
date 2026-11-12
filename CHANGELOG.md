@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Documentation
+
+- Document both CCS conversion helpers and add an executable round-trip example.
+
 ## [5.1.0] (2026-11-06)
 
 ### Changed
