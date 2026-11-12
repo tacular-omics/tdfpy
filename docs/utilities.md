@@ -94,5 +94,3 @@ with DDA("experiment_slice.d") as dda:
 ```
 
 ::: tdfpy.slice_d_folder
-    options:
-      docstring_style: numpy

@@ -324,7 +324,7 @@ with DDA(D_PATH) as dda:
 The project uses `uv` for dependency management and `just` as a task runner.
 
 ```bash
-just install-dev     # install with dev dependencies
+just install-dev     # dev dependencies and both optional extras
 just test            # run tests
 just lint            # ruff linter
 just check           # lint + test + type check
@@ -1850,7 +1850,7 @@ SQLite metadata into pandas DataFrames, and `TimsData` decodes frames from
   - `.scan_num_to_voltage(frame_id: 'int', scan_nums: 'npt.ArrayLike') -> 'npt.NDArray[np.float64]'`: Convert scan numbers to TIMS ramp voltage.
   - `.voltage_to_scan_num(frame_id: 'int', voltages: 'npt.ArrayLike') -> 'npt.NDArray[np.float64]'`: Convert TIMS ramp voltage to (fractional) scan numbers.
 
-**`timsdata_connect(analysis_dir: 'str | os.PathLike[str]') -> 'Iterator[TimsData]'`**
+**`timsdata_connect(analysis_dir: 'str | os.PathLike[str]') -> 'Generator[TimsData, None, None]'`**
   Open a :class:`TimsData` and close it on exit.
 
 **dataclass `FrameMetadata`**
@@ -1928,7 +1928,7 @@ The citation metadata lives in
   Convert 1/K0 to a collision cross section via the Mason-Schamp equation.
 
 **`ccs_to_ook0(ccs: 'float', charge: 'int', mz: 'float') -> 'float'`**
-  Inverse of :func:`ook0_to_ccs`.
+  Inverse of :func:`ook0_to_ccs` (uses ``|charge|``; raises ValueError for 0).
 
 **`MetaValue`** = `str | int | float | None`
 
