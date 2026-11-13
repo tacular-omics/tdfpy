@@ -770,6 +770,9 @@ High-level entry points for opening timsTOF `.d` acquisitions.
 **`get_acquisition_type(analysis_dir: str | Path) -> AcquisitionType`**
   Determine the acquisition type (DDA, DIA, or PRM) of a .d folder by examining the MsMsType values in the Frames table.
 
+**class `AcquisitionType(*values)`** (subclass of StrEnum)
+  Acquisition mode of a `.d` folder, returned by :func:`get_acquisition_type`.
+
 **class `DDA(analysis_dir: str | Path)`**
   Open a DDA (Data-Dependent Acquisition) `.d` folder.
   - `.analysis_path` -> `Path`
@@ -857,6 +860,14 @@ acquisition type from the frame's type. Find the windows or transitions of a run
   - `.raw_peaks(*, exclude: ChargeStateRegion | None = None, smooth: Smooth | None = None, noise: NoiseSpec = None, mobility_type: Literal['ook0', 'ccs', 'voltage'] = 'ook0') -> NDArray[numpy.float64]`: Raw peaks as one ``(N, 3)`` ``[m/z, intensity, ion_mobility]`` array.
   - `.scan_peaks() -> list[NDArray[numpy.float64]]`: Raw peaks, one ``(N_i, 2)`` ``[m/z, intensity]`` float64 array per mobility scan.
   - inherits all fields and methods of Frame
+
+## Frame MS/MS type
+
+Every frame carries the raw `MsMsType` value of its row in the `Frames` table:
+`MS1` on an MS1 frame, and `DDA_MS2`, `DIA_MS2` or `PRM_MS2` on an MS/MS frame.
+
+**class `MsMsType(*values)`** (subclass of IntEnum)
+  The ``MsMsType`` column of the ``Frames`` table.
 
 ==============================================================================
 # docs/api/precursor.md
@@ -1079,6 +1090,8 @@ with PRM("experiment.d") as prm:
   - `.software_version` -> `str`: Calibration software version.
   - `.std_ppm` -> `float`: m/z calibration standard deviation in ppm.
   - `.user` -> `str`: User who ran the calibration.
+
+**`MetaValue`** = `str | int | float | None`
 
 **`Polarity(*args, **kwargs)`**
 
@@ -1918,17 +1931,9 @@ The citation metadata lives in
 # Other public names (exported from tdfpy, not on a docs page)
 ==============================================================================
 
-**class `AcquisitionType(*values)`** (subclass of StrEnum)
-  Acquisition mode of a `.d` folder, returned by :func:`get_acquisition_type`.
-
-**class `MsMsType(*values)`** (subclass of IntEnum)
-  The ``MsMsType`` column of the ``Frames`` table.
-
 **`ook0_to_ccs(ook0: 'float', charge: 'int', mz: 'float') -> 'float'`**
   Convert 1/K0 to a collision cross section via the Mason-Schamp equation.
 
 **`ccs_to_ook0(ccs: 'float', charge: 'int', mz: 'float') -> 'float'`**
   Inverse of :func:`ook0_to_ccs` (uses ``|charge|``; raises ValueError for 0).
-
-**`MetaValue`** = `str | int | float | None`
 

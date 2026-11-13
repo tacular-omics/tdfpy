@@ -115,6 +115,13 @@ jobs:
       - run: uv run --group docs mkdocs build --strict
       - name: llms.txt and llms-full.txt are served at the site root
         run: cmp llms.txt site/llms.txt && cmp llms-full.txt site/llms-full.txt
+      # The cmp above compares the two committed copies with each other, so they
+      # drift together and silently: main was three lines stale until #79.
+      - name: llms-full.txt is regenerated from the docs and the docstrings
+        run: uv run --group docs python scripts/build_llms_full.py --check
+      # mkdocs build --strict exits 0 when a docstring's sections stop rendering.
+      - name: Docstring Args/Returns/Raises render as sections
+        run: uv run --group docs python scripts/check_rendered_docstrings.py site
 
   # Package-specific: exercise the optional MCP interface, including its
   # stdio protocol, across platforms (from python-package.yml).
