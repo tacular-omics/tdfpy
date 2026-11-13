@@ -1,5 +1,6 @@
 """Test code examples in docs/getting-started.md and docs/analysis.md using pytest-examples."""
 
+import runpy
 import subprocess
 import sys
 from pathlib import Path
@@ -52,3 +53,30 @@ def test_docs_collect_outside_repo_root(tmp_path: Path) -> None:
     )
     assert result.returncode == 0, result.stdout + result.stderr
     assert "test_getting_started[docs/getting-started.md:" in result.stdout
+
+
+#: Public names in ``tdfpy.__all__`` that no docs page has a ``:::`` directive for
+#: yet, each with the work that adds it. Both halves of the test below fail: a name
+#: missing from the docs and not listed here, and a name listed here that has since
+#: been documented. The second half is what stops this list from going stale.
+PENDING_DIRECTIVES = {
+    "ook0_to_ccs": "PR #78, issue #72",
+    "ccs_to_ook0": "PR #78, issue #72",
+}
+
+
+def test_every_public_name_is_on_a_docs_page() -> None:
+    """Every ``__all__`` name is rendered somewhere, or is listed as pending.
+
+    ``llms-full.txt`` already lists the uncovered names in its trailing section, but
+    listing is not failing, which is how five public names went undocumented. The rule
+    for what counts as covered comes from the generator, so there is only one of it.
+    """
+    generator = runpy.run_path(str(REPO_ROOT / "scripts" / "build_llms_full.py"))
+    uncovered = set(generator["uncovered_names"]())
+
+    undocumented = sorted(uncovered - set(PENDING_DIRECTIVES))
+    assert not undocumented, f"no ::: directive and not pending: {undocumented}"
+
+    now_documented = sorted(set(PENDING_DIRECTIVES) - uncovered)
+    assert not now_documented, f"documented now, remove from PENDING_DIRECTIVES: {now_documented}"

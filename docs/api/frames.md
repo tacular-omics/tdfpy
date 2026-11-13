@@ -26,3 +26,12 @@ acquisition type from the frame's type. Find the windows or transitions of a run
     options:
       inherited_members: false
       members: []
+
+## Frame MS/MS type
+
+Every frame carries the raw `MsMsType` value of its row in the `Frames` table:
+`MS1` on an MS1 frame, and `DDA_MS2`, `DIA_MS2` or `PRM_MS2` on an MS/MS frame.
+
+::: tdfpy.MsMsType
+    options:
+      show_if_no_docstring: true
