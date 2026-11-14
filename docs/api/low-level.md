@@ -13,6 +13,16 @@ SQLite metadata into pandas DataFrames, and `TimsData` decodes frames from
 
 ::: tdfpy.FrameMetadata
 
+## Collision cross section conversions
+
+Convert inverse reduced mobility (1/K0, V·s/cm²) to collision cross section (Å²)
+and back with the Mason-Schamp equation. These helpers use Bruker's ion-mass
+convention, `mz * abs(charge)`, without subtracting proton masses.
+
+::: tdfpy.ook0_to_ccs
+
+::: tdfpy.ccs_to_ook0
+
 ## Errors
 
 Every tdfpy error subclasses `TdfpyError` (a `ValueError`). Unsupported or unvalidated

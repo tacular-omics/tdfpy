@@ -525,6 +525,24 @@ Raw peaks do not identify charge states. `Precursor.ccs` uses a known precursor
 charge when present, falling back to +1 when it is absent. Precursor scan
 coordinates retain the original fractional metadata value.
 
+Use `ook0_to_ccs` and `ccs_to_ook0` when the m/z and charge are known. 1/K0 is
+in V·s/cm² and CCS is in Å². Both use `mz * abs(charge)` as the ion mass without
+subtracting protons, matching Bruker's convention. Negative charges use their
+magnitude; zero charge is rejected.
+
+```python
+from math import isclose
+from tdfpy import ccs_to_ook0, ook0_to_ccs
+
+ook0 = 1.0
+mz = 500.0
+charge = 2
+ccs = ook0_to_ccs(ook0, charge, mz)
+assert ccs > 0
+assert isclose(ccs_to_ook0(ccs, charge, mz), ook0, rel_tol=1e-12)
+assert ook0_to_ccs(ook0, -charge, mz) == ccs
+```
+
 For AI agents, an [optional MCP server](mcp.md) exposes acquisition queries,
 spectrum extraction, conversions, and file checks without changing the core
 Python installation.
@@ -1870,6 +1888,18 @@ SQLite metadata into pandas DataFrames, and `TimsData` decodes frames from
   Immutable per-frame metadata, loaded from the ``Frames`` table when the reader opens.
   - fields: `frame_id: int`, `rt: float`, `msms_type: int`, `polarity: str`, `num_scans: int`, `num_peaks: int`, `property_group_id: int | None`, `mz_calibration_id: int`, `tims_calibration_id: int`, `t1: float`, `t2: float`
 
+## Collision cross section conversions
+
+Convert inverse reduced mobility (1/K0, V·s/cm²) to collision cross section (Å²)
+and back with the Mason-Schamp equation. These helpers use Bruker's ion-mass
+convention, `mz * abs(charge)`, without subtracting proton masses.
+
+**`ook0_to_ccs(ook0: 'float', charge: 'int', mz: 'float') -> 'float'`**
+  Convert 1/K0 to a collision cross section via the Mason-Schamp equation.
+
+**`ccs_to_ook0(ccs: 'float', charge: 'int', mz: 'float') -> 'float'`**
+  Inverse of :func:`ook0_to_ccs` (uses ``|charge|``; raises ValueError for 0).
+
 ## Errors
 
 Every tdfpy error subclasses `TdfpyError` (a `ValueError`). Unsupported or unvalidated
@@ -1926,14 +1956,3 @@ The citation metadata lives in
 [`CITATION.cff`](https://github.com/tacular-omics/tdfpy/blob/main/CITATION.cff). GitHub's
 "Cite this repository" button on the
 [repository page](https://github.com/tacular-omics/tdfpy) reads it and exports APA or BibTeX.
-
-==============================================================================
-# Other public names (exported from tdfpy, not on a docs page)
-==============================================================================
-
-**`ook0_to_ccs(ook0: 'float', charge: 'int', mz: 'float') -> 'float'`**
-  Convert 1/K0 to a collision cross section via the Mason-Schamp equation.
-
-**`ccs_to_ook0(ccs: 'float', charge: 'int', mz: 'float') -> 'float'`**
-  Inverse of :func:`ook0_to_ccs` (uses ``|charge|``; raises ValueError for 0).
-

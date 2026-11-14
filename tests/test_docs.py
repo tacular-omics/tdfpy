@@ -59,10 +59,7 @@ def test_docs_collect_outside_repo_root(tmp_path: Path) -> None:
 #: yet, each with the work that adds it. Both halves of the test below fail: a name
 #: missing from the docs and not listed here, and a name listed here that has since
 #: been documented. The second half is what stops this list from going stale.
-PENDING_DIRECTIVES = {
-    "ook0_to_ccs": "PR #78, issue #72",
-    "ccs_to_ook0": "PR #78, issue #72",
-}
+PENDING_DIRECTIVES: dict[str, str] = {}
 
 
 def test_every_public_name_is_on_a_docs_page() -> None:
