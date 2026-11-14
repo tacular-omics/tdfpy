@@ -81,7 +81,7 @@ Raw peaks do not identify charge states. `Precursor.ccs` uses a known precursor
 charge when present, falling back to +1 when it is absent. Precursor scan
 coordinates retain the original fractional metadata value.
 
-Use `ook0_to_ccs` and `ccs_to_ook0` when the m/z and charge are known. Mobility is
+Use `ook0_to_ccs` and `ccs_to_ook0` when the m/z and charge are known. 1/K0 is
 in V·s/cm² and CCS is in Å². Both use `mz * abs(charge)` as the ion mass without
 subtracting protons, matching Bruker's convention. Negative charges use their
 magnitude; zero charge is rejected.
@@ -90,13 +90,13 @@ magnitude; zero charge is rejected.
 from math import isclose
 from tdfpy import ccs_to_ook0, ook0_to_ccs
 
-mobility = 1.0
+ook0 = 1.0
 mz = 500.0
 charge = 2
-ccs = ook0_to_ccs(mobility, charge, mz)
+ccs = ook0_to_ccs(ook0, charge, mz)
 assert ccs > 0
-assert isclose(ccs_to_ook0(ccs, charge, mz), mobility, rel_tol=1e-12)
-assert ook0_to_ccs(mobility, -charge, mz) == ccs
+assert isclose(ccs_to_ook0(ccs, charge, mz), ook0, rel_tol=1e-12)
+assert ook0_to_ccs(ook0, -charge, mz) == ccs
 ```
 
 For AI agents, an [optional MCP server](mcp.md) exposes acquisition queries,

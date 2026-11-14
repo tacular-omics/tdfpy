@@ -7,9 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `::: tdfpy.AcquisitionType`, `::: tdfpy.MsMsType` and `::: tdfpy.MetaValue` directives.
+  The two enums list their members, which needed `show_if_no_docstring: true` since enum members
+  carry no docstrings.
+- Two checks in the docs CI job. `scripts/build_llms_full.py --check` fails when
+  `just llms-full` would change either copy: the existing `cmp` step only compares the two
+  committed copies with each other, so they drifted together and `main` sat three lines stale.
+  `scripts/check_rendered_docstrings.py` fails when a docstring declares `Args:`, `Returns:`
+  or `Raises:` and the built page has no matching section, which `mkdocs build --strict` does
+  not catch: it exits 0 with the tables gone. Both are also `just llms-full-check` and
+  `just docs-check-rendered`, with `just docs-check` running the docs job's three checks.
+- `tests/test_docs.py::test_every_public_name_is_on_a_docs_page`, which fails when an
+  exported name has no `:::` directive and is not listed as pending, and also when a pending
+  name has since been documented, so the list cannot go stale.
+
 ### Documentation
 
 - Document both CCS conversion helpers and add an executable round-trip example.
+- Render the slicer parameters, return value and exceptions using Google-style docstrings.
 
 ## [5.1.0] (2026-11-06)
 

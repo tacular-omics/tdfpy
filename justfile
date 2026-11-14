@@ -96,6 +96,20 @@ docs-build:
 llms-full:
     uv run python scripts/build_llms_full.py
 
+# Fail if `just llms-full` would change either copy (the docs CI job runs this)
+llms-full-check:
+    uv run python scripts/build_llms_full.py --check
+
+# Fail if a docstring's Args/Returns/Raises did not render in site/; needs docs-build
+docs-check-rendered:
+    uv run --group docs python scripts/check_rendered_docstrings.py site
+
+# Everything the docs CI job checks: the build, the rendered sections, llms-full
+docs-check:
+    just docs-build
+    just docs-check-rendered
+    just llms-full-check
+
 # Build the JOSS paper PDF to papers/paper.pdf (requires Docker; mirrors the Draft PDF CI)
 paper:
     docker run --rm --volume "$PWD":/data --user "$(id -u):$(id -g)" \

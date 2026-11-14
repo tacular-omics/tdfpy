@@ -13,7 +13,8 @@ Writes both copies, which must stay identical:
 
 Usage (from anywhere; imports the tdfpy in the current environment)::
 
-    uv run python scripts/build_llms_full.py
+    uv run python scripts/build_llms_full.py            # write both copies
+    uv run python scripts/build_llms_full.py --check     # fail if either is stale
 """
 
 from __future__ import annotations
@@ -22,6 +23,7 @@ import dataclasses
 import importlib
 import inspect
 import re
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -309,6 +311,19 @@ def expand_page(text: str, seen: set[str]) -> str:
     return "\n".join(out).rstrip() + "\n"
 
 
+def uncovered_names() -> list[str]:
+    """Names in ``tdfpy.__all__`` that no user-facing docs page has a directive for.
+
+    The rule is the directive's last dotted component, so ``::: tdfpy.types.Polarity``
+    covers ``tdfpy.Polarity``. Defined once here and used by both the trailing section
+    below and ``tests/test_docs.py``, so the two cannot drift into different rules.
+    """
+    seen: set[str] = set()
+    for rel in DOCS_ORDER:
+        expand_page((DOCS_DIR / rel).read_text(encoding="utf-8"), seen)
+    return [n for n in tdfpy.__all__ if n not in seen]
+
+
 def build() -> str:
     parts = [HEADER]
     seen: set[str] = set()
@@ -317,19 +332,37 @@ def build() -> str:
         parts.append(f"\n{RULE}\n# docs/{rel}\n{RULE}\n\n")
         parts.append(expand_page(page, seen))
 
-    missing = [n for n in tdfpy.__all__ if n not in seen]
+    missing = uncovered_names()
     if missing:
         parts.append(f"\n{RULE}\n# Other public names (exported from tdfpy, not on a docs page)\n{RULE}\n\n")
         parts.extend(describe(f"tdfpy.{n}") + "\n\n" for n in missing)
     return re.sub(r"\n{3,}", "\n\n", "".join(parts))
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> int:
+    """Write both copies, or with ``--check`` report whether they are up to date.
+
+    ``--check`` exists because nothing else notices a stale copy: the docs job's
+    ``cmp llms-full.txt site/llms-full.txt`` compares the two committed files with
+    each other, so they drift together and silently. Main was three lines stale
+    until #79.
+    """
+    argv = sys.argv[1:] if argv is None else argv
     text = build()
+    if "--check" in argv:
+        stale = [p for p in OUTPUTS if not p.is_file() or p.read_text(encoding="utf-8") != text]
+        for out_path in stale:
+            print(f"stale: {out_path.relative_to(REPO_ROOT)}", file=sys.stderr)
+        if stale:
+            print("run `just llms-full` and commit both copies", file=sys.stderr)
+            return 1
+        print(f"up to date: {', '.join(str(p.relative_to(REPO_ROOT)) for p in OUTPUTS)}")
+        return 0
     for out_path in OUTPUTS:
         out_path.write_text(text, encoding="utf-8")
         print(f"Wrote {out_path.relative_to(REPO_ROOT)} ({len(text.encode()) / 1024:.1f} KB)")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

@@ -525,7 +525,7 @@ Raw peaks do not identify charge states. `Precursor.ccs` uses a known precursor
 charge when present, falling back to +1 when it is absent. Precursor scan
 coordinates retain the original fractional metadata value.
 
-Use `ook0_to_ccs` and `ccs_to_ook0` when the m/z and charge are known. Mobility is
+Use `ook0_to_ccs` and `ccs_to_ook0` when the m/z and charge are known. 1/K0 is
 in V·s/cm² and CCS is in Å². Both use `mz * abs(charge)` as the ion mass without
 subtracting protons, matching Bruker's convention. Negative charges use their
 magnitude; zero charge is rejected.
@@ -534,13 +534,13 @@ magnitude; zero charge is rejected.
 from math import isclose
 from tdfpy import ccs_to_ook0, ook0_to_ccs
 
-mobility = 1.0
+ook0 = 1.0
 mz = 500.0
 charge = 2
-ccs = ook0_to_ccs(mobility, charge, mz)
+ccs = ook0_to_ccs(ook0, charge, mz)
 assert ccs > 0
-assert isclose(ccs_to_ook0(ccs, charge, mz), mobility, rel_tol=1e-12)
-assert ook0_to_ccs(mobility, -charge, mz) == ccs
+assert isclose(ccs_to_ook0(ccs, charge, mz), ook0, rel_tol=1e-12)
+assert ook0_to_ccs(ook0, -charge, mz) == ccs
 ```
 
 For AI agents, an [optional MCP server](mcp.md) exposes acquisition queries,
@@ -788,6 +788,9 @@ High-level entry points for opening timsTOF `.d` acquisitions.
 **`get_acquisition_type(analysis_dir: str | Path) -> AcquisitionType`**
   Determine the acquisition type (DDA, DIA, or PRM) of a .d folder by examining the MsMsType values in the Frames table.
 
+**class `AcquisitionType(*values)`** (subclass of StrEnum)
+  Acquisition mode of a `.d` folder, returned by :func:`get_acquisition_type`.
+
 **class `DDA(analysis_dir: str | Path)`**
   Open a DDA (Data-Dependent Acquisition) `.d` folder.
   - `.analysis_path` -> `Path`
@@ -875,6 +878,14 @@ acquisition type from the frame's type. Find the windows or transitions of a run
   - `.raw_peaks(*, exclude: ChargeStateRegion | None = None, smooth: Smooth | None = None, noise: NoiseSpec = None, mobility_type: Literal['ook0', 'ccs', 'voltage'] = 'ook0') -> NDArray[numpy.float64]`: Raw peaks as one ``(N, 3)`` ``[m/z, intensity, ion_mobility]`` array.
   - `.scan_peaks() -> list[NDArray[numpy.float64]]`: Raw peaks, one ``(N_i, 2)`` ``[m/z, intensity]`` float64 array per mobility scan.
   - inherits all fields and methods of Frame
+
+## Frame MS/MS type
+
+Every frame carries the raw `MsMsType` value of its row in the `Frames` table:
+`MS1` on an MS1 frame, and `DDA_MS2`, `DIA_MS2` or `PRM_MS2` on an MS/MS frame.
+
+**class `MsMsType(*values)`** (subclass of IntEnum)
+  The ``MsMsType`` column of the ``Frames`` table.
 
 ==============================================================================
 # docs/api/precursor.md
@@ -1097,6 +1108,8 @@ with PRM("experiment.d") as prm:
   - `.software_version` -> `str`: Calibration software version.
   - `.std_ppm` -> `float`: m/z calibration standard deviation in ppm.
   - `.user` -> `str`: User who ran the calibration.
+
+**`MetaValue`** = `str | int | float | None`
 
 **`Polarity(*args, **kwargs)`**
 
@@ -1943,16 +1956,3 @@ The citation metadata lives in
 [`CITATION.cff`](https://github.com/tacular-omics/tdfpy/blob/main/CITATION.cff). GitHub's
 "Cite this repository" button on the
 [repository page](https://github.com/tacular-omics/tdfpy) reads it and exports APA or BibTeX.
-
-==============================================================================
-# Other public names (exported from tdfpy, not on a docs page)
-==============================================================================
-
-**class `AcquisitionType(*values)`** (subclass of StrEnum)
-  Acquisition mode of a `.d` folder, returned by :func:`get_acquisition_type`.
-
-**class `MsMsType(*values)`** (subclass of IntEnum)
-  The ``MsMsType`` column of the ``Frames`` table.
-
-**`MetaValue`** = `str | int | float | None`
-
