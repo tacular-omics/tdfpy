@@ -28,6 +28,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Document both CCS conversion helpers and add an executable round-trip example.
 - Render the slicer parameters, return value and exceptions using Google-style docstrings.
 
+### Maintenance
+
+- The `ty: ignore` on the optional `pyzstd` import no longer names a rule. ty renamed
+  `unresolved-import` to `import-not-found` between 0.0.96 and 0.0.101, and either code is
+  a warning, and so a failed `ty check`, on one side of that rename: measured on this file,
+  `unresolved-import` fails 0.0.101 and `import-not-found` fails 0.0.96 and 0.0.83.
+
 ## [5.1.0] (2026-11-06)
 
 ### Changed
