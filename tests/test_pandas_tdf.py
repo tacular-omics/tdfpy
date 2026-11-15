@@ -60,11 +60,7 @@ def pd_tdf() -> PandasTdf:
 # ``properties`` reads ~390,000 rows (~2 s); the other tables cover the same path.
 @pytest.mark.parametrize(
     "prop",
-    [
-        pytest.param(p, marks=pytest.mark.slow) if p == "properties" else p
-        for p in sorted(PROPERTY_TO_TABLE)
-        if p != "collision_energy_sweeping_info"
-    ],
+    [pytest.param(p, marks=pytest.mark.slow) if p == "properties" else p for p in sorted(PROPERTY_TO_TABLE) if p != "collision_energy_sweeping_info"],
 )
 def test_table_property_returns_dataframe(pd_tdf: PandasTdf, prop: str) -> None:
     assert isinstance(getattr(pd_tdf, prop), pd.DataFrame)
