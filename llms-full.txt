@@ -1331,7 +1331,9 @@ with timsdata_connect("experiment.d") as td:
     peaks = get_centroided_spectrum(td, frame_id=1)
     print(peaks.shape)   # (N, 3) — columns: [m/z, intensity, 1/K0]
 
-    # Tighter tolerances (set on the centroider), CCS instead of 1/K0
+    # Tighter tolerances (set on the centroider), CCS instead of 1/K0.
+    # mobility_type sets the unit of the third column only: clustering runs in
+    # 1/K0, so every unit returns the same peaks.
     peaks = get_centroided_spectrum(
         td,
         frame_id=1,
@@ -1602,6 +1604,10 @@ The two centroiders share a [`Centroider`](#tdfpy.Centroider) ABC.
 `MergePeaksCentroider` (default) operates on float m/z values via a greedy
 tolerance-based merge; `WatershedCentroider` works in integer index space
 via intensity-ordered region growing.
+
+Both cluster in 1/K0, whatever `mobility_type` is asked for, and convert the
+reported mobility column afterwards, so the peak list does not depend on the
+unit.
 
 **class `Centroider()`** (subclass of ABC)
   Base class for centroiding algorithms.

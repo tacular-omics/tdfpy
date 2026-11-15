@@ -236,6 +236,19 @@ def _abs_charge(charge: int) -> int:
     return z
 
 
+def _ccs_from_ook0(ook0: ArrayLike, charge: int, mz: ArrayLike) -> npt.NDArray[np.float64]:
+    """The arithmetic of :func:`ook0_to_ccs`, elementwise over arrays.
+
+    One NumPy expression for a whole spectrum instead of one Python call per
+    peak. Scalars give a 0-d array, which is what :func:`ook0_to_ccs` returns a
+    ``float`` of, so both paths compute the same doubles.
+    """
+    z = _abs_charge(charge)
+    mass = _as_float_array(mz) * z
+    reduced_mass = (mass * _CCS_MASS_GAS) / (mass + _CCS_MASS_GAS)
+    return _CCS_K * z / np.sqrt(reduced_mass * _CCS_TEMPERATURE) * _as_float_array(ook0)
+
+
 def ook0_to_ccs(ook0: float, charge: int, mz: float) -> float:
     """Convert 1/K0 to a collision cross section via the Mason-Schamp equation.
 
@@ -247,10 +260,7 @@ def ook0_to_ccs(ook0: float, charge: int, mz: float) -> float:
     Raises:
         ValueError: if ``charge`` is 0.
     """
-    z = _abs_charge(charge)
-    mass = mz * z
-    reduced_mass = (mass * _CCS_MASS_GAS) / (mass + _CCS_MASS_GAS)
-    return float(_CCS_K * z / np.sqrt(reduced_mass * _CCS_TEMPERATURE) * ook0)
+    return float(_ccs_from_ook0(ook0, charge, mz))
 
 
 def ccs_to_ook0(ccs: float, charge: int, mz: float) -> float:

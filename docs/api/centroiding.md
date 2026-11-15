@@ -55,7 +55,9 @@ with timsdata_connect("experiment.d") as td:
     peaks = get_centroided_spectrum(td, frame_id=1)
     print(peaks.shape)   # (N, 3) — columns: [m/z, intensity, 1/K0]
 
-    # Tighter tolerances (set on the centroider), CCS instead of 1/K0
+    # Tighter tolerances (set on the centroider), CCS instead of 1/K0.
+    # mobility_type sets the unit of the third column only: clustering runs in
+    # 1/K0, so every unit returns the same peaks.
     peaks = get_centroided_spectrum(
         td,
         frame_id=1,
