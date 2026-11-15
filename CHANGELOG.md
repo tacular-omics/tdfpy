@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `extract_mobilogram` and `extract_mobilograms`, the ion-mobility counterpart of a
+  chromatogram: summed intensity inside an m/z window against ion mobility, over the MS1 frames,
+  DIA windows or PRM transitions named in the call, plus `reader.mobilogram(mz=..., rt_range=...)`
+  on all three readers. Returns `(M, 2)` `[mobility, summed intensity]` in ascending mobility, one
+  row per populated bin, and `(0, 2)` when the window holds no signal. Several targets in one call
+  share one decode pass, which is what the cost is: 1.47 times a single target for ten of them,
+  against 6.2 times for ten separate calls on `tests/data/example_dda.d`. The axis is the
+  acquisition's own scan grid, so its 1/K0 values are exact conversions, and `mobility_type`
+  converts only the reported column, as the centroiders do. `"ccs"` requires `charge` instead of
+  assuming +1. A selection that mixes TIMS calibrations, which `tests/data/example_prm.d` does with
+  two of them at 1793 and 1662 scans, has no common scan grid: it needs `ook0_bin_width` and
+  raises without it, naming the calibrations and frames, and rejects `mobility_type="voltage"`,
+  which has no common value across calibrations. There is no whole-run default: pass `rt_range` or
+  `frame_ids`.
+
 - `::: tdfpy.AcquisitionType`, `::: tdfpy.MsMsType` and `::: tdfpy.MetaValue` directives.
   The two enums list their members, which needed `show_if_no_docstring: true` since enum members
   carry no docstrings.

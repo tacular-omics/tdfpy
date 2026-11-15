@@ -71,7 +71,7 @@ from .pipeline import (
     smooth,
     subset_scans,
 )
-from .processing import iter_precursor_spectra, iter_window_spectra
+from .processing import extract_mobilogram, extract_mobilograms, iter_precursor_spectra, iter_window_spectra
 from .reader import (
     DDA,
     DIA,
@@ -93,6 +93,8 @@ __all__ = [
     "FrameMetadata",
     "iter_precursor_spectra",
     "iter_window_spectra",
+    "extract_mobilogram",
+    "extract_mobilograms",
     "ValidationIssue",
     "ValidationReport",
     "validate_acquisition",

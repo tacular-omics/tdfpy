@@ -1,13 +1,15 @@
 import logging
 import sqlite3
 import warnings
-from collections.abc import Generator, Iterable, Iterator
+from collections.abc import Generator, Iterable, Iterator, Sequence
 from contextlib import closing, contextmanager
 from enum import StrEnum
 from functools import cached_property
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Self
+from typing import Any, Literal, Self
+
+import numpy as np
 
 from .elems import (
     Calibration,
@@ -33,8 +35,10 @@ from .lookup import (
     PrmTargetLookup,
     PrmTransitionLookup,
 )
+from .processing import _resolve_ms1_selection, extract_mobilogram
 from .tdf import PandasTdf
 from .timsdata import TimsData
+from .types import ToleranceUnit
 
 __all__ = ["DDA", "DIA", "PRM", "AcquisitionType", "get_acquisition_type"]
 
@@ -229,6 +233,10 @@ def get_acquisition_type(analysis_dir: str | Path) -> AcquisitionType:
 class _DFolder:
     """Shared base of the DDA, DIA and PRM readers."""
 
+    #: Set by every subclass once its MS1 frames are loaded, so the shared
+    #: helpers below can resolve an MS1 selection without knowing the mode.
+    _ms1_frames_lookup: Ms1FrameLookup[Any]
+
     def __init__(self, analysis_dir: str | Path):
         self._analysis_dir = str(analysis_dir)
         self._closed = False
@@ -295,6 +303,57 @@ class _DFolder:
         if self._calibration is None:
             self._calibration = Calibration(MappingProxyType(self.pandas_tdf.calibration_info.set_index("KeyName")["Value"].to_dict()))
         return self._calibration
+
+    def mobilogram(
+        self,
+        *,
+        mz: float,
+        rt_range: tuple[float, float] | None = None,
+        frame_ids: Sequence[int] | None = None,
+        mz_tolerance: float = 20.0,
+        mz_tolerance_unit: ToleranceUnit = "ppm",
+        mobility_type: Literal["ook0", "ccs", "voltage"] = "ook0",
+        charge: int | None = None,
+        ook0_bin_width: float | None = None,
+    ) -> np.ndarray:
+        """Extracted ion mobilogram over this run's MS1 frames.
+
+        Summed intensity inside the m/z window against ion mobility, which is
+        :func:`~tdfpy.extract_mobilogram` over the MS1 frames of ``rt_range``.
+
+        Args:
+            mz: Target m/z.
+            rt_range: ``(low, high)`` retention time in seconds, inclusive.
+            frame_ids: Explicit MS1 frame IDs instead of an RT window. Pass one
+                of ``rt_range`` or ``frame_ids``: there is no whole-run default.
+            mz_tolerance: Half-width of the m/z window.
+            mz_tolerance_unit: ``"ppm"`` or ``"da"``.
+            mobility_type: Unit of the reported axis.
+            charge: Required for ``mobility_type="ccs"``.
+            ook0_bin_width: 1/K0 bin width, needed only when the selected frames
+                mix TIMS calibrations.
+
+        Returns:
+            An ``(M, 2)`` array of ``[mobility, summed intensity]`` in ascending
+            mobility, or ``(0, 2)`` when the window holds no signal.
+
+        Raises:
+            ReaderClosedError: If the reader was closed.
+            TdfpyError: As :func:`~tdfpy.extract_mobilograms`, and if neither or
+                both of ``rt_range`` and ``frame_ids`` were given.
+        """
+        self._check_open()
+        selection = _resolve_ms1_selection(self._ms1_frames_lookup, rt_range, frame_ids)
+        return extract_mobilogram(
+            self.timsdata,
+            selection,
+            mz=mz,
+            mz_tolerance=mz_tolerance,
+            mz_tolerance_unit=mz_tolerance_unit,
+            mobility_type=mobility_type,
+            charge=charge,
+            ook0_bin_width=ook0_bin_width,
+        )
 
     @property
     def analysis_tdf_path(self) -> Path:
