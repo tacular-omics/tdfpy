@@ -24,6 +24,7 @@ TDF_PATH = DATA_DIR / "example_dda.d" / "analysis.tdf"
 #: can be checked against reality.
 PROPERTY_TO_TABLE = {
     "calibration_info": TableNames.CALIBRATION_INFO.value,
+    "collision_energy_sweeping_info": TableNames.COLLISION_ENERGY_SWEEPING_INFO.value,
     "dia_frame_msms_info": TableNames.DIA_FRAME_MSMS_INFO.value,
     "dia_frame_msms_window_groups": TableNames.DIA_FRAME_MSMS_WINDOW_GROUPS.value,
     "dia_frame_msms_windows": TableNames.DIA_FRAME_MSMS_WINDOWS.value,
@@ -57,7 +58,14 @@ def pd_tdf() -> PandasTdf:
 
 
 # ``properties`` reads ~390,000 rows (~2 s); the other tables cover the same path.
-@pytest.mark.parametrize("prop", [pytest.param(p, marks=pytest.mark.slow) if p == "properties" else p for p in sorted(PROPERTY_TO_TABLE)])
+@pytest.mark.parametrize(
+    "prop",
+    [
+        pytest.param(p, marks=pytest.mark.slow) if p == "properties" else p
+        for p in sorted(PROPERTY_TO_TABLE)
+        if p != "collision_energy_sweeping_info"
+    ],
+)
 def test_table_property_returns_dataframe(pd_tdf: PandasTdf, prop: str) -> None:
     assert isinstance(getattr(pd_tdf, prop), pd.DataFrame)
 
@@ -85,6 +93,19 @@ def test_get_table_names_lists_the_real_tables(pd_tdf: PandasTdf) -> None:
 def test_get_table_names_is_repeatable(pd_tdf: PandasTdf) -> None:
     """Each call opens and closes its own connection; that must not leak state."""
     assert pd_tdf.get_table_names() == pd_tdf.get_table_names()
+
+
+@pytest.mark.parametrize("fixture", ["example_dda.d", "example_dia.d", "example_prm.d"])
+def test_every_discovered_table_is_readable(fixture: str) -> None:
+    tdf = _open(DATA_DIR / fixture / "analysis.tdf")
+    for name in tdf.get_table_names():
+        assert isinstance(convert_table_to_df(tdf.db_path, name), pd.DataFrame)
+
+
+def test_collision_energy_sweeping_info_in_prm() -> None:
+    tdf = _open(DATA_DIR / "example_prm.d" / "analysis.tdf")
+    assert "CollisionEnergySweepingInfo" in tdf.get_table_names()
+    assert tdf.collision_energy_sweeping_info.empty
 
 
 def test_unknown_table_name_is_rejected() -> None:

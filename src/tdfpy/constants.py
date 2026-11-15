@@ -16,6 +16,7 @@ class TableNames(StrEnum):
     """
 
     CALIBRATION_INFO = "CalibrationInfo"
+    COLLISION_ENERGY_SWEEPING_INFO = "CollisionEnergySweepingInfo"
     DIA_FRAME_MSMS_INFO = "DiaFrameMsMsInfo"
     DIA_FRAME_MSMS_WINDOW_GROUPS = "DiaFrameMsMsWindowGroups"
     DIA_FRAME_MSMS_WINDOWS = "DiaFrameMsMsWindows"

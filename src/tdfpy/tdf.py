@@ -74,6 +74,11 @@ class PandasTdf:
         return convert_table_to_df(self.db_path, TableNames.CALIBRATION_INFO)
 
     @property
+    def collision_energy_sweeping_info(self) -> pd.DataFrame:
+        """The 'CollisionEnergySweepingInfo' table as a pandas DataFrame."""
+        return convert_table_to_df(self.db_path, TableNames.COLLISION_ENERGY_SWEEPING_INFO)
+
+    @property
     def dia_frame_msms_info(self) -> pd.DataFrame:
         """
         The 'DiaFrameMsMsInfo' table as a pandas DataFrame.
