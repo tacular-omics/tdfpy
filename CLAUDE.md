@@ -122,7 +122,8 @@ All names below are exported from `tdfpy` (`__all__`); add new exports there.
 - Lookups: `Ms1FrameLookup`, `PrecursorLookup`, `DiaWindowLookup`,
   `PrmTargetLookup`, `PrmTransitionLookup`
 - Convenience extraction: `get_raw_peaks`, `get_centroided_spectrum`,
-  `merge_peaks`, `get_mobility_collapsed_spectrum`, `iter_window_spectra`, `iter_precursor_spectra`
+  `merge_peaks`, `get_mobility_collapsed_spectrum`, `iter_window_spectra`, `iter_precursor_spectra`,
+  `extract_mobilogram`, `extract_mobilograms` (and `reader.mobilogram(...)`)
 - Pipeline ops: `RawSpectrum`, `read_spectrum`, `subset_scans`, `exclude_region`,
   `Smooth`, `smooth`, `box_smooth`, `apply_noise`, `convert`, `centroid_peaks`
 - Centroiders: `Centroider` (ABC), `MergePeaksCentroider` (default), `WatershedCentroider`

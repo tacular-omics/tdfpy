@@ -99,11 +99,51 @@ assert isclose(ccs_to_ook0(ccs, charge, mz), ook0, rel_tol=1e-12)
 assert ook0_to_ccs(ook0, -charge, mz) == ccs
 ```
 
+## Mobilograms
+
+An extracted ion mobilogram is the ion-mobility counterpart of a chromatogram:
+summed intensity inside an m/z window against ion mobility, over the frames or
+windows you name. Pass MS1 frame IDs, or `DiaWindow` / `PrmTransition` elements,
+which also restrict the axis to each window's scan range. There is no whole-run
+default, because the cost is the decode of whatever is selected.
+
+```python
+from tdfpy import DDA, extract_mobilograms
+
+with DDA(D_PATH) as reader:
+    frames = [frame.frame_id for frame in reader.ms1.query_range(rt_range=(2400.0, 2410.0))]
+
+    # One pass over those frames, three targets. Each result is (M, 2):
+    # [1/K0, summed intensity], ascending, one row per populated scan.
+    mobilograms = extract_mobilograms(reader.timsdata, frames, targets=[1292.6314, 700.8437], mz_tolerance=20.0)
+    peak = mobilograms[0]
+    assert peak.shape[1] == 2
+    apex_ook0 = float(peak[peak[:, 1].argmax(), 0])
+
+    # The same thing for one target, straight off the reader.
+    same = reader.mobilogram(mz=1292.6314, rt_range=(2400.0, 2410.0), mz_tolerance=20.0)
+    assert same.shape == peak.shape
+
+    # CCS needs the charge state. Voltage and 1/K0 do not.
+    ccs = reader.mobilogram(mz=1292.6314, rt_range=(2400.0, 2410.0), mobility_type="ccs", charge=2)
+    assert ccs.shape == same.shape
+```
+
+Intensity is the raw summed count, and the axis is the acquisition's own scan
+grid, so the 1/K0 values are exact conversions rather than interpolations. An
+m/z window with no signal gives `(0, 2)`. A run that mixes TIMS calibrations has
+no common scan grid, so pass `ook0_bin_width=` to bin the axis; without it the
+call raises and names the calibrations it found.
+
 For AI agents, an [optional MCP server](mcp.md) exposes acquisition queries,
 spectrum extraction, conversions, and file checks without changing the core
 Python installation.
 
 ## API
+
+::: tdfpy.extract_mobilogram
+
+::: tdfpy.extract_mobilograms
 
 ::: tdfpy.iter_window_spectra
 
