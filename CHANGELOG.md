@@ -23,6 +23,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   exported name has no `:::` directive and is not listed as pending, and also when a pending
   name has since been documented, so the list cannot go stale.
 
+### Fixed
+
+- `mobility_type` chose the mobility unit of the reported column and, with the default
+  `MergePeaksCentroider`, also changed which raw points merged, so the same frame came back as a
+  different spectrum. The centroider converted before merging, and `im_tolerance` is relative by
+  default, so a 10 percent window meant one thing in 1/K0 (0.53 to 1.50 on MS1 frame 1 of
+  `tests/data/example_dda.d`) and another in TIMS voltage (70.1 to 203.2, affine in scan number).
+  That frame returned 35690 centroids in 1/K0 and 35620 in voltage, 30992 counts of intensity
+  lower, and all 65 of the file's MS1 frames differed (2410520 centroids against 2406273).
+  Clustering now always runs in 1/K0 and only the reported column is converted, so every unit
+  gives the same rows. 1/K0 output is unchanged, byte for byte. CCS and voltage columns now come
+  from the merged 1/K0 value, which moves them by at most 2.4e-06 and 1.0e-03 respectively on
+  that frame. `WatershedCentroider` was never affected.
+
+### Performance
+
+- The CCS column is computed with one NumPy expression instead of one `ook0_to_ccs` call per
+  peak. `get_raw_peaks(..., mobility_type="ccs")` on MS1 frame 1 of `tests/data/example_dda.d`
+  (337047 peaks) goes from 150 ms to 12 ms, and iterating that file's 65 MS1 frames with
+  `raw_peaks(mobility_type="ccs")` from 10.9 s to 1.5 s, against 1.3 s for 1/K0. The values are
+  identical, bit for bit. `ook0_to_ccs` and `ccs_to_ook0` keep their signatures, their float
+  return and their `ValueError` for charge 0.
+
 ### Documentation
 
 - Document both CCS conversion helpers and add an executable round-trip example.

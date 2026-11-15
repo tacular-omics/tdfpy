@@ -28,7 +28,7 @@ from ._validation import (
     merge_config,
     nonnegative,
 )
-from .calibration import ook0_to_ccs
+from .calibration import _ccs_from_ook0
 from .errors import TdfpyError
 from .noise import NoiseFilter, NoiseSpec, coerce_filters
 from .regions import ChargeStateRegion
@@ -238,6 +238,26 @@ def apply_noise(
     return spectrum
 
 
+def _mobility_from_ook0(
+    td: TimsData,
+    frame_id: int,
+    mz_array: np.ndarray,
+    ook0_array: np.ndarray,
+    mobility_type: Literal["ook0", "ccs", "voltage"],
+) -> np.ndarray:
+    """Report already-merged 1/K0 values in another mobility unit.
+
+    Centroiding clusters in 1/K0, so the peak list does not depend on the unit
+    asked for and only the reported column is converted. CCS assumes charge +1,
+    like :func:`convert`.
+    """
+    if mobility_type == "ccs":
+        return _ccs_from_ook0(ook0_array, 1, mz_array)
+    if mobility_type == "voltage":
+        return np.asarray(td.scan_num_to_voltage(frame_id, td.ook0_to_scan_num(frame_id, ook0_array)), dtype=np.float64)
+    return np.asarray(ook0_array, dtype=np.float64)
+
+
 def convert(
     spectrum: RawSpectrum,
     td: TimsData,
@@ -263,10 +283,7 @@ def convert(
     mz_array = td.index_to_mz(frame_id, spectrum.mz_indices)
 
     if mobility_type == "ccs":
-        ion_mobility_array = np.array(
-            [ook0_to_ccs(float(ook0), 1, float(mz)) for ook0, mz in zip(ion_mobility_array, mz_array, strict=True)],
-            dtype=np.float64,
-        )
+        ion_mobility_array = _ccs_from_ook0(ion_mobility_array, 1, mz_array)
     elif mobility_type == "voltage":
         ion_mobility_array = td.scan_num_to_voltage(frame_id, spectrum.scan_indices)
 
@@ -304,8 +321,10 @@ class MergePeaksCentroider(Centroider):
     """Greedy m/z-tolerance centroider — wraps :func:`tdfpy.merge_peaks`.
 
     Operates on float m/z values. Real peaks are matched within an m/z
-    tolerance (ppm or Da) and an ion mobility tolerance. Default algorithm
-    used by :func:`tdfpy.get_centroided_spectrum`.
+    tolerance (ppm or Da) and an ion mobility tolerance. Clustering always runs
+    in 1/K0 and the reported mobility column is converted afterwards, so the
+    peak list is the same whichever ``mobility_type`` is asked for. Default
+    algorithm used by :func:`tdfpy.get_centroided_spectrum`.
     """
 
     mz_tolerance: float = 8.0
@@ -350,10 +369,13 @@ class MergePeaksCentroider(Centroider):
             intensities=spectrum.intensities[order],
             num_scans=spectrum.num_scans,
         )
-        peaks = convert(spectrum, td, frame_id, mobility_type=mobility_type)
+        # Always cluster in 1/K0: a relative im_tolerance means a different
+        # window in TIMS voltage (affine in scan number) or in CCS (per-peak
+        # scaling), so the peak list would otherwise depend on mobility_type.
+        peaks = convert(spectrum, td, frame_id, mobility_type="ook0")
         if peaks.size == 0:
             return np.empty((0, 3), dtype=np.float64)
-        return merge_peaks(
+        centroids = merge_peaks(
             peaks[:, 0],
             peaks[:, 1],
             peaks[:, 2],
@@ -368,6 +390,9 @@ class MergePeaksCentroider(Centroider):
             peak_noise_end_fraction=self.peak_noise_end_fraction,
             use_numba=self.use_numba,
         )
+        if mobility_type != "ook0" and len(centroids):
+            centroids[:, 2] = _mobility_from_ook0(td, frame_id, centroids[:, 0], centroids[:, 2], mobility_type)
+        return centroids
 
 
 def box_smooth(

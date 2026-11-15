@@ -115,6 +115,10 @@ The two centroiders share a [`Centroider`](#tdfpy.Centroider) ABC.
 tolerance-based merge; `WatershedCentroider` works in integer index space
 via intensity-ordered region growing.
 
+Both cluster in 1/K0, whatever `mobility_type` is asked for, and convert the
+reported mobility column afterwards, so the peak list does not depend on the
+unit.
+
 ::: tdfpy.Centroider
 
 ::: tdfpy.MergePeaksCentroider
