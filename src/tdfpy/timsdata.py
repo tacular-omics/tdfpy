@@ -135,8 +135,11 @@ def _resolve_zstd() -> Callable[[bytes], bytes]:
     except ImportError:
         pass
     try:
-        # Optional third fallback; not a declared dependency.
-        from pyzstd import decompress  # ty: ignore[unresolved-import]
+        # Optional third fallback; not a declared dependency. The ignore deliberately
+        # carries no rule code: ty renamed `unresolved-import` to `import-not-found`
+        # between 0.0.96 and 0.0.101, and either code produces a warning, and so a
+        # non-zero exit, on one side of that rename.
+        from pyzstd import decompress  # ty: ignore
 
         return decompress
     except ImportError as exc:  # pragma: no cover - install-time failure
