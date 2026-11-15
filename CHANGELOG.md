@@ -9,10 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `::: tdfpy.AcquisitionType`, `::: tdfpy.MsMsType` and `::: tdfpy.MetaValue` directives, so
-  the API reference now renders every public name except the two CCS helpers (PR #78). The two
-  enums list their members, which needed `show_if_no_docstring: true` since enum members carry
-  no docstrings.
+- `::: tdfpy.AcquisitionType`, `::: tdfpy.MsMsType` and `::: tdfpy.MetaValue` directives.
+  The two enums list their members, which needed `show_if_no_docstring: true` since enum members
+  carry no docstrings.
 - Two checks in the docs CI job. `scripts/build_llms_full.py --check` fails when
   `just llms-full` would change either copy: the existing `cmp` step only compares the two
   committed copies with each other, so they drifted together and `main` sat three lines stale.
@@ -26,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Documentation
 
+- Document both CCS conversion helpers and add an executable round-trip example.
 - Render the slicer parameters, return value and exceptions using Google-style docstrings.
 
 ## [5.1.0] (2026-11-06)
