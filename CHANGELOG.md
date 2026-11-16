@@ -42,6 +42,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Correct the slicer guide to state that an existing destination raises
+  `FileExistsError` and is never overwritten.
+
 - `mobility_type` chose the mobility unit of the reported column and, with the default
   `MergePeaksCentroider`, also changed which raw points merged, so the same frame came back as a
   different spectrum. The centroider converted before merging, and `im_tolerance` is relative by
