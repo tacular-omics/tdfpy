@@ -393,7 +393,9 @@ out = slice_d_folder(
 print(out)  # experiment_slice.d (a pathlib.Path)
 ```
 
-The destination directory is created automatically. If it already exists it is overwritten.
+The destination directory is created automatically. If it already exists, `slice_d_folder`
+raises `FileExistsError` and leaves the existing data untouched. Choose a new destination
+or remove the existing directory yourself before calling the function.
 
 ### Slicing by retention time
 
