@@ -259,6 +259,24 @@ class PandasTdf:
             raise TdfpyError(f"Failed to list tables of TDF database {self.db_path}: {exc}") from exc
         return table_names
 
+    def _has_rows(self, table: TableNames) -> bool:
+        """
+        Whether ``table`` exists and holds at least one row, answered by SQLite
+        in one connection without reading the table into a DataFrame.
+
+        Raises:
+            TdfpyError: If SQLite cannot read the database.
+        """
+        name = table.value  # a TableNames value, never user input, so safe to quote into the SQL
+        try:
+            with closing(sqlite3.connect(Path(self.db_path).resolve().as_uri() + "?mode=ro", uri=True)) as conn:
+                present = conn.execute("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name=?)", (name,))
+                if not present.fetchone()[0]:
+                    return False
+                return bool(conn.execute(f'SELECT EXISTS(SELECT 1 FROM "{name}")').fetchone()[0])
+        except sqlite3.Error as exc:
+            raise TdfpyError(f"Failed to check table {name!r} of TDF database {self.db_path}: {exc}") from exc
+
     @property
     def is_dda(self) -> bool:
         """
@@ -267,7 +285,7 @@ class PandasTdf:
         Returns:
             bool: True if DDA data is present, False otherwise.
         """
-        return TableNames.PRECURSORS.value in self.get_table_names() and len(self.precursors) > 0
+        return self._has_rows(TableNames.PRECURSORS)
 
     @property
     def is_prm(self) -> bool:
@@ -277,7 +295,7 @@ class PandasTdf:
         Returns:
             bool: True if PRM data is present, False otherwise.
         """
-        return TableNames.PRM_FRAME_MSMS_INFO.value in self.get_table_names() and len(self.prm_frame_msms_info) > 0
+        return self._has_rows(TableNames.PRM_FRAME_MSMS_INFO)
 
     @property
     def is_dia(self) -> bool:
@@ -287,7 +305,7 @@ class PandasTdf:
         Returns:
             bool: True if DIA data is present, False otherwise.
         """
-        return TableNames.DIA_FRAME_MSMS_INFO.value in self.get_table_names() and len(self.dia_frame_msms_info) > 0
+        return self._has_rows(TableNames.DIA_FRAME_MSMS_INFO)
 
     @property
     def is_maldi(self) -> bool:
