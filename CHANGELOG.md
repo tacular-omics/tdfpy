@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Fix `PandasTdf` access to the `CollisionEnergySweepingInfo` table in PRM data.
+
 ### Added
 
 - `extract_mobilogram` and `extract_mobilograms`, the ion-mobility counterpart of a
