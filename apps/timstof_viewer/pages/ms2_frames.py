@@ -92,7 +92,7 @@ with st.sidebar:
         seg = segments[scope_idx - 1]
         scan_scope = (seg["scan_begin"], seg["scan_end"] + 1)
 
-    exclude, smooth, halo, noise_filters, centroider, centroid_log_y = build_pipeline_ui("ms2")
+    exclude, smooth, halo, noise_filters, centroider, centroid_log_y = build_pipeline_ui("ms2", mobility_type=mobility_type)
 
 
 # -- Fetch raw peaks --------------------------------------------------------

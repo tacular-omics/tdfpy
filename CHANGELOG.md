@@ -128,6 +128,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Maintenance
 
+- The internal timsTOF viewer (`apps/`, not part of the package) no longer offers an absolute
+  IM tolerance when its ion mobility axis is CCS or TIMS voltage, the combination the
+  centroider now refuses; it offered both units whatever the axis and defaulted to absolute.
+  The decision lives in `apps/timstof_viewer/_controls.py`, which imports nothing, so
+  `tests/test_apps_controls.py` can check every offered combination against the real
+  centroider without Streamlit installed.
+
 - The read-only SQLite connection to `analysis.tdf` is opened in one place,
   `tdfpy._sqlite.connect_readonly`, instead of being spelled out at each of the six call sites
   in `tdf.py`, `reader.py`, `timsdata.py` and `mcp/service.py`. Same URI, same mode, same

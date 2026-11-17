@@ -24,6 +24,7 @@ import streamlit as st
 from plotly.colors import sample_colorscale
 
 import tdfpy
+from _controls import im_tolerance_unit_options
 from _sql import connect_readonly, read_sql_query
 from tdfpy import (
     AbsoluteThreshold,
@@ -942,6 +943,7 @@ def run_sql(analysis_dir: str, query: str) -> pd.DataFrame:
 def build_pipeline_ui(
     prefix: str,
     *,
+    mobility_type: str,
     show_centroider: bool = True,
 ) -> tuple[
     ChargeStateRegion | None,
@@ -954,7 +956,9 @@ def build_pipeline_ui(
     """Render the shared filter/centroid sidebar and return the configs.
 
     ``prefix`` namespaces every widget key so multiple pages can each own an
-    independent instance of the controls. Returns
+    independent instance of the controls. ``mobility_type`` is the axis the page
+    reports, and it is required: it decides which IM tolerance units may be
+    offered, because an absolute tolerance only means something in 1/K0. Returns
     ``(exclude, smooth, halo, noise_filters, centroider, centroid_log_y)``.
     The halo filter runs after the vertical-IM filter and before the
     intensity threshold (handled in :func:`_build_spectrum`).
@@ -1157,8 +1161,18 @@ def build_pipeline_ui(
                     with c3:
                         im_tol = float(st.number_input(
                             "IM tolerance", 0.0, value=0.01, step=0.005, format="%.4f", key=k("mp_im_tol")))
+                    im_units, im_unit_hint = im_tolerance_unit_options(mobility_type)
                     with c4:
-                        im_unit = st.selectbox("unit", ["relative", "absolute"], index=1, key=k("mp_im_unit"))
+                        # A per-axis widget key: switching axes changes the options, and a
+                        # stale "absolute" left in session state under one shared key would
+                        # not be among them.
+                        im_unit = st.selectbox(
+                            "unit", im_units, index=len(im_units) - 1,
+                            key=k(f"mp_im_unit_{mobility_type}"),
+                            disabled=len(im_units) == 1, help=im_unit_hint,
+                        )
+                    if im_unit_hint:
+                        st.caption(im_unit_hint)
                     min_peaks = int(st.number_input(
                         "min_peaks", 0, 50, 1, 1, key=k("mp_min"),
                         help="0 or 1 keeps all clusters."))

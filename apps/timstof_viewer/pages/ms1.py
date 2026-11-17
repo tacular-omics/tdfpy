@@ -83,7 +83,7 @@ with st.sidebar:
             "Overlay DIA windows", value=False,
             help="Draw the isolation window scheme (m/z × 1/K0) over the MS1 plane.")
 
-    exclude, smooth, halo, noise_filters, centroider, centroid_log_y = build_pipeline_ui("ms1")
+    exclude, smooth, halo, noise_filters, centroider, centroid_log_y = build_pipeline_ui("ms1", mobility_type=mobility_type)
 
 
 # -- Fetch raw peaks --------------------------------------------------------
