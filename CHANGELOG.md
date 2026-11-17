@@ -40,7 +40,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Fix `PandasTdf` access to the `CollisionEnergySweepingInfo` table in PRM data.
+- `PandasTdf` could not read the `CollisionEnergySweepingInfo` table that
+  `get_table_names()` listed: `convert_table_to_df` raised
+  `TdfpyError: Invalid table name`, and no property reached it. `TableNames` gains
+  `COLLISION_ENERGY_SWEEPING_INFO` and `PandasTdf` a matching
+  `collision_energy_sweeping_info` property, which returns a DataFrame with the table's
+  four columns and, on `tests/data/example_prm.d` (the only fixture that has the table),
+  0 rows. An unrecognised table name still raises `TdfpyError`.
+
+- Importing `tdfpy.mcp.__main__` ran the MCP server's argument parser on the importing
+  process's argv and exited that process: `python -c "import tdfpy.mcp.__main__"` left
+  exit status 2 on 5.1.0 and 0 now. The module has the `if __name__ == "__main__"` guard
+  that `tdfpy.__main__` already had, so a module walk, a docstring-example runner or
+  `pydoc` can import it. `python -m tdfpy.mcp` and the `tdfpy-mcp` console script are
+  unchanged.
 
 - Correct the slicer guide to state that an existing destination raises
   `FileExistsError` and is never overwritten.
