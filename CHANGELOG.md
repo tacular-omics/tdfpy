@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - Fix `PandasTdf` access to the `CollisionEnergySweepingInfo` table in PRM data.
+- `PandasTdf.is_dda`, `is_dia` and `is_prm` now ask SQLite whether the table exists and has a row
+  instead of reading the whole table into a DataFrame. Same results; `is_dda` on
+  `tests/data/example_dda.d` went from 4.42 ms to 0.22 ms (minimum of 20 runs), and the cost
+  no longer grows with the number of rows.
 
 ### Added
 

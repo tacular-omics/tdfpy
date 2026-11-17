@@ -148,3 +148,50 @@ def test_acquisition_predicates_identify_exactly_one_mode(fixture: str, mode: st
     )
     # None of the bundled fixtures is MALDI, which tdfpy does not support.
     assert tdf.is_maldi is False
+
+
+# --------------------------------------------------------------------------
+# Presence checks must not materialise a table
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("fixture", ["example_dda.d", "example_dia.d", "example_prm.d"])
+def test_acquisition_predicates_read_no_table(fixture: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    """is_dda, is_dia and is_prm answer without building a DataFrame."""
+    tdf = _open(DATA_DIR / fixture / "analysis.tdf")
+    expected = {"example_dda.d": "is_dda", "example_dia.d": "is_dia", "example_prm.d": "is_prm"}[fixture]
+
+    def boom(*args: object, **kwargs: object) -> pd.DataFrame:
+        raise AssertionError("a table was read into a DataFrame")
+
+    monkeypatch.setattr("tdfpy.tdf.convert_table_to_df", boom)
+    for prop in ("is_dda", "is_dia", "is_prm"):
+        assert getattr(tdf, prop) is (prop == expected)
+
+
+def test_predicates_false_for_missing_and_empty_tables(tmp_path: Path) -> None:
+    """A missing table and an empty table are both False; a populated one is True."""
+    import sqlite3
+
+    db = tmp_path / "analysis.tdf"
+    conn = sqlite3.connect(db)
+    conn.execute("CREATE TABLE Precursors (Id INTEGER)")
+    conn.execute("CREATE TABLE DiaFrameMsMsInfo (Frame INTEGER)")
+    conn.execute("INSERT INTO DiaFrameMsMsInfo VALUES (1)")
+    conn.commit()
+    conn.close()
+    tdf = PandasTdf(db)
+    assert tdf.is_dda is False  # present but empty
+    assert tdf.is_dia is True
+    assert tdf.is_prm is False  # table absent, no "no such table" error
+
+
+def test_predicates_raise_tdfpy_error_on_unreadable_database(tmp_path: Path) -> None:
+    from tdfpy.errors import TdfpyError
+
+    db = tmp_path / "analysis.tdf"
+    db.write_bytes(b"this is not an sqlite database" * 50)
+    tdf = PandasTdf(db)
+    for prop in ("is_dda", "is_dia", "is_prm"):
+        with pytest.raises(TdfpyError):
+            getattr(tdf, prop)
