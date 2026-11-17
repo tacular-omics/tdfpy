@@ -42,6 +42,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `MergePeaksCentroider` with `im_tolerance_unit="absolute"` now raises `TdfpyError` when
+  `mobility_type` is `"ccs"` or `"voltage"`, instead of reading the number as 1/K0. Clustering
+  runs in 1/K0, so an absolute tolerance is a width in V·s/cm²; 5.1.0 read it in the unit asked
+  for. A tolerance of 5 (meant as volts) or 20 (as Å²) therefore spanned the whole mobility range
+  and merged every scan, silently: on MS1 frame 1 of `tests/data/example_dda.d`, voltage with an
+  absolute 5.0 gave 30652 centroids on 5.1.0 and 37701 here, and CCS with an absolute 20.0 gave
+  35500 and 37701. The error names the two ways to get what was meant: `mobility_type="ook0"`,
+  or `centroid_peaks(convert(spectrum, td, frame_id, mobility_type=...), centroider)`, which
+  reproduces 5.1.0's numbers exactly (30652 and 35500). A relative `im_tolerance`, the default,
+  is unaffected, as is `absolute` with `mobility_type="ook0"` (32534 centroids on both versions)
+  and `WatershedCentroider`, which has no mobility tolerance.
+
+- Calling `MergePeaksCentroider` directly with an unknown `mobility_type` raises `TdfpyError`
+  again. 5.1.0 validated it through `convert`; once clustering moved to 1/K0 that call passed a
+  literal `"ook0"`, so an invalid unit was silently reported in 1/K0.
+  `get_centroided_spectrum` always checked it and was never affected.
+
+- `extract_mobilogram` and `extract_mobilograms` with a `"da"` tolerance wider than the target
+  m/z matched nothing instead of starting at the bottom of the spectrum: the low edge went
+  negative, the calibration takes its square root and returned NaN, and every comparison against
+  NaN is false. `mz=300, mz_tolerance=301, mz_tolerance_unit="da"` on MS1 frame 1 of
+  `tests/data/example_dda.d` gave 0 rows and now gives the same 595 as a 300 Da window. The low
+  edge is clamped at m/z 0.
+
+- `extract_mobilogram` and `extract_mobilograms` with `mobility_type="ccs"` and `charge=0` raise
+  `TdfpyError` up front. The conversion ran only on a non-empty result, so an empty window
+  returned `(0, 2)` and a populated one raised a bare `ValueError` from the calibration. Only the
+  magnitude of the charge reaches the conversion, so `charge=-2` and `charge=2` still agree.
+
 - `PandasTdf` could not read the `CollisionEnergySweepingInfo` table that
   `get_table_names()` listed: `convert_table_to_df` raised
   `TdfpyError: Invalid table name`, and no property reached it. `TableNames` gains

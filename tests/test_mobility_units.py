@@ -142,3 +142,59 @@ def test_ook0_to_ccs_keeps_its_scalar_contract() -> None:
         ook0_to_ccs(1.0, 0, 500.0)
     with pytest.raises(ValueError, match="non-zero"):
         ccs_to_ook0(value, 0, 500.0)
+
+
+#: An absolute ``im_tolerance`` and the unit it cannot be a width in.
+ABSOLUTE_CASES = (("voltage", 5.0), ("ccs", 20.0))
+
+
+@pytest.mark.parametrize(("unit", "tolerance"), ABSOLUTE_CASES)
+def test_an_absolute_im_tolerance_refuses_a_unit_it_cannot_express(unit: str, tolerance: float) -> None:
+    """``absolute`` is a width in 1/K0, so another reported unit must raise, not misread it.
+
+    Clustering runs in 1/K0, so before this guard the number was read in 1/K0
+    whatever unit was asked for: ``5`` meant 5 V·s/cm², wider than the whole
+    mobility range of the run, and every scan merged. On MS1 frame 1 of the DDA
+    fixture that silently turned 30652 centroids into 37701.
+    """
+    centroider = MergePeaksCentroider(im_tolerance=tolerance, im_tolerance_unit="absolute")
+    with DDA(DDA_PATH) as reader:
+        td = reader.timsdata
+        with pytest.raises(tdfpy.TdfpyError, match="width in 1/K0 units"):
+            tdfpy.get_centroided_spectrum(td, 1, mobility_type=unit, centroid=centroider)  # type: ignore[arg-type]
+        in_ook0 = tdfpy.get_centroided_spectrum(td, 1, mobility_type="ook0", centroid=centroider)
+        assert len(in_ook0), "the 1/K0 spectrum is empty, so the refusal above proves nothing"
+
+
+def test_the_centroider_still_rejects_an_unknown_mobility_type() -> None:
+    """A direct centroider call validated its unit through ``convert`` until clustering moved to 1/K0."""
+    with DDA(DDA_PATH) as reader:
+        td = reader.timsdata
+        spectrum = tdfpy.read_spectrum(td, 1)
+        with pytest.raises(tdfpy.TdfpyError, match="mobility_type must be one of"):
+            MergePeaksCentroider()(spectrum, td, 1, mobility_type="bogus")  # type: ignore[arg-type]
+        for unit in UNITS:
+            assert len(MergePeaksCentroider()(spectrum, td, 1, mobility_type=unit)), f"{unit} came back empty"
+
+
+@pytest.mark.parametrize(("unit", "tolerance"), ABSOLUTE_CASES)
+def test_an_absolute_window_in_the_reported_unit_goes_through_centroid_peaks(unit: str, tolerance: float) -> None:
+    """The route the refusal names: convert first, then cluster on the converted peaks.
+
+    This is what the centroider itself did before clustering moved to 1/K0, so
+    the capability is not lost; it has to be asked for, because the peak list
+    then genuinely depends on the unit. Measured on MS1 frame 1 of the DDA
+    fixture: 30652 centroids in voltage and 35500 in CCS, against 37701 for the
+    same tolerance read as 1/K0.
+    """
+    centroider = MergePeaksCentroider(im_tolerance=tolerance, im_tolerance_unit="absolute")
+    with DDA(DDA_PATH) as reader:
+        td = reader.timsdata
+        spectrum = tdfpy.read_spectrum(td, 1)
+        in_unit = tdfpy.centroid_peaks(tdfpy.convert(spectrum, td, 1, mobility_type=unit), centroider)  # type: ignore[arg-type]
+        in_ook0 = tdfpy.get_centroided_spectrum(td, 1, mobility_type="ook0", centroid=centroider)
+        assert len(in_unit) and len(in_ook0), "an empty spectrum would make this comparison vacuous"
+        assert len(in_unit) != len(in_ook0), (
+            f"{unit}: clustering a {tolerance} wide window in {unit} gave the same {len(in_unit)} centroids as "
+            "reading that number as 1/K0, so this does not show the window is in the unit asked for"
+        )

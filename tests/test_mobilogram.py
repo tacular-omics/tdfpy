@@ -216,3 +216,46 @@ def test_mixed_calibrations_need_a_bin_width() -> None:
 
         single = extract_mobilogram(td, first, mz=mz, mz_tolerance=40.0)
         assert float(single[:, 1].sum()) == _reference_total(td, [(f, 0, td.frame_metadata(f).num_scans) for f in first], mz, 40.0)
+
+
+def test_a_da_tolerance_wider_than_the_target_mz_still_matches() -> None:
+    """``mz - tolerance`` below zero has no TOF index, and a NaN bound matches nothing.
+
+    The calibration takes a square root of the m/z, so a negative low edge came
+    back NaN and every comparison against it was false: the window silently
+    matched nothing instead of starting at the bottom of the spectrum.
+    """
+    with DDA(DDA_PATH) as reader:
+        td = reader.timsdata
+        inside = extract_mobilogram(td, [1], mz=300.0, mz_tolerance=300.0, mz_tolerance_unit="da")
+        assert len(inside), "the 300 Da window is already empty, so the wider ones prove nothing"
+        for tolerance in (301.0, 500.0, 5000.0):
+            wider = extract_mobilogram(td, [1], mz=300.0, mz_tolerance=tolerance, mz_tolerance_unit="da")
+            assert len(wider), f"a {tolerance} Da window around m/z 300 matched nothing: the low edge went negative"
+            assert len(wider) >= len(inside), f"{tolerance} Da gave {len(wider)} rows, fewer than the 300 Da window's {len(inside)}"
+            assert float(wider[:, 1].sum()) >= float(inside[:, 1].sum())
+
+
+@pytest.mark.parametrize(("mz", "label"), [(300.0, "a window with signal"), (9000.0, "a window with none")])
+def test_charge_zero_with_ccs_raises_whether_or_not_there_is_signal(mz: float, label: str) -> None:
+    """CCS is undefined at charge 0, and the refusal must not depend on finding peaks.
+
+    The conversion ran only on a non-empty result, so an empty window returned
+    ``(0, 2)`` and a populated one raised a bare ``ValueError`` from the
+    calibration rather than this package's own error.
+    """
+    with DDA(DDA_PATH) as reader:
+        td = reader.timsdata
+        with pytest.raises(TdfpyError, match="charge=0"):
+            extract_mobilogram(td, [1], mz=mz, mz_tolerance=300.0, mz_tolerance_unit="da", mobility_type="ccs", charge=0)
+
+
+def test_ccs_ignores_the_sign_of_the_charge() -> None:
+    """What the charge-0 refusal claims: only the magnitude reaches the conversion."""
+    with DDA(DDA_PATH) as reader:
+        td = reader.timsdata
+        options = {"mz": 300.0, "mz_tolerance": 300.0, "mz_tolerance_unit": "da", "mobility_type": "ccs"}
+        positive = extract_mobilogram(td, [1], charge=2, **options)  # type: ignore[arg-type]
+        negative = extract_mobilogram(td, [1], charge=-2, **options)  # type: ignore[arg-type]
+        assert len(positive), "no signal in the window, so this proves nothing"
+        np.testing.assert_array_equal(positive, negative)
