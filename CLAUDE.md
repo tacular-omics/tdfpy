@@ -90,6 +90,7 @@ src/tdfpy/
 ├── constants.py     physical constants, table names
 ├── types.py         Polarity, ToleranceUnit (same as tacular.types)
 ├── _validation.py   shared argument checks before array ops / JIT kernels
+├── _sqlite.py       connect_readonly: the one read-only connection to analysis.tdf
 ├── _diagnostics.py  internal pipeline instrumentation, no stable API
 └── mcp/             optional MCP server (models, service, server); importing
                      tdfpy never imports the MCP SDK

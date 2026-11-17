@@ -28,6 +28,7 @@ from tdfpy import (
     validate_acquisition,
 )
 from tdfpy import noise as noise_module
+from tdfpy._sqlite import connect_readonly
 from tdfpy.calibration import ccs_to_ook0, ook0_to_ccs
 from tdfpy.elems import _parse_polarity
 from tdfpy.errors import TdfpyError
@@ -213,7 +214,7 @@ class AcquisitionService:
 
     @contextmanager
     def connection(self, path: Path) -> Generator[sqlite3.Connection, None, None]:
-        connection = sqlite3.connect((path / "analysis.tdf").as_uri() + "?mode=ro", uri=True)
+        connection = connect_readonly(path / "analysis.tdf")
         connection.row_factory = sqlite3.Row
         try:
             connection.execute("PRAGMA query_only = ON")

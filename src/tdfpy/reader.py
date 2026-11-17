@@ -11,6 +11,7 @@ from typing import Any, Literal, Self
 
 import numpy as np
 
+from ._sqlite import connect_readonly
 from .elems import (
     Calibration,
     DDAMs1Frame,
@@ -61,7 +62,7 @@ class AcquisitionType(StrEnum):
 def _tdf_connection(tdf_path: Path) -> Generator[sqlite3.Connection, None, None]:
     """Read-only SQLite connection to ``analysis.tdf``; SQLite errors become :class:`TdfpyError`."""
     try:
-        with closing(sqlite3.connect(tdf_path.resolve().as_uri() + "?mode=ro", uri=True)) as conn:
+        with closing(connect_readonly(tdf_path)) as conn:
             yield conn
     except sqlite3.Error as exc:
         raise TdfpyError(f"Failed to read TDF database {tdf_path}: {exc}") from exc
