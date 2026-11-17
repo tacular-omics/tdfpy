@@ -68,7 +68,7 @@ with st.sidebar:
     mobility_type = st.selectbox("Ion mobility axis", ["ook0", "ccs", "voltage"], index=0)
     log_intensity = st.checkbox("Log-scale color", value=True)
 
-    exclude, smooth, halo, noise_filters, centroider, centroid_log_y = build_pipeline_ui("prmtgt")
+    exclude, smooth, halo, noise_filters, centroider, centroid_log_y = build_pipeline_ui("prmtgt", mobility_type=mobility_type)
 
 
 # -- Target metadata --------------------------------------------------------

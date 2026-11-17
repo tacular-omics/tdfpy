@@ -71,7 +71,7 @@ with st.sidebar:
             "Ion mobility axis", ["ook0", "ccs", "voltage"], index=0, key="prec_im_axis")
         raw_log_intensity = st.checkbox(
             "Log-scale color (log10 intensity)", value=True, key="prec_log_int")
-        raw_pipeline = build_pipeline_ui("prec")
+        raw_pipeline = build_pipeline_ui("prec", mobility_type=raw_ion_mobility)
 
 if view.empty:
     st.warning("No precursors match the charge filter.")

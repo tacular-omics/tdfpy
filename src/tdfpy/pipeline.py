@@ -325,6 +325,13 @@ class MergePeaksCentroider(Centroider):
     in 1/K0 and the reported mobility column is converted afterwards, so the
     peak list is the same whichever ``mobility_type`` is asked for. Default
     algorithm used by :func:`tdfpy.get_centroided_spectrum`.
+
+    Because clustering runs in 1/K0, ``im_tolerance_unit="absolute"`` is a width
+    in 1/K0 units (V·s/cm²), and asking for ``mobility_type="ccs"`` or
+    ``"voltage"`` alongside it raises :class:`~tdfpy.errors.TdfpyError` rather
+    than reading the number in the wrong unit. A relative tolerance has no such
+    restriction. For an absolute window in the reported unit itself, call
+    :func:`convert` and then :func:`centroid_peaks`.
     """
 
     mz_tolerance: float = 8.0
@@ -359,6 +366,17 @@ class MergePeaksCentroider(Centroider):
         mobility_type: Literal["ook0", "ccs", "voltage"] = "ook0",
     ) -> np.ndarray:
         from .centroiding import _tof_order, merge_peaks
+
+        choice("mobility_type", mobility_type, ("ook0", "ccs", "voltage"))
+        if self.im_tolerance_unit == "absolute" and mobility_type != "ook0":
+            raise TdfpyError(
+                f"im_tolerance={self.im_tolerance} with im_tolerance_unit='absolute' is a width in 1/K0 units "
+                f"(V*s/cm^2), because clustering always runs in 1/K0, so it cannot express a window in "
+                f"{mobility_type!r}. Ask for mobility_type='ook0', or use im_tolerance_unit='relative', whose "
+                f"window is the same whichever unit is reported. For an absolute window in {mobility_type!r} "
+                f"itself, convert first and cluster on the result: "
+                f"centroid_peaks(convert(spectrum, td, frame_id, mobility_type={mobility_type!r}), centroider)."
+            )
 
         # m/z rises with TOF index, so a stable integer sort here hands
         # merge_peaks m/z already in order and it skips its float argsort.

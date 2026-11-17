@@ -150,7 +150,11 @@ def _selection_rows(td: TimsData, selection: Iterable[int | DiaWindow | PrmTrans
 
 def _mz_index_window(td: TimsData, frame_id: int, mz: float, tolerance: float, unit: str) -> tuple[float, float]:
     width = mz * tolerance / 1e6 if unit == "ppm" else tolerance
-    low, high = np.sort(np.asarray(td.mz_to_index(frame_id, np.array([mz - width, mz + width], dtype=np.float64))))
+    # A Da tolerance may be wider than the target m/z. A negative m/z has no TOF
+    # index: the calibration takes a square root of it and returns NaN, and every
+    # comparison against NaN is false, so the window would silently match nothing.
+    edges = np.array([max(mz - width, 0.0), mz + width], dtype=np.float64)
+    low, high = np.sort(np.asarray(td.mz_to_index(frame_id, edges)))
     return float(low), float(high)
 
 
@@ -225,7 +229,8 @@ def extract_mobilograms(
         ReaderClosedError: If the reader was closed.
         TdfpyError: If the selection is empty or holds something else, if
             ``targets`` is empty, if an argument is out of range, if
-            ``mobility_type="ccs"`` comes without a charge, or if the selection
+            ``mobility_type="ccs"`` comes without a charge or with ``charge=0``,
+            or if the selection
             mixes TIMS calibrations and ``ook0_bin_width`` is missing (and for
             ``mobility_type="voltage"``, which has no common value across
             calibrations).
@@ -239,6 +244,11 @@ def extract_mobilograms(
         raise TdfpyError("targets is empty: pass at least one m/z to extract.")
     if mobility_type == "ccs" and charge is None:
         raise TdfpyError("mobility_type='ccs' needs charge=...: CCS is undefined without the ion's charge state.")
+    if mobility_type == "ccs" and charge == 0:
+        raise TdfpyError(
+            "charge=0 cannot convert between 1/K0 and CCS: pass the ion's charge state, which is never 0. "
+            "The sign is ignored, so charge=-2 and charge=2 give the same CCS."
+        )
     if ook0_bin_width is not None and not ook0_bin_width > 0:
         raise TdfpyError(f"ook0_bin_width must be positive, got {ook0_bin_width}.")
 
