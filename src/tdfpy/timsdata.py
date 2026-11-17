@@ -43,12 +43,12 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import Enum
 from numbers import Integral
-from pathlib import Path
 from typing import Any
 
 import numpy as np
 import numpy.typing as npt
 
+from ._sqlite import connect_readonly
 from .calibration import MzCalibration, TimsCalibration
 from .errors import ReaderClosedError, TdfpyError, TdfpyKeyError, UnsupportedTdfError
 
@@ -341,7 +341,7 @@ class TimsData:
         self.conn: sqlite3.Connection | None = None
         self.handle: Any = None
         try:
-            self.conn = sqlite3.connect(Path(tdf_path).resolve().as_uri() + "?mode=ro", uri=True)
+            self.conn = connect_readonly(tdf_path)
             self.conn.row_factory = sqlite3.Row
             self._load_metadata()
         except sqlite3.Error as exc:

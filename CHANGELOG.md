@@ -7,12 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-- Fix `PandasTdf` access to the `CollisionEnergySweepingInfo` table in PRM data.
-- `PandasTdf.is_dda`, `is_dia` and `is_prm` now ask SQLite whether the table exists and has a row
-  instead of reading the whole table into a DataFrame. Same results; `is_dda` on
-  `tests/data/example_dda.d` went from 4.42 ms to 0.22 ms (minimum of 20 runs), and the cost
-  no longer grows with the number of rows.
-
 ### Added
 
 - `extract_mobilogram` and `extract_mobilograms`, the ion-mobility counterpart of a
@@ -46,6 +40,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Fix `PandasTdf` access to the `CollisionEnergySweepingInfo` table in PRM data.
+
 - Correct the slicer guide to state that an existing destination raises
   `FileExistsError` and is never overwritten.
 
@@ -63,6 +59,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Performance
 
+- `PandasTdf.is_dda`, `is_dia` and `is_prm` now ask SQLite whether the table exists and has a row
+  instead of reading the whole table into a DataFrame. Same results; `is_dda` on
+  `tests/data/example_dda.d` went from 4.42 ms to 0.22 ms (minimum of 20 runs), and the cost
+  no longer grows with the number of rows.
+
 - The CCS column is computed with one NumPy expression instead of one `ook0_to_ccs` call per
   peak. `get_raw_peaks(..., mobility_type="ccs")` on MS1 frame 1 of `tests/data/example_dda.d`
   (337047 peaks) goes from 150 ms to 12 ms, and iterating that file's 65 MS1 frames with
@@ -76,6 +77,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Render the slicer parameters, return value and exceptions using Google-style docstrings.
 
 ### Maintenance
+
+- The read-only SQLite connection to `analysis.tdf` is opened in one place,
+  `tdfpy._sqlite.connect_readonly`, instead of being spelled out at each of the six call sites
+  in `tdf.py`, `reader.py`, `timsdata.py` and `mcp/service.py`. Same URI, same mode, same
+  error messages; `mcp/service.py` keeps its `query_only` and `trusted_schema` pragmas and now
+  resolves the path before building the URI, as the other five already did.
 
 - The `ty: ignore` on the optional `pyzstd` import no longer names a rule. ty renamed
   `unresolved-import` to `import-not-found` between 0.0.96 and 0.0.101, and either code is

@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from ._sqlite import connect_readonly
 from .constants import TableNames
 from .errors import TdfpyError
 
@@ -47,7 +48,7 @@ def convert_table_to_df(db_path: str | Path, table_name: str) -> pd.DataFrame:
     try:
         # sqlite3.Connection's own context manager commits or rolls back the
         # transaction; it does not close the connection. closing() does.
-        with closing(sqlite3.connect(db_path.resolve().as_uri() + "?mode=ro", uri=True)) as conn:
+        with closing(connect_readonly(db_path)) as conn:
             return pd.read_sql_query(f"SELECT * FROM {table_name}", conn)
     except (sqlite3.Error, pd.errors.DatabaseError) as e:
         raise TdfpyError(f"Failed to read table {table_name!r} from TDF database {db_path}: {e}") from e
@@ -251,7 +252,7 @@ class PandasTdf:
         # closing(), not the connection's own context manager, which only ends
         # the transaction and would leave the handle open until GC.
         try:
-            with closing(sqlite3.connect(Path(self.db_path).resolve().as_uri() + "?mode=ro", uri=True)) as conn:
+            with closing(connect_readonly(self.db_path)) as conn:
                 cursor = conn.cursor()
                 cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
                 table_names = [table[0] for table in cursor.fetchall()]
@@ -269,7 +270,7 @@ class PandasTdf:
         """
         name = table.value  # a TableNames value, never user input, so safe to quote into the SQL
         try:
-            with closing(sqlite3.connect(Path(self.db_path).resolve().as_uri() + "?mode=ro", uri=True)) as conn:
+            with closing(connect_readonly(self.db_path)) as conn:
                 present = conn.execute("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name=?)", (name,))
                 if not present.fetchone()[0]:
                     return False
