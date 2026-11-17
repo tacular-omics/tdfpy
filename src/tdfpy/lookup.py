@@ -12,6 +12,7 @@ Argument names follow one rule: a ``(low, high)`` tuple is ``*_range``
 ``*_tolerance`` and goes to ``query``. Ranges and tolerances are inclusive.
 """
 
+from bisect import bisect_left, bisect_right
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from typing import overload
 
@@ -60,6 +61,40 @@ def _mz_range(mz: float | None, tolerance: float, tolerance_unit: ToleranceUnit)
 
 def _in(value: float, bounds: tuple[float, float] | None) -> bool:
     return bounds is None or bounds[0] <= value <= bounds[1]
+
+
+class _SortedKey:
+    """Positions of ``_items`` sorted by one numeric key, for bisect range queries.
+
+    Built once, since a lookup never changes. ``select(bounds)`` returns the positions whose key
+    satisfies :func:`_in`, in ``_items`` order. NaN keys are left out of the index because a
+    bounded ``_in`` is false for them. If a key cannot be ordered (``None``), the index falls back
+    to testing every position with :func:`_in`, so that case behaves exactly as the linear scan did.
+    """
+
+    __slots__ = ("_keys", "_order", "_values")
+
+    def __init__(self, values: list[float]):
+        self._values = values
+        self._order: list[int] | None
+        try:
+            self._order = sorted((i for i, v in enumerate(values) if v == v), key=values.__getitem__)
+        except TypeError:
+            self._order = None
+            self._keys: list[float] = []
+        else:
+            self._keys = [values[i] for i in self._order]
+
+    def select(self, bounds: tuple[float, float] | None) -> Iterable[int]:
+        """Positions of the items whose key is inside ``bounds``, in item order. ``None`` selects all."""
+        if bounds is None:
+            return range(len(self._values))
+        if self._order is None:
+            return (i for i, v in enumerate(self._values) if _in(v, bounds))
+        low, high = bounds
+        if low != low or high != high:  # a NaN bound matches nothing
+            return ()
+        return sorted(self._order[bisect_left(self._keys, low) : bisect_right(self._keys, high)])
 
 
 class _IdLookup[V, R]:
@@ -119,6 +154,7 @@ class Ms1FrameLookup[T: Frame](_IdLookup[T, T]):
 
     def __init__(self, frames: Mapping[int, T]):
         super().__init__(frames.values(), frames)
+        self._rt_key = _SortedKey([f.rt for f in self._items])
 
     def query_range(self, *, rt_range: tuple[float, float] | None = None) -> Iterator[T]:
         """MS1 frames inside an RT range, in frame order.
@@ -129,9 +165,9 @@ class Ms1FrameLookup[T: Frame](_IdLookup[T, T]):
         Yields:
             Matching MS1 frames.
         """
-        for frame in self._items:
-            if _in(frame.rt, rt_range):
-                yield frame
+        items = self._items
+        for i in self._rt_key.select(rt_range):
+            yield items[i]
 
     def query(self, *, rt: float | None = None, rt_tolerance: float = 30.0) -> Iterator[T]:
         """MS1 frames within ``rt_tolerance`` of ``rt``, in frame order.
@@ -217,6 +253,8 @@ class PrecursorLookup(_IdLookup[Precursor, Precursor]):
 
     def __init__(self, precursors: Mapping[int, Precursor]):
         super().__init__(precursors.values(), precursors)
+        self._mz_key = _SortedKey([p.precursor_mz for p in self._items])
+        self._rt_key = _SortedKey([p.rt for p in self._items])
 
     def query_range(
         self,
@@ -234,9 +272,16 @@ class PrecursorLookup(_IdLookup[Precursor, Precursor]):
         Yields:
             Matching `Precursor` objects.
         """
-        for precursor in self._items:
-            if _in(precursor.precursor_mz, precursor_mz_range) and _in(precursor.rt, rt_range):
-                yield precursor
+        items = self._items
+        if precursor_mz_range is None and rt_range is not None:
+            # Only RT is bounded: index it instead of scanning every precursor.
+            for i in self._rt_key.select(rt_range):
+                yield items[i]
+            return
+        # Index m/z and test RT on what survives; ``_in`` keeps its None/NaN behaviour.
+        for i in self._mz_key.select(precursor_mz_range):
+            if _in(items[i].rt, rt_range):
+                yield items[i]
 
     def query(
         self,
