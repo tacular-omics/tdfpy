@@ -1176,7 +1176,11 @@ support:
 - **Index access** — `lookup[id]`
 - **Length** — `len(lookup)`
 - **`.get(id)`** — returns `None` (or a default) instead of raising on a missing ID
-- **`.query()`** — filter by m/z, retention time, or ion mobility with tolerances
+- **`.query()` / `.query_range()`** — filter by what each lookup holds. Precursors filter by
+  precursor m/z and retention time, and PRM targets also by ion mobility, each with a tolerance
+  on `.query()`. MS1 frames filter by retention time. DIA windows and PRM transitions filter by
+  retention time and by the isolation window they used: `isolation_mz=` keeps those whose window
+  contains that m/z (no tolerance) and `isolation_mz_range=` those that overlap a range
 
 ---
 
@@ -1226,14 +1230,22 @@ with DIA("experiment.d") as dia:
     # Query by window group AND retention time
     for window in dia.windows.query(window_group=5, rt=600.0, rt_tolerance=10.0):
         peaks = window.centroid()
+
+    # Windows whose isolation range contains an m/z (edges included, no tolerance);
+    # overlapping windows all match
+    for window in dia.windows.query(isolation_mz=700.0):
+        print(window.window_group_id, window.isolation_mz_range)
+
+    # Windows overlapping an m/z range
+    windows = list(dia.windows.query_range(isolation_mz_range=(690.0, 710.0)))
 ```
 
 **class `DiaWindowLookup(windows: Iterable[DiaWindow])`**
   Per-frame DIA windows, indexed by window group ID.
   - `.get(key: int, default: object = None) -> object`: Return the entry for ``key``, or ``default`` (``None``) if it is not present.
   - `.ids() -> tuple[int, ...]`: Every ID this lookup is indexed by, in insertion order.
-  - `.query(*, window_group: int | DiaWindowGroup | None = None, rt: float | None = None, rt_tolerance: float = 30.0) -> Iterator[DiaWindow]`: Windows in a window group and/or within ``rt_tolerance`` of ``rt``.
-  - `.query_range(*, window_group: int | DiaWindowGroup | None = None, rt_range: tuple[float, float] | None = None) -> Iterator[DiaWindow]`: Windows in a window group and/or retention time range.
+  - `.query(*, window_group: int | DiaWindowGroup | None = None, rt: float | None = None, rt_tolerance: float = 30.0, isolation_mz: float | None = None) -> Iterator[DiaWindow]`: Windows in a window group, within ``rt_tolerance`` of ``rt`` and/or covering ``isolation_mz``.
+  - `.query_range(*, window_group: int | DiaWindowGroup | None = None, rt_range: tuple[float, float] | None = None, isolation_mz_range: tuple[float, float] | None = None) -> Iterator[DiaWindow]`: Windows in a window group, retention time range and/or overlapping an m/z range.
 
 ---
 
@@ -1314,8 +1326,8 @@ with PRM("experiment.d") as prm:
   PRM transitions, indexed by target ID.
   - `.get(key: int, default: object = None) -> object`: Return the entry for ``key``, or ``default`` (``None``) if it is not present.
   - `.ids() -> tuple[int, ...]`: Every ID this lookup is indexed by, in insertion order.
-  - `.query(*, target: int | PrmTarget | None = None, rt: float | None = None, rt_tolerance: float = 30.0) -> Iterator[PrmTransition]`: Transitions of one target and/or within ``rt_tolerance`` of ``rt``.
-  - `.query_range(*, target: int | PrmTarget | None = None, rt_range: tuple[float, float] | None = None) -> Iterator[PrmTransition]`: Transitions of one target and/or inside an RT range.
+  - `.query(*, target: int | PrmTarget | None = None, rt: float | None = None, rt_tolerance: float = 30.0, isolation_mz: float | None = None) -> Iterator[PrmTransition]`: Transitions of one target, within ``rt_tolerance`` of ``rt`` and/or covering ``isolation_mz``.
+  - `.query_range(*, target: int | PrmTarget | None = None, rt_range: tuple[float, float] | None = None, isolation_mz_range: tuple[float, float] | None = None) -> Iterator[PrmTransition]`: Transitions of one target, inside an RT range and/or overlapping an m/z range.
 
 ==============================================================================
 # docs/api/centroiding.md
