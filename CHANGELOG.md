@@ -59,6 +59,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Performance
 
+- `Ms1FrameLookup.query_range` / `query` and `PrecursorLookup.query_range` / `query` answer from a sorted
+  index (stdlib `bisect`) built once at construction instead of scanning every element. Same results in
+  the same (lookup) order, inclusive bounds, generator return and keyword-only arguments. On
+  `tests/data/example_dda.d`, 1000 precursor m/z queries at 10 ppm took 205.9 ms before and 3.7 ms after,
+  with 2073 hits both ways.
+
 - `PandasTdf.is_dda`, `is_dia` and `is_prm` now ask SQLite whether the table exists and has a row
   instead of reading the whole table into a DataFrame. Same results; `is_dda` on
   `tests/data/example_dda.d` went from 4.42 ms to 0.22 ms (minimum of 20 runs), and the cost
