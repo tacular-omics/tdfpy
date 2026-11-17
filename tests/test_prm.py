@@ -293,3 +293,27 @@ def test_prm_access_after_close():
 
 if __name__ == "__main__":
     pytest.main([__file__])
+
+
+@SKIP_NO_DATA
+def test_prm_transition_query_isolation_mz():
+    """isolation_mz / isolation_mz_range filter on the transition's own isolation window."""
+    with PRM(D_PATH) as prm:
+        first = next(iter(prm.transitions))
+        low, high = first.isolation_mz_range
+        mid = (low + high) / 2
+
+        def covers(t, mz):
+            return t.isolation_mz_range[0] <= mz <= t.isolation_mz_range[1]
+
+        for mz in (mid, low, high):
+            got = list(prm.transitions.query(isolation_mz=mz))
+            assert first in got
+            assert got == [t for t in prm.transitions if covers(t, mz)]
+        assert list(prm.transitions.query(isolation_mz=1e6)) == []
+        tid = first.target.target_id
+        assert list(prm.transitions.query(isolation_mz=mid, target=tid)) == [t for t in prm.transitions if t.target.target_id == tid and covers(t, mid)]
+        rng = (high, high + 5.0)
+        assert list(prm.transitions.query_range(isolation_mz_range=rng)) == [
+            t for t in prm.transitions if t.isolation_mz_range[0] <= rng[1] and t.isolation_mz_range[1] >= rng[0]
+        ]
