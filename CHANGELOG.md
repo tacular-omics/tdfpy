@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Remove DDA precursors with no retained MS/MS frames when slicing an acquisition.
+
 ## [5.2.0] (2026-11-16)
 
 ### Added

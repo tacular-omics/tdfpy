@@ -262,6 +262,10 @@ def _filter_sqlite(conn: sqlite3.Connection, frame_start: int, frame_end: int) -
             conn.execute(
                 "DELETE FROM PasefFrameMsMsInfo WHERE Precursor NOT IN (SELECT Id FROM Precursors)",
             )
+            # Remove precursors whose MS/MS frames were all outside the slice.
+            conn.execute(
+                "DELETE FROM Precursors WHERE NOT EXISTS (SELECT 1 FROM PasefFrameMsMsInfo WHERE Precursor = Precursors.Id)",
+            )
 
     # Delete orphaned DIA windows.
     if _table_exists(conn, "DiaFrameMsMsWindows") and _table_exists(conn, "DiaFrameMsMsInfo"):

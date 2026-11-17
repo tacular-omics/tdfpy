@@ -5,12 +5,46 @@ import struct
 from contextlib import closing
 from pathlib import Path
 
+import numpy as np
 import pytest
 
+from tdfpy import DDA
 from tdfpy.slicer import slice_d_folder
 
 TEST_DATA = Path("tests/data/example_dda.d")
 SKIP_NO_DATA = pytest.mark.skipif(not TEST_DATA.exists(), reason="Test data not available")
+
+
+@SKIP_NO_DATA
+def test_slice_removes_precursors_without_msms(tmp_path):
+    dest = tmp_path / "sliced.d"
+    slice_d_folder(TEST_DATA, dest, frame_start=1, frame_end=20)
+
+    with closing(sqlite3.connect(dest / "analysis.tdf")) as conn:
+        assert (
+            conn.execute("SELECT COUNT(*) FROM Precursors p WHERE NOT EXISTS (SELECT 1 FROM PasefFrameMsMsInfo i WHERE i.Precursor = p.Id)").fetchone()[0] == 0
+        )
+        assert conn.execute("SELECT COUNT(*) FROM Precursors").fetchone()[0] == 60
+        assert conn.execute("SELECT COUNT(*) FROM PasefFrameMsMsInfo").fetchone()[0] == 109
+        assert [row[0] for row in conn.execute("SELECT Id FROM Frames ORDER BY Id")] == list(range(1, 21))
+
+    with DDA(TEST_DATA) as source, DDA(dest) as sliced:
+        for precursor_id, shape in ((1, (471, 2)), (2, (511, 2)), (3, (1771, 2))):
+            expected = source.precursors[precursor_id].merged_peaks()
+            actual = sliced.precursors[precursor_id].merged_peaks()
+            assert actual.shape == shape
+            np.testing.assert_array_equal(actual, expected)
+
+
+@pytest.mark.parametrize("mode", ["dia", "prm"])
+def test_slice_other_acquisition_modes(tmp_path, mode):
+    source = Path(f"tests/data/example_{mode}.d")
+    if not source.exists():
+        pytest.skip("Test data not available")
+    dest = tmp_path / f"{mode}.d"
+    slice_d_folder(source, dest, frame_start=1, frame_end=20)
+    with closing(sqlite3.connect(dest / "analysis.tdf")) as conn:
+        assert [row[0] for row in conn.execute("SELECT Id FROM Frames ORDER BY Id")] == list(range(1, 21))
 
 
 def _minimal_source(path: Path) -> Path:
