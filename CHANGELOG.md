@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `isolation_mz=` on `DiaWindowLookup.query` and `PrmTransitionLookup.query`, and
+  `isolation_mz_range=` on their `query_range`, to ask which windows cover an m/z. `isolation_mz`
+  keeps the windows whose `isolation_mz_range` contains the value, edges included and with no
+  tolerance, so overlapping windows all match; `isolation_mz_range` keeps those overlapping the
+  range. Both compose with `window_group` / `target` and RT, and keep the original order. The
+  name is not `precursor_mz`, which elsewhere means a point matched within `mz_tolerance`.
+  On `tests/data/example_dia.d`, `isolation_mz=700.0` returns 58 windows in groups 12 and 13.
+  A reversed range matches nothing, as a reversed `rt_range` already did. Contributed by
+  @ritanjay in #99.
+
 ### Fixed
 
 - Remove DDA precursors with no retained MS/MS frames when slicing an acquisition.

@@ -10,6 +10,11 @@ Argument names follow one rule: a ``(low, high)`` tuple is ``*_range``
 (``rt_range``, ``ook0_range``, ``precursor_mz_range``) and goes to
 ``query_range``; a point value is ``rt`` / ``precursor_mz`` / ``ook0`` plus a
 ``*_tolerance`` and goes to ``query``. Ranges and tolerances are inclusive.
+
+A window that covers an m/z is the exception: ``isolation_mz`` on ``query`` keeps the windows
+whose ``isolation_mz_range`` *contains* the value, with no tolerance, and ``isolation_mz_range``
+on ``query_range`` keeps the windows that *overlap* the range. It is not ``precursor_mz``, which
+is a point matched within ``mz_tolerance``.
 """
 
 from bisect import bisect_left, bisect_right
@@ -61,6 +66,18 @@ def _mz_range(mz: float | None, tolerance: float, tolerance_unit: ToleranceUnit)
 
 def _in(value: float, bounds: tuple[float, float] | None) -> bool:
     return bounds is None or bounds[0] <= value <= bounds[1]
+
+
+def _overlaps(window: tuple[float, float], bounds: tuple[float, float] | None) -> bool:
+    """Whether the ``window`` interval overlaps ``bounds`` (inclusive); ``None`` bounds match everything.
+
+    Reversed bounds (``bounds[0] > bounds[1]``) describe an empty interval and
+    match nothing, as the inclusive test in :func:`_in` already does for
+    ``rt_range``. Without that guard they match every window spanning the whole
+    interval, which reads as a wider query rather than an empty one. A NaN bound
+    fails the comparison too, so it also matches nothing.
+    """
+    return bounds is None or (bounds[0] <= bounds[1] and window[0] <= bounds[1] and window[1] >= bounds[0])
 
 
 class _SortedKey:
@@ -204,13 +221,16 @@ class DiaWindowLookup(_IdLookup[DiaWindow, tuple[DiaWindow, ...]]):
         *,
         window_group: int | DiaWindowGroup | None = None,
         rt_range: tuple[float, float] | None = None,
+        isolation_mz_range: tuple[float, float] | None = None,
     ) -> Iterator[DiaWindow]:
-        """Windows in a window group and/or retention time range.
+        """Windows in a window group, retention time range and/or overlapping an m/z range.
 
         Args:
             window_group: Window group ID, or a `DiaWindowGroup` (its
                 `window_group_id` is used). ``None`` keeps every group.
             rt_range: ``(min_rt, max_rt)`` in seconds, inclusive. ``None`` skips RT filtering.
+            isolation_mz_range: ``(min_mz, max_mz)``, inclusive. Keeps the windows whose
+                :attr:`DiaWindow.isolation_mz_range` overlaps it. ``None`` skips m/z filtering.
 
         Yields:
             Matching `DiaWindow` objects.
@@ -219,7 +239,7 @@ class DiaWindowLookup(_IdLookup[DiaWindow, tuple[DiaWindow, ...]]):
         for window in self._items:
             if group_id is not None and window.window_group_id != group_id:
                 continue
-            if _in(window.rt, rt_range):
+            if _in(window.rt, rt_range) and _overlaps(window.isolation_mz_range, isolation_mz_range):
                 yield window
 
     def query(
@@ -228,13 +248,17 @@ class DiaWindowLookup(_IdLookup[DiaWindow, tuple[DiaWindow, ...]]):
         window_group: int | DiaWindowGroup | None = None,
         rt: float | None = None,
         rt_tolerance: float = 30.0,
+        isolation_mz: float | None = None,
     ) -> Iterator[DiaWindow]:
-        """Windows in a window group and/or within ``rt_tolerance`` of ``rt``.
+        """Windows in a window group, within ``rt_tolerance`` of ``rt`` and/or covering ``isolation_mz``.
 
         Args:
             window_group: Window group ID or `DiaWindowGroup`. ``None`` keeps every group.
             rt: Target retention time in seconds. ``None`` skips RT filtering.
             rt_tolerance: RT tolerance in seconds (default 30).
+            isolation_mz: An m/z the window must contain: keeps the windows whose
+                :attr:`DiaWindow.isolation_mz_range` includes it, edges included. Overlapping
+                windows all match. There is no tolerance. ``None`` skips m/z filtering.
 
         Yields:
             Matching `DiaWindow` objects.
@@ -243,7 +267,11 @@ class DiaWindowLookup(_IdLookup[DiaWindow, tuple[DiaWindow, ...]]):
             TdfpyError: If ``rt_tolerance`` is negative.
         """
         nonnegative("rt_tolerance", rt_tolerance)
-        return self.query_range(window_group=window_group, rt_range=_tolerance_range(rt, rt_tolerance))
+        return self.query_range(
+            window_group=window_group,
+            rt_range=_tolerance_range(rt, rt_tolerance),
+            isolation_mz_range=None if isolation_mz is None else (isolation_mz, isolation_mz),
+        )
 
 
 class PrecursorLookup(_IdLookup[Precursor, Precursor]):
@@ -396,12 +424,15 @@ class PrmTransitionLookup(_IdLookup[PrmTransition, tuple[PrmTransition, ...]]):
         *,
         target: int | PrmTarget | None = None,
         rt_range: tuple[float, float] | None = None,
+        isolation_mz_range: tuple[float, float] | None = None,
     ) -> Iterator[PrmTransition]:
-        """Transitions of one target and/or inside an RT range.
+        """Transitions of one target, inside an RT range and/or overlapping an m/z range.
 
         Args:
             target: Target ID or `PrmTarget`. ``None`` keeps every target.
             rt_range: ``(min_rt, max_rt)`` in seconds. ``None`` skips RT filtering.
+            isolation_mz_range: ``(min_mz, max_mz)``, inclusive. Keeps the transitions whose own
+                :attr:`PrmTransition.isolation_mz_range` overlaps it. ``None`` skips m/z filtering.
 
         Yields:
             Matching `PrmTransition` objects.
@@ -410,7 +441,7 @@ class PrmTransitionLookup(_IdLookup[PrmTransition, tuple[PrmTransition, ...]]):
         for transition in self._items:
             if target_id is not None and transition.target.target_id != target_id:
                 continue
-            if _in(transition.rt, rt_range):
+            if _in(transition.rt, rt_range) and _overlaps(transition.isolation_mz_range, isolation_mz_range):
                 yield transition
 
     def query(
@@ -419,13 +450,16 @@ class PrmTransitionLookup(_IdLookup[PrmTransition, tuple[PrmTransition, ...]]):
         target: int | PrmTarget | None = None,
         rt: float | None = None,
         rt_tolerance: float = 30.0,
+        isolation_mz: float | None = None,
     ) -> Iterator[PrmTransition]:
-        """Transitions of one target and/or within ``rt_tolerance`` of ``rt``.
+        """Transitions of one target, within ``rt_tolerance`` of ``rt`` and/or covering ``isolation_mz``.
 
         Args:
             target: Target ID or `PrmTarget`. ``None`` keeps every target.
             rt: Target retention time in seconds. ``None`` skips RT filtering.
             rt_tolerance: RT tolerance in seconds (default 30).
+            isolation_mz: An m/z the transition's own isolation window must contain, edges
+                included. There is no tolerance. ``None`` skips m/z filtering.
 
         Yields:
             Matching `PrmTransition` objects.
@@ -434,4 +468,8 @@ class PrmTransitionLookup(_IdLookup[PrmTransition, tuple[PrmTransition, ...]]):
             TdfpyError: If ``rt_tolerance`` is negative.
         """
         nonnegative("rt_tolerance", rt_tolerance)
-        return self.query_range(target=target, rt_range=_tolerance_range(rt, rt_tolerance))
+        return self.query_range(
+            target=target,
+            rt_range=_tolerance_range(rt, rt_tolerance),
+            isolation_mz_range=None if isolation_mz is None else (isolation_mz, isolation_mz),
+        )
