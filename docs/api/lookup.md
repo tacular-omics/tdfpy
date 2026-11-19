@@ -8,7 +8,11 @@ support:
 - **Index access** — `lookup[id]`
 - **Length** — `len(lookup)`
 - **`.get(id)`** — returns `None` (or a default) instead of raising on a missing ID
-- **`.query()`** — filter by m/z, retention time, or ion mobility with tolerances
+- **`.query()` / `.query_range()`** — filter by what each lookup holds. Precursors filter by
+  precursor m/z and retention time, and PRM targets also by ion mobility, each with a tolerance
+  on `.query()`. MS1 frames filter by retention time. DIA windows and PRM transitions filter by
+  retention time and by the isolation window they used: `isolation_mz=` keeps those whose window
+  contains that m/z (no tolerance) and `isolation_mz_range=` those that overlap a range
 
 ---
 
@@ -48,6 +52,14 @@ with DIA("experiment.d") as dia:
     # Query by window group AND retention time
     for window in dia.windows.query(window_group=5, rt=600.0, rt_tolerance=10.0):
         peaks = window.centroid()
+
+    # Windows whose isolation range contains an m/z (edges included, no tolerance);
+    # overlapping windows all match
+    for window in dia.windows.query(isolation_mz=700.0):
+        print(window.window_group_id, window.isolation_mz_range)
+
+    # Windows overlapping an m/z range
+    windows = list(dia.windows.query_range(isolation_mz_range=(690.0, 710.0)))
 ```
 
 ::: tdfpy.DiaWindowLookup

@@ -300,6 +300,10 @@ def test_lookup_queries_are_keyword_only():
             dia.windows.query(1)  # type: ignore[misc]
         with pytest.raises(TypeError):
             dia.windows.query(window_group_index=1)  # type: ignore[call-arg]
+        with pytest.raises(TypeError):
+            dia.windows.query(700.0)  # type: ignore[misc]
+        with pytest.raises(TypeError):
+            dia.windows.query(isolation_mz=700.0, isolation_mz_tolerance=1.0)  # type: ignore[call-arg]
 
 
 def test_lookup_ids_are_sorted_and_complete():

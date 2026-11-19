@@ -218,3 +218,57 @@ def test_dia_access_after_close():
 
 if __name__ == "__main__":
     pytest.main([__file__])
+
+
+def _covers(w, mz):
+    low, high = w.isolation_mz_range
+    return low <= mz <= high
+
+
+@SKIP_NO_DATA
+def test_dia_window_query_isolation_mz_contains():
+    """isolation_mz keeps windows whose isolation range contains it, with no tolerance."""
+    with DIA(D_PATH) as dia:
+        hits = list(dia.windows.query(isolation_mz=700.0))
+        assert len(hits) == 58
+        assert {w.window_group_id for w in hits} == {12, 13}
+        assert hits == [w for w in dia.windows if _covers(w, 700.0)]
+        assert (13, 12, 688.0, 26.0) in {(w.frame_id, w.window_group_id, w.isolation_mz, w.isolation_width) for w in hits}
+
+
+@SKIP_NO_DATA
+def test_dia_window_query_isolation_mz_composes_with_group_and_rt():
+    with DIA(D_PATH) as dia:
+        rt = next(w.rt for w in dia.windows if w.window_group_id == 12)
+        got = list(dia.windows.query(isolation_mz=700.0, window_group=12, rt=rt, rt_tolerance=5.0))
+        want = [w for w in dia.windows if w.window_group_id == 12 and rt - 5.0 <= w.rt <= rt + 5.0 and _covers(w, 700.0)]
+        assert got == want
+        assert 0 < len(got) < 58
+
+
+@SKIP_NO_DATA
+def test_dia_window_query_isolation_mz_edges():
+    with DIA(D_PATH) as dia:
+        assert list(dia.windows.query(isolation_mz=1e6)) == []
+        assert list(dia.windows.query(isolation_mz=-1.0)) == []
+        low, high = next(w for w in dia.windows if w.isolation_mz == 688.0).isolation_mz_range
+        assert (low, high) == (675.0, 701.0)
+        for edge in (low, high):
+            hits = list(dia.windows.query(isolation_mz=edge))
+            assert any(w.isolation_mz == 688.0 for w in hits)
+            assert hits == [w for w in dia.windows if _covers(w, edge)]
+        assert not any(w.isolation_mz == 688.0 for w in dia.windows.query(isolation_mz=high + 1e-6))
+
+
+@SKIP_NO_DATA
+def test_dia_window_query_range_isolation_mz_range_overlaps():
+    with DIA(D_PATH) as dia:
+        rng = (690.0, 710.0)
+        got = list(dia.windows.query_range(isolation_mz_range=rng))
+        assert got == [w for w in dia.windows if w.isolation_mz_range[0] <= rng[1] and w.isolation_mz_range[1] >= rng[0]]
+        assert got
+        # A range touching a window only at its edge still overlaps; a degenerate range equals containment.
+        assert list(dia.windows.query_range(isolation_mz_range=(700.0, 700.0))) == list(dia.windows.query(isolation_mz=700.0))
+        grouped = list(dia.windows.query_range(isolation_mz_range=rng, window_group=12))
+        assert grouped == [w for w in got if w.window_group_id == 12]
+        assert list(dia.windows.query_range(isolation_mz_range=None)) == list(dia.windows)
