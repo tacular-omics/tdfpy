@@ -69,8 +69,15 @@ def _in(value: float, bounds: tuple[float, float] | None) -> bool:
 
 
 def _overlaps(window: tuple[float, float], bounds: tuple[float, float] | None) -> bool:
-    """Whether the ``window`` interval overlaps ``bounds`` (inclusive); ``None`` bounds match everything."""
-    return bounds is None or (window[0] <= bounds[1] and window[1] >= bounds[0])
+    """Whether the ``window`` interval overlaps ``bounds`` (inclusive); ``None`` bounds match everything.
+
+    Reversed bounds (``bounds[0] > bounds[1]``) describe an empty interval and
+    match nothing, as the inclusive test in :func:`_in` already does for
+    ``rt_range``. Without that guard they match every window spanning the whole
+    interval, which reads as a wider query rather than an empty one. A NaN bound
+    fails the comparison too, so it also matches nothing.
+    """
+    return bounds is None or (bounds[0] <= bounds[1] and window[0] <= bounds[1] and window[1] >= bounds[0])
 
 
 class _SortedKey:

@@ -317,3 +317,43 @@ def test_prm_transition_query_isolation_mz():
         assert list(prm.transitions.query_range(isolation_mz_range=rng)) == [
             t for t in prm.transitions if t.isolation_mz_range[0] <= rng[1] and t.isolation_mz_range[1] >= rng[0]
         ]
+
+
+def test_prm_transition_isolation_filter_rejects_a_reversed_range():
+    """A reversed range is empty, like ``rt_range``, not a query for everything spanning it."""
+    with PRM(D_PATH) as prm:
+        low, high = next(iter(prm.transitions)).isolation_mz_range
+        assert list(prm.transitions.query_range(isolation_mz_range=(low, high))), "the forward range is empty, so this proves nothing"
+        assert list(prm.transitions.query_range(isolation_mz_range=(high, low))) == []
+        # the neighbouring filter this now matches
+        assert list(prm.transitions.query_range(rt_range=(100.0, 0.0))) == []
+
+
+def test_prm_transition_isolation_filter_follows_the_window_not_the_target():
+    """The filter reads the transition's own window, not its target's m/z.
+
+    ``example_prm.d`` cannot show this: it has one acquired target, and every one
+    of its 226 transitions carries the window 487.26 +/- 0.5, which is exactly
+    that target's own m/z +/- 0.5. So a filter reading the target instead of the
+    window answers every query on the fixture identically.
+
+    The second transition here is therefore **synthetic**: a copy of a real one
+    with its isolation window moved 100 Th away, its target left alone.
+    """
+    import dataclasses
+
+    from tdfpy.lookup import PrmTransitionLookup
+
+    with PRM(D_PATH) as prm:
+        real = next(iter(prm.transitions))
+        target_mz = real.target.precursor_mz
+        assert real.isolation_mz == pytest.approx(target_mz), (
+            f"the fixture no longer has the window on its target ({real.isolation_mz} vs {target_mz}); "
+            "this test's premise is gone and it should be rewritten against the new fixture"
+        )
+        moved = dataclasses.replace(real, isolation_mz=real.isolation_mz + 100.0)
+        lookup = PrmTransitionLookup([real, moved])
+
+        assert list(lookup.query(isolation_mz=real.isolation_mz)) == [real], "the real window should match only the real transition"
+        assert list(lookup.query(isolation_mz=moved.isolation_mz)) == [moved], "a filter reading the target's m/z would find nothing 100 Th away"
+        assert moved.target.target_id == real.target.target_id, "the synthetic copy must keep the same target for this to mean anything"

@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   range. Both compose with `window_group` / `target` and RT, and keep the original order. The
   name is not `precursor_mz`, which elsewhere means a point matched within `mz_tolerance`.
   On `tests/data/example_dia.d`, `isolation_mz=700.0` returns 58 windows in groups 12 and 13.
+  A reversed range matches nothing, as a reversed `rt_range` already did. Contributed by
+  @ritanjay in #99.
 
 ### Fixed
 

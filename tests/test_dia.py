@@ -272,3 +272,21 @@ def test_dia_window_query_range_isolation_mz_range_overlaps():
         grouped = list(dia.windows.query_range(isolation_mz_range=rng, window_group=12))
         assert grouped == [w for w in got if w.window_group_id == 12]
         assert list(dia.windows.query_range(isolation_mz_range=None)) == list(dia.windows)
+
+
+def test_dia_window_isolation_range_rejects_a_reversed_range():
+    """A reversed range is an empty interval, not a query for every window spanning it.
+
+    Before the guard in ``_overlaps``, ``(701.0, 675.0)`` returned the 29 windows
+    that cover the whole interval between those two bounds, while the
+    neighbouring ``rt_range=(100.0, 0.0)`` returned none.
+    """
+    with DIA(D_PATH) as dia:
+        forward = list(dia.windows.query_range(isolation_mz_range=(675.0, 701.0)))
+        # Expected from an inclusive overlap test written out here, not from a pinned count.
+        expected = [w for w in dia.windows if w.isolation_mz_range[0] <= 701.0 and w.isolation_mz_range[1] >= 675.0]
+        assert forward == expected
+        assert len(forward) > 1, f"the forward range matched {len(forward)} windows, too few to show the reversed one differs"
+        assert list(dia.windows.query_range(isolation_mz_range=(701.0, 675.0))) == []
+        assert list(dia.windows.query_range(isolation_mz_range=(700.5, 700.4))) == []
+        assert list(dia.windows.query_range(rt_range=(100.0, 0.0))) == []
