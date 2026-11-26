@@ -45,6 +45,13 @@ def slice_d_folder(
     Creates a new .d folder at ``dest_dir`` with a filtered SQLite database
     and a rebuilt binary file containing only the kept frames' data.
 
+    Frame IDs are not renumbered, and ``Segments`` is clipped to the kept
+    frames. A DDA precursor is kept only if its parent MS1 frame is in the
+    range, so a PASEF MS/MS frame in the range whose precursors were all
+    detected in an MS1 frame before it would be left without
+    ``PasefFrameMsMsInfo`` rows; such frames are dropped, since the DDA
+    reader can reach MS/MS data only through a precursor.
+
     Args:
         source_dir: Path to the source .d folder.
         dest_dir: Path for the output .d folder (must not already exist).
@@ -61,8 +68,9 @@ def slice_d_folder(
             overwrites or deletes pre-existing data.
         TdfpyError: If ``frame_start > frame_end``, if ``dest_dir`` resolves to
             the source folder or to a location inside it, if no frames fall in
-            the requested range, if a kept frame has a NULL ``TimsId``, or if
-            SQLite fails.
+            the requested range or none are left once the MS/MS frames above
+            are dropped, if a kept frame has a NULL ``TimsId``, or if SQLite
+            fails.
 
     Note:
         If writing fails part-way through, the partially written destination
@@ -142,6 +150,18 @@ def _write_slice(source_dir: Path, dest_dir: Path, frame_start: int, frame_end: 
                 "that excludes them, or repair the source .d folder."
             )
 
+        # Step 2: Filter SQLite tables. This can drop PASEF MS/MS frames whose precursors
+        # all lie outside the slice, so the kept frames are read back afterwards.
+        _filter_sqlite(conn, frame_start, frame_end)
+        rows = conn.execute("SELECT Id, TimsId FROM Frames ORDER BY Id").fetchall()
+        if not rows:
+            raise TdfpyError(
+                f"No frames are left in [{frame_start}, {frame_end}] (inclusive): every frame in the "
+                "range is a PASEF MS/MS frame whose precursors were detected in an MS1 frame outside "
+                "it. Widen the range to include those MS1 frames."
+            )
+        _clip_segments(conn, rows[0][0], rows[-1][0])
+
         frame_ids = [r[0] for r in rows]
         original_offsets = [r[1] for r in rows]
 
@@ -152,13 +172,10 @@ def _write_slice(source_dir: Path, dest_dir: Path, frame_start: int, frame_end: 
             frame_ids[-1],
         )
 
-        # Step 2: Rebuild binary file with only kept frames.
+        # Step 3: Rebuild binary file with only kept frames.
         src_bin = source_dir / TDF_BIN_FILE
         dst_bin = dest_dir / TDF_BIN_FILE
         new_offsets = _rebuild_binary(src_bin, dst_bin, original_offsets)
-
-        # Step 3: Filter SQLite tables.
-        _filter_sqlite(conn, frame_start, frame_end)
 
         # Step 4: Update offsets in Frames table.
         conn.executemany(
@@ -251,6 +268,11 @@ def _filter_sqlite(conn: sqlite3.Connection, frame_start: int, frame_end: int) -
                 (frame_start, frame_end),
             )
 
+    # PASEF MS/MS frames that carry PasefFrameMsMsInfo rows before the precursor cleanup.
+    pasef_frames: set[int] = set()
+    if _table_exists(conn, "PasefFrameMsMsInfo"):
+        pasef_frames = {r[0] for r in conn.execute("SELECT DISTINCT Frame FROM PasefFrameMsMsInfo")}
+
     # Delete orphaned Precursors (Parent frame no longer exists).
     if _table_exists(conn, "Precursors"):
         conn.execute(
@@ -267,8 +289,43 @@ def _filter_sqlite(conn: sqlite3.Connection, frame_start: int, frame_end: int) -
                 "DELETE FROM Precursors WHERE NOT EXISTS (SELECT 1 FROM PasefFrameMsMsInfo WHERE Precursor = Precursors.Id)",
             )
 
+    # A PASEF MS/MS frame whose rows all went with their precursors (parent MS1 frame outside
+    # the slice) can no longer be read: the DDA reader reaches MS/MS data only through
+    # precursors. Drop the frame rather than keep it without its PasefFrameMsMsInfo rows.
+    if pasef_frames:
+        orphaned = sorted(pasef_frames - {r[0] for r in conn.execute("SELECT DISTINCT Frame FROM PasefFrameMsMsInfo")})
+        if orphaned:
+            logger.info(
+                "slice_d_folder: dropping %d PASEF MS/MS frame(s) whose precursors' MS1 frames are outside the slice (e.g. %s).",
+                len(orphaned),
+                orphaned[:10],
+            )
+            placeholders = ",".join("?" * len(orphaned))
+            conn.execute(f"DELETE FROM Frames WHERE Id IN ({placeholders})", orphaned)
+            for table, col in _FRAME_DEPENDENT_TABLES:
+                if _table_exists(conn, table):
+                    conn.execute(f"DELETE FROM {table} WHERE {col} IN ({placeholders})", orphaned)
+
     # Delete orphaned DIA windows.
     if _table_exists(conn, "DiaFrameMsMsWindows") and _table_exists(conn, "DiaFrameMsMsInfo"):
         conn.execute(
             "DELETE FROM DiaFrameMsMsWindows WHERE WindowGroup NOT IN (SELECT DISTINCT WindowGroup FROM DiaFrameMsMsInfo)",
         )
+
+
+def _clip_segments(conn: sqlite3.Connection, first_frame: int, last_frame: int) -> None:
+    """Clip ``Segments`` to the kept frames ``[first_frame, last_frame]``.
+
+    A segment that ends before or starts after the kept frames is deleted; one that overlaps
+    them gets ``FirstFrame``/``LastFrame`` clamped to the kept range.
+    """
+    if not _table_exists(conn, "Segments"):
+        return
+    conn.execute(
+        "DELETE FROM Segments WHERE LastFrame < ? OR FirstFrame > ?",
+        (first_frame, last_frame),
+    )
+    conn.execute(
+        "UPDATE Segments SET FirstFrame = MAX(FirstFrame, ?), LastFrame = MIN(LastFrame, ?)",
+        (first_frame, last_frame),
+    )
