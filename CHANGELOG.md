@@ -22,6 +22,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Remove DDA precursors with no retained MS/MS frames when slicing an acquisition.
+- `slice_d_folder` now keeps `Segments` and the PASEF MS/MS frames in step with the kept frames
+  (#101). `Segments.FirstFrame`/`LastFrame` are clipped to the kept frames, and segments outside
+  them are deleted; they used to keep the source's values (`(1, 1, 710, 0)` for frames 21..40 of
+  `tests/data/example_dda.d`). A PASEF MS/MS frame whose precursors were all detected in an MS1
+  frame before the range is now dropped instead of kept without `PasefFrameMsMsInfo` rows: 13 of
+  the 18 MS/MS frames in that slice had lost their rows. Keeping their precursors instead would
+  leave `Precursors.Parent` pointing at a frame that is not in the slice, which `DDA` cannot open
+  (it reads the parent frame's retention time and mobility calibration). A slice left with no
+  frames raises `TdfpyError` and removes the partial destination.
 
 ## [5.2.0] (2026-11-16)
 
