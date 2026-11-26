@@ -367,8 +367,15 @@ The slicer keeps all frames whose `Id` falls within `[frame_start, frame_end]` (
 | `DiaFrameMsMsInfo` | Rows referencing deleted frames are deleted |
 | `PrmFrameMsMsInfo` | Rows referencing deleted frames are deleted |
 | `Precursors` | Orphaned rows (parent frame deleted) are removed |
+| PASEF MS/MS `Frames` | A frame in the range whose precursors all came from an MS1 frame before the range is deleted too (it would have no `PasefFrameMsMsInfo` rows left) |
 | `DiaFrameMsMsWindows` | Orphaned window groups are removed |
+| `Segments` | Clipped to the kept frames: `FirstFrame`/`LastFrame` are clamped, segments outside are deleted |
 | `analysis.tdf_bin` | Rebuilt from scratch — only kept frames' blobs are written |
+
+Frame IDs are not renumbered. For a DDA slice that does not start at an MS1 frame, the first
+few frames of the range are often PASEF MS/MS frames of precursors detected before it; those
+are dropped, because the DDA reader reaches MS/MS data only through a precursor and a precursor
+needs its parent MS1 frame. Start the range at an MS1 frame to keep them.
 
 The `TimsId` offsets in the `Frames` table are updated to point to the correct positions in
 the new binary file, so the output can be opened immediately with `DDA`, `DIA`, `PRM`, or
