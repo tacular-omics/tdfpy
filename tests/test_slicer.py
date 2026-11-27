@@ -9,6 +9,7 @@ import numpy as np
 import pytest
 
 from tdfpy import DDA
+from tdfpy.errors import TdfpyError
 from tdfpy.slicer import slice_d_folder
 
 TEST_DATA = Path("tests/data/example_dda.d")
@@ -127,15 +128,37 @@ def test_slice_pasef_filtered(tmp_path):
         assert orphaned == 0
 
 
+def _source_frames_kept(frame_start: int, frame_end: int) -> list[int]:
+    """Frames of the DDA fixture in the range, minus PASEF MS/MS frames none of whose
+    precursors was detected in an MS1 frame inside the range (read from the source)."""
+    with closing(sqlite3.connect(TEST_DATA / "analysis.tdf")) as conn:
+        return [
+            r[0]
+            for r in conn.execute(
+                "SELECT f.Id FROM Frames f WHERE f.Id BETWEEN ?1 AND ?2 AND NOT ("
+                " EXISTS (SELECT 1 FROM PasefFrameMsMsInfo p WHERE p.Frame = f.Id)"
+                " AND NOT EXISTS (SELECT 1 FROM PasefFrameMsMsInfo p JOIN Precursors r ON r.Id = p.Precursor"
+                "   WHERE p.Frame = f.Id AND r.Parent BETWEEN ?1 AND ?2)"
+                ") ORDER BY f.Id",
+                (frame_start, frame_end),
+            )
+        ]
+
+
 @SKIP_NO_DATA
 def test_slice_middle_range(tmp_path):
-    """Slicing a middle range should preserve frame IDs."""
+    """Slicing a middle range keeps the original frame IDs (no renumbering).
+
+    PASEF MS/MS frames whose precursors all come from MS1 frames before the range are
+    dropped (#101), so in 100..110 only the frames that can still be read remain.
+    """
     dest = tmp_path / "sliced.d"
     slice_d_folder(TEST_DATA, dest, frame_start=100, frame_end=110)
 
     with closing(sqlite3.connect(dest / "analysis.tdf")) as conn:
-        ids = conn.execute("SELECT Id FROM Frames ORDER BY Id").fetchall()
-        assert [r[0] for r in ids] == list(range(100, 111))
+        ids = [r[0] for r in conn.execute("SELECT Id FROM Frames ORDER BY Id")]
+    assert ids == _source_frames_kept(100, 110)
+    assert ids and set(ids) <= set(range(100, 111))
 
 
 @SKIP_NO_DATA
@@ -238,9 +261,10 @@ def test_slice_null_tims_id_removes_partial_dest(tmp_path):
 
     assert not dest.exists()
 
-    # A range that excludes the broken frame still works.
+    # A range that excludes the broken frame still works. Frames 2..5 are PASEF MS/MS
+    # frames of precursors from MS1 frame 1, so the range keeps frame 1 (#101).
     ok_dest = tmp_path / "ok.d"
-    slice_d_folder(src, ok_dest, frame_start=4, frame_end=5)
+    slice_d_folder(src, ok_dest, frame_start=1, frame_end=2)
     assert (ok_dest / "analysis.tdf_bin").exists()
 
 
@@ -292,3 +316,69 @@ def test_slice_filters_frame_msms_info_and_ce_sweeping(tmp_path):
         sweeping = conn.execute("SELECT DISTINCT Frame FROM CollisionEnergySweepingInfo ORDER BY Frame").fetchall()
     assert kept == [5, 6, 7, 8, 9]
     assert [r[0] for r in sweeping] == [5, 6, 7, 8, 9]
+
+
+@SKIP_NO_DATA
+def test_slice_not_starting_at_frame_1_keeps_tables_in_step(tmp_path):
+    """#101: Segments and PasefFrameMsMsInfo agree with the kept frames."""
+    dest = tmp_path / "sliced.d"
+    slice_d_folder(TEST_DATA, dest, frame_start=21, frame_end=40)
+
+    with closing(sqlite3.connect(TEST_DATA / "analysis.tdf")) as src:
+        source_rows = {
+            frame: count for frame, count in src.execute("SELECT Frame, COUNT(*) FROM PasefFrameMsMsInfo WHERE Frame BETWEEN 21 AND 40 GROUP BY Frame")
+        }
+    with closing(sqlite3.connect(dest / "analysis.tdf")) as conn:
+        ids = [r[0] for r in conn.execute("SELECT Id FROM Frames ORDER BY Id")]
+        assert ids == _source_frames_kept(21, 40)
+        assert ids[0] > 21  # frames 21..28 are MS/MS frames of precursors from before frame 21
+        assert conn.execute("SELECT Id, FirstFrame, LastFrame, IsCalibrationSegment FROM Segments").fetchall() == [(1, ids[0], ids[-1], 0)]
+        # Every kept MS/MS frame has its PasefFrameMsMsInfo rows, as in the source.
+        assert (
+            conn.execute(
+                "SELECT COUNT(*) FROM Frames f WHERE MsMsType = 8 AND NOT EXISTS (SELECT 1 FROM PasefFrameMsMsInfo p WHERE p.Frame = f.Id)"
+            ).fetchone()[0]
+            == 0
+        )
+        kept_rows = dict(conn.execute("SELECT Frame, COUNT(*) FROM PasefFrameMsMsInfo GROUP BY Frame").fetchall())
+        assert set(kept_rows) == {f for f in ids if f in source_rows}
+        # Every precursor's parent MS1 frame is in the slice.
+        assert conn.execute("SELECT COUNT(*) FROM Precursors WHERE Parent NOT IN (SELECT Id FROM Frames)").fetchone()[0] == 0
+
+    with DDA(TEST_DATA) as source, DDA(dest) as sliced:
+        assert len(sliced.precursors) > 0
+        # A precursor whose PASEF windows all lie in the slice reads back unchanged.
+        whole = [p for p in sliced.precursors if {i.frame_id for i in source.precursors[p.precursor_id].pasef_frame_msms_infos} <= set(ids)]
+        assert whole
+        for precursor in whole[:3]:
+            np.testing.assert_array_equal(precursor.merged_peaks(), source.precursors[precursor.precursor_id].merged_peaks())
+
+
+@SKIP_NO_DATA
+def test_slice_whose_frames_are_all_orphaned_msms_raises_and_cleans_up(tmp_path):
+    dest = tmp_path / "sliced.d"
+    with pytest.raises(TdfpyError, match="No frames are left"):
+        slice_d_folder(TEST_DATA, dest, frame_start=21, frame_end=28)
+    assert not dest.exists()
+
+
+@pytest.mark.parametrize(
+    ("mode", "frame_start", "frame_end", "expected"),
+    [
+        # DIA fixture: one segment 1..24888, clipped to the slice.
+        ("dia", 101, 200, [(1, 101, 200, 0)]),
+        # PRM fixture: six calibration segments; only the two overlapping 200..300 remain.
+        ("prm", 200, 300, [(1, 200, 254, 1), (2, 255, 300, 1)]),
+    ],
+)
+def test_slice_clips_segments(tmp_path, mode, frame_start, frame_end, expected):
+    source = Path(f"tests/data/example_{mode}.d")
+    if not source.exists():
+        pytest.skip("Test data not available")
+    dest = tmp_path / f"{mode}.d"
+    slice_d_folder(source, dest, frame_start=frame_start, frame_end=frame_end)
+    with closing(sqlite3.connect(dest / "analysis.tdf")) as conn:
+        ids = [r[0] for r in conn.execute("SELECT Id FROM Frames ORDER BY Id")]
+        assert ids == list(range(frame_start, frame_end + 1))
+        rows = conn.execute("SELECT Id, FirstFrame, LastFrame, IsCalibrationSegment FROM Segments ORDER BY Id").fetchall()
+    assert rows == expected
