@@ -30,10 +30,23 @@ The slicer keeps all frames whose `Id` falls within `[frame_start, frame_end]` (
 | `Segments` | Clipped to the kept frames: `FirstFrame`/`LastFrame` are clamped, segments outside are deleted |
 | `analysis.tdf_bin` | Rebuilt from scratch — only kept frames' blobs are written |
 
-Frame IDs are not renumbered. For a DDA slice that does not start at an MS1 frame, the first
-few frames of the range are often PASEF MS/MS frames of precursors detected before it; those
-are dropped, because the DDA reader reaches MS/MS data only through a precursor and a precursor
-needs its parent MS1 frame. Start the range at an MS1 frame to keep them.
+Frame IDs are not renumbered. For a DDA slice, a PASEF MS/MS frame is dropped whenever every
+one of its precursors was detected in an MS1 frame outside the range, because the DDA reader
+reaches MS/MS data only through a precursor and a precursor needs its parent MS1 frame. The
+slicer logs how many it removed, listing up to the first ten.
+
+**Starting the range on an MS1 frame does not avoid it.** The MS/MS frames that follow an MS1
+frame are not all its own. On `tests/data/example_dda.d`, 64 of the 65 MS1 frames are followed
+by ten PASEF MS/MS frames, and the first five of those ten carry precursors detected in the
+*previous* MS1 frame. The exception is frame 1, which has no previous MS1 frame and is followed
+by five MS/MS frames, all its own.
+
+So `18..40`, `29..62` and `7..40` each start on an MS1 frame and each still drops five MS/MS
+frames: 19-23 belong to MS1 frame 7, 30-34 to frame 18, and 8-12 to frame 1.
+
+To keep a given MS/MS frame, the range must include its precursors' parent MS1 frame, which for
+those lead-in frames is the MS1 frame before the one they follow: `1..40` drops nothing, while
+`19..40` drops 15 of its 20 MS/MS frames.
 
 The `TimsId` offsets in the `Frames` table are updated to point to the correct positions in
 the new binary file, so the output can be opened immediately with `DDA`, `DIA`, `PRM`, or
